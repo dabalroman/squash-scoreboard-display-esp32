@@ -5,6 +5,7 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_NeoPixel.h>
 
+#include "GlyphDisplay.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "../lib/RemoteInput/RemoteInputManager.h"
 
@@ -38,10 +39,11 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d1() { interruptTriggeredGpio = REMOTE_
 void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D2; }
 void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D3; }
 
-uint8_t offset = 0;
+uint16_t offset = 2137;
 unsigned long lastUpdate = 0;
 
 uint8_t digitPartOffset = 0;
+GlyphDisplay ledDisplay(pixels);
 
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
@@ -80,8 +82,11 @@ void loop() {
     if (lastUpdate + 50 < millis()) {
         lastUpdate = millis();
 
+        // pixels.setPixelColor(offset, Adafruit_NeoPixel::Color(1, 1, 1));
+
         pixels.fill(Adafruit_NeoPixel::Color(0, 0, 0));
-        pixels.setPixelColor(offset, Adafruit_NeoPixel::Color(1, 1, 1));
+        ledDisplay.setValue(offset / 100, offset % 100);
+        ledDisplay.show();
 
         pixels.show();
     }
@@ -97,12 +102,12 @@ void loop() {
     }
 
     if (remoteInputManager.buttonC.takeActionIfPossible()) {
-        offset += 3;
+        offset += 100;
         developmentService.printLn("%d", offset);
     }
 
     if (remoteInputManager.buttonD.takeActionIfPossible()) {
-        offset -= 3;
+        offset -= 100;
         developmentService.printLn("%d", offset);
     }
 }
