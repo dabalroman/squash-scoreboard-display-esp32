@@ -5,6 +5,7 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_NeoPixel.h>
 
+#include "DisplayDigit.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "../lib/RemoteInput/RemoteInputManager.h"
 
@@ -15,10 +16,10 @@ constexpr uint8_t OLED_RESET = -1;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
 
 // 433Mhz Receiver
-constexpr uint8_t REMOTE_GPIO_D0 = 8;
-constexpr uint8_t REMOTE_GPIO_D1 = 10;
-constexpr uint8_t REMOTE_GPIO_D2 = 13;
-constexpr uint8_t REMOTE_GPIO_D3 = 14;
+constexpr uint8_t REMOTE_GPIO_D0 = 14;
+constexpr uint8_t REMOTE_GPIO_D1 = 13;
+constexpr uint8_t REMOTE_GPIO_D2 = 10;
+constexpr uint8_t REMOTE_GPIO_D3 = 8;
 
 // Neopixel
 constexpr uint8_t LED_PIN = 18;
@@ -34,6 +35,11 @@ void IRAM_ATTR onGpioInterrupt0() { triggeredGpio = REMOTE_GPIO_D0; }
 void IRAM_ATTR onGpioInterrupt1() { triggeredGpio = REMOTE_GPIO_D1; }
 void IRAM_ATTR onGpioInterrupt2() { triggeredGpio = REMOTE_GPIO_D2; }
 void IRAM_ATTR onGpioInterrupt3() { triggeredGpio = REMOTE_GPIO_D3; }
+
+uint8_t offset = 0;
+unsigned long lastUpdate = 0;
+
+uint8_t digitPartOffset = 0;
 
 void setup() {
     developmentService.init();
@@ -66,18 +72,81 @@ void setup() {
 void loop() {
     developmentService.handle();
 
+    if (lastUpdate + 50 < millis()) {
+        lastUpdate = millis();
+
+        // for (uint16_t i = 0; i < NUM_LEDS; ++i) {
+            // if (i % 21 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 0, 0)); // Full white
+            // } else if (i % 18 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 1, 0)); // Half white
+            // } else if (i % 15 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 2, 0)); // Half white
+            // } else if (i % 12 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 3, 0)); // Half white
+            // } else if (i % 9 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 4, 0)); // Half white
+            // } else if (i % 6 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 5, 0)); // Half white
+            // } else if (i % 3 == 2) {
+            //     pixels.setPixelColor(i, pixels.Color(1, 6, 0)); // Half white
+            // } else {
+                // if ((i + NUM_LEDS - offset) % NUM_LEDS == 0) {
+                //     pixels.setPixelColor(i, pixels.Color(0, 1, 0));
+                // } else {
+                //     pixels.setPixelColor(i, pixels.Color(0, 0, 0));
+                // }
+            // }
+
+            // for (uint8_t j = 0; j < 7; ++j) {
+            // uint8_t j = digitPartOffset % 7;
+            //     for (uint8_t k = 0; k < 3; ++k) {
+            //         if (digitA.parts[j].pixelIndexes[k] == i) {
+            //             pixels.setPixelColor(i, pixels.Color(1, 1, 0));
+            //         }
+            //         if (digitB.parts[j].pixelIndexes[k] == i) {
+            //             pixels.setPixelColor(i, pixels.Color(1, 0, 1));
+            //         }
+            //
+            //         if (digitC.parts[j].pixelIndexes[k] == i) {
+            //             pixels.setPixelColor(i, pixels.Color(1, 0, 0));
+            //         }
+            //
+            //         if (digitD.parts[j].pixelIndexes[k] == i) {
+            //             pixels.setPixelColor(i, pixels.Color(0, 0, 1));
+            //         }
+            //     }
+            // }
+
+            pixels.fill(pixels.Color(0, 0, 0));
+            pixels.setPixelColor(offset, pixels.Color(1, 1, 1));
+        // }
+
+        pixels.show();
+    }
+
     if (triggeredGpio) {
         remoteInputManager.trigger(triggeredGpio);
         triggeredGpio = 0;
     }
 
     if (remoteInputManager.buttonA.takeActionIfPossible()) {
-        pixels.fill(Adafruit_NeoPixel::Color(5, 0, 0));
-        pixels.show();
+        offset++;
+        developmentService.telnetPrintLn("%d", offset);
     }
 
     if (remoteInputManager.buttonB.takeActionIfPossible()) {
-        pixels.fill(Adafruit_NeoPixel::Color(0, 5, 0));
-        pixels.show();
+        offset--;
+        developmentService.telnetPrintLn("%d", offset);
+    }
+
+    if (remoteInputManager.buttonC.takeActionIfPossible()) {
+        offset+=3;
+        developmentService.telnetPrintLn("%d", offset);
+    }
+
+    if (remoteInputManager.buttonD.takeActionIfPossible()) {
+        offset-=3;
+        developmentService.telnetPrintLn("%d", offset);
     }
 }
