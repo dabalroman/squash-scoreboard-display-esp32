@@ -1,42 +1,82 @@
 #include "RemoteDevelopmentService.h"
 
 #include <Update.h>
+#include <Adafruit_SSD1306.h>
+
 #include "../../include/secrets.h"
 
-void RemoteDevelopmentService::setupOTA() {
+void RemoteDevelopmentService::setupOTA(Adafruit_SSD1306 &display) {
     OTAServer = new WebServer(80);
 
-    OTAServer->on("/update", HTTP_POST,
-                  [this] {
-                      // OTA - onUploadEnd
-                      OTAServer->sendHeader("Connection", "close");
-                      OTAServer->send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
-                      ESP.restart();
-                  },
-                  [this] {
-                      // OTA - onUpload
-                      HTTPUpload &upload = OTAServer->upload();
-                      if (upload.status == UPLOAD_FILE_START) {
-                          if (telnetClient && telnetClient.connected()) {
-                              telnetFlushLogBuffer();
-                              printLn(">>>>   OTA update started   <<<<");
-                              telnetClient.stop();
-                              telnetServer->close();
-                          }
+    OTAServer->on("/", HTTP_GET, [this] {
+        const String html = "<html><body><form action=\"/connect\" method=\"POST\">"
+                "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
+                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
+                "<input type=\"submit\" value=\"Connect\">"
+                "</form></body></html>";
+        OTAServer->send(200, "text/html", html);
+    });
 
-                          Update.begin(UPDATE_SIZE_UNKNOWN);
-                      } else if (upload.status == UPLOAD_FILE_WRITE) {
-                          Update.write(upload.buf, upload.currentSize);
-                      } else if (upload.status == UPLOAD_FILE_END) {
-                          Update.end(true);
-                      }
-                  }
+    OTAServer->on("/connect", HTTP_POST, [this, &display] {
+        if (OTAServer->hasArg("ssid") && OTAServer->hasArg("password")) {
+            const String newSSID = OTAServer->arg("ssid");
+            const String newPassword = OTAServer->arg("password");
+
+            preferences.begin("wifi", false);
+            preferences.putString("ssid", newSSID);
+            preferences.putString("password", newPassword);
+            preferences.end();
+
+            display.clearDisplay();
+            display.setCursor(0, 0);
+            display.println("Credentials saved! Rebooting...");
+            display.display();
+
+            OTAServer->send(200, "text/html", "Credentials saved! Rebooting...");
+            delay(1000);
+            ESP.restart();
+        } else {
+            OTAServer->send(400, "text/html", "Missing SSID or Password");
+        }
+    });
+
+    OTAServer->on(
+        "/update",
+        HTTP_POST,
+        [this] {
+            // OTA - onUploadEnd
+            OTAServer->sendHeader("Connection", "close");
+            OTAServer->send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
+            ESP.restart();
+        },
+        [this] {
+            // OTA - onUpload
+            HTTPUpload &upload = OTAServer->upload();
+            if (upload.status == UPLOAD_FILE_START) {
+                if (telnetClient && telnetClient.connected()) {
+                    telnetFlushLogBuffer();
+                    printLn(">>>>   OTA update started   <<<<");
+                    telnetClient.stop();
+                    telnetServer->close();
+                }
+
+                Update.begin(UPDATE_SIZE_UNKNOWN);
+            } else if (upload.status == UPLOAD_FILE_WRITE) {
+                Update.write(upload.buf, upload.currentSize);
+            } else if (upload.status == UPLOAD_FILE_END) {
+                Update.end(true);
+            }
+        }
     );
 
     OTAServer->begin();
 }
 
 void RemoteDevelopmentService::setupTelnet() {
+    if (WiFiClass::status() != WL_CONNECTED) {
+        return;
+    }
+
     telnetServer = new WiFiServer(23);
 
     telnetServer->begin();
@@ -50,7 +90,7 @@ void RemoteDevelopmentService::printLn(const char *format, ...) {
     vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
 
-    if (telnetClient && telnetClient.connected()) {
+    if (WiFiClass::status() == WL_CONNECTED && telnetClient && telnetClient.connected()) {
         telnetClient.println(buf);
     } else {
         if (logBuffer.size() >= MAX_LOGS) {
@@ -67,21 +107,53 @@ void RemoteDevelopmentService::telnetFlushLogBuffer() {
     }
 }
 
-void RemoteDevelopmentService::init() {
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+void RemoteDevelopmentService::init(Adafruit_SSD1306 &display) {
+    preferences.begin("wifi", true);
+    const String savedSSID = preferences.getString("ssid", WIFI_SSID);
+    const String savedPassword = preferences.getString("password", WIFI_PASSWORD);
+    preferences.end();
 
-    while (WiFiClass::status() != WL_CONNECTED) {
+    WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
+
+    const unsigned long startAttemptTime = millis();
+    constexpr unsigned long timeout = 10000;
+
+    display.clearDisplay();
+    display.println("Connecting to " + savedSSID);
+    display.println("Using " + savedPassword);
+    display.display();
+
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {
         delay(500);
     }
 
-    printLn("Connected to %s\n", WiFi.SSID().c_str());
-    printLn("IP: %s\n", WiFi.localIP().toString().c_str());
+    if (WiFiClass::status() != WL_CONNECTED) {
+        WiFi.softAP("ESP32_Setup", "12345678");
 
-    setupOTA();
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.println("AP MODE");
+        display.println("SSID: ESP32_Setup");
+        display.println("Password: 12345678");
+        display.println("IP address: " + WiFi.softAPIP().toString());
+        display.display();
+    } else {
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.println("Connected to " + WiFi.SSID());
+        display.println(String("IP: ") + WiFi.localIP().toString());
+        display.display();
+    }
+
+    setupOTA(display);
     setupTelnet();
 }
 
 void RemoteDevelopmentService::handleTelnet() {
+    if (WiFiClass::status() != WL_CONNECTED) {
+        return;
+    }
+
     if (telnetServer->hasClient()) {
         if (!telnetClient || !telnetClient.connected()) {
             telnetClient = telnetServer->available();
@@ -93,12 +165,8 @@ void RemoteDevelopmentService::handleTelnet() {
     }
 }
 
-void RemoteDevelopmentService::handleOTA() const {
-    this->OTAServer->handleClient();
-}
-
 
 void RemoteDevelopmentService::loop() {
-    handleOTA();
+    this->OTAServer->handleClient();
     handleTelnet();
 }

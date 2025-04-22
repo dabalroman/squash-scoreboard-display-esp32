@@ -3,25 +3,28 @@
 
 #include <deque>
 #include <WebServer.h>
+#include <Adafruit_SSD1306.h>
+#include <Preferences.h>
 
 class RemoteDevelopmentService {
     WebServer *OTAServer = nullptr;
     WiFiServer *telnetServer = nullptr;
     WiFiClient telnetClient;
+    Preferences &preferences;
 
     std::deque<String> logBuffer;
     const size_t MAX_LOGS = 20;
 
-    void setupOTA();
-
-    void handleOTA() const;
+    void setupOTA(Adafruit_SSD1306 &display);
 
     void setupTelnet();
 
     void handleTelnet();
 
 public:
-    void init();
+    explicit RemoteDevelopmentService(Preferences &preferences) : preferences(preferences) {};
+
+    void init(Adafruit_SSD1306 &display);
 
     void loop();
 

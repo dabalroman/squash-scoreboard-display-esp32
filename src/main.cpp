@@ -1,11 +1,13 @@
 #include <version.h>
 
-#include <Update.h>
+#include <Arduino.h>
+#include <Preferences.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_NeoPixel.h>
 
 #include "GlyphDisplay.h"
+#include "secrets.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "../lib/RemoteInput/RemoteInputManager.h"
 
@@ -31,7 +33,8 @@ constexpr uint8_t LED_WS2812B_GPIO = 18;
 constexpr uint8_t LED_WS2812B_AMOUNT = 86;
 Adafruit_NeoPixel pixels(LED_WS2812B_AMOUNT, LED_WS2812B_GPIO, NEO_GRB + NEO_KHZ800);
 
-RemoteDevelopmentService developmentService;
+Preferences preferences;
+RemoteDevelopmentService developmentService(preferences);
 
 volatile uint8_t interruptTriggeredGpio = 0;
 void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
@@ -56,7 +59,7 @@ void initHardware() {
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
-    display.println(WiFi.localIP().toString().c_str());
+    display.println("Initializing...");
     display.display();
 
     pixels.begin();
@@ -69,8 +72,8 @@ void initHardware() {
 }
 
 void setup() {
-    developmentService.init();
     initHardware();
+    developmentService.init(display);
 
     developmentService.printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
 }
@@ -109,5 +112,10 @@ void loop() {
     if (remoteInputManager.buttonD.takeActionIfPossible()) {
         offset -= 100;
         developmentService.printLn("%d", offset);
+
+        preferences.begin("wifi", false);
+        preferences.putString("ssid", WIFI_SSID);
+        preferences.putString("password", WIFI_PASSWORD);
+        preferences.end();
     }
 }
