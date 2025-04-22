@@ -3,6 +3,18 @@
 
 #include "RemoteInput.h"
 
+/**
+ * 433Mhz remote button layout
+ *
+ *   /--------\
+ *   | A    B |
+ *   |  C  D  |
+ *   |        |
+ *   |        |
+ *   \--------/
+ */
+
+
 class RemoteInputManager {
 public:
     RemoteInput buttonA;
@@ -14,18 +26,29 @@ public:
         : buttonA(gpioA), buttonB(gpioB), buttonC(gpioC), buttonD(gpioD) {
     }
 
-    void trigger(const uint8_t gpio) {
-        if (gpio == buttonA.getGPIO()) buttonA.trigger();
-        else if (gpio == buttonB.getGPIO()) buttonB.trigger();
-        else if (gpio == buttonC.getGPIO()) buttonC.trigger();
-        else if (gpio == buttonD.getGPIO()) buttonD.trigger();
+    void handleInput(volatile uint8_t &triggeredGpio) {
+        if (triggeredGpio == 0) {
+            return;
+        }
+
+        if (triggeredGpio == buttonA.getGPIO()) {
+            buttonA.trigger();
+        } else if (triggeredGpio == buttonB.getGPIO()) {
+            buttonB.trigger();
+        } else if (triggeredGpio == buttonC.getGPIO()) {
+            buttonC.trigger();
+        } else if (triggeredGpio == buttonD.getGPIO()) {
+            buttonD.trigger();
+        }
+
+        triggeredGpio = 0;
     }
 
-    void preventAccidentalActionFor(const ulong delay = 500) {
-        buttonA.preventAccidentalActionFor(delay);
-        buttonB.preventAccidentalActionFor(delay);
-        buttonC.preventAccidentalActionFor(delay);
-        buttonD.preventAccidentalActionFor(delay);
+    void preventTriggerForMs(const ulong delayMs = 500) {
+        buttonA.preventTriggerForMs(delayMs);
+        buttonB.preventTriggerForMs(delayMs);
+        buttonC.preventTriggerForMs(delayMs);
+        buttonD.preventTriggerForMs(delayMs);
     }
 };
 

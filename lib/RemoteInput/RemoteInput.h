@@ -2,48 +2,45 @@
 #define REMOTE_INPUT_H
 
 #include <Arduino.h>
-#define LONG_TOUCH_MS 1000
+constexpr uint8_t minimumTriggerDelayMs = 50;
 
 class RemoteInput {
     uint8_t gpio;
-    ulong triggeredAt = 0;
-    ulong canBeTriggerAt = 0;
-    bool triggered = false;
-    bool isActionTaken = false;
+
+    bool canTakeAction = false;
+
+    ulong triggeredAtMs = 0;
+    ulong canBeTriggerAtMs = 0;
 
     void takeAction() {
-        isActionTaken = true;
-        this->canBeTriggerAt = millis() + 50;
+        canTakeAction = false;
+        canBeTriggerAtMs = millis() + minimumTriggerDelayMs;
     }
 
 public:
-    explicit RemoteInput(const uint8_t gpio) : gpio(gpio) {}
-
-    void trigger() {
-        this->triggered = true;
-        this->isActionTaken = false;
-        this->triggeredAt = millis();
-    }
-
-    void preventAccidentalActionFor(const ulong delay = 500) {
-        this->canBeTriggerAt = millis() + delay;
+    explicit RemoteInput(const uint8_t gpio) : gpio(gpio) {
     }
 
     uint8_t getGPIO() const {
         return gpio;
     }
 
+    void trigger() {
+        canTakeAction = true;
+        triggeredAtMs = millis();
+    }
+
     bool takeActionIfPossible() {
-        if (triggered && !isActionTaken && canBeTriggerAt <= millis()) {
-            this->takeAction();
+        if (canTakeAction && canBeTriggerAtMs <= millis()) {
+            takeAction();
             return true;
         }
 
         return false;
     }
 
-    bool isTouched() const {
-        return triggered;
+    void preventTriggerForMs(const ulong delayMs = 500) {
+        canBeTriggerAtMs = millis() + delayMs;
     }
 };
 

@@ -23,9 +23,9 @@ class RemoteDevelopmentService {
 public:
     void init();
 
-    void handle();
+    void loop();
 
-    void telnetPrintLn(const char *format, ...);
+    void printLn(const char *format, ...);
 
     void telnetFlushLogBuffer();
 };

@@ -19,7 +19,7 @@ void RemoteDevelopmentService::setupOTA() {
                       if (upload.status == UPLOAD_FILE_START) {
                           if (telnetClient && telnetClient.connected()) {
                               telnetFlushLogBuffer();
-                              telnetPrintLn(">>>>   OTA update started   <<<<");
+                              printLn(">>>>   OTA update started   <<<<");
                               telnetClient.stop();
                               telnetServer->close();
                           }
@@ -43,7 +43,7 @@ void RemoteDevelopmentService::setupTelnet() {
     telnetServer->setNoDelay(true);
 }
 
-void RemoteDevelopmentService::telnetPrintLn(const char *format, ...) {
+void RemoteDevelopmentService::printLn(const char *format, ...) {
     char buf[256];
     va_list args;
     va_start(args, format);
@@ -74,8 +74,8 @@ void RemoteDevelopmentService::init() {
         delay(500);
     }
 
-    telnetPrintLn("Connected to %s\n", WiFi.SSID().c_str());
-    telnetPrintLn("IP: %s\n", WiFi.localIP().toString().c_str());
+    printLn("Connected to %s\n", WiFi.SSID().c_str());
+    printLn("IP: %s\n", WiFi.localIP().toString().c_str());
 
     setupOTA();
     setupTelnet();
@@ -98,7 +98,7 @@ void RemoteDevelopmentService::handleOTA() const {
 }
 
 
-void RemoteDevelopmentService::handle() {
+void RemoteDevelopmentService::loop() {
     handleOTA();
     handleTelnet();
 }
