@@ -1,26 +1,43 @@
 #ifndef DISPLAYDIGIT_H
 #define DISPLAYDIGIT_H
 
-/**
- *      71, 72, 73
- *   53            63
- *   52            62
- *   51            61
- *      41, 42, 43
- *   23            33
- *   22            32
- *   21            31
- *      11, 12, 13
- */
-
 #include <Arduino.h>
 
-struct DisplayDigitPart {
+/**
+ * LEDs and segment ids (masks)
+ *
+ *                0x40
+ *             71, 72, 73
+ *          53            63
+ *    0x10  52            62  0x20
+ *          51            61
+ *             41, 42, 43
+ *          23    0x8     33
+ *     0x2  22            32  0x4
+ *          21            31
+ *             11, 12, 13
+ *                0x1
+ */
+
+constexpr uint8_t segmentToDigitsMap[10] = {
+    0b01110111, // 0
+    0b00100100, // 1
+    0b01101011, // 2
+    0b01101101, // 3
+    0b00111100, // 4
+    0b01011101, // 5
+    0b01011111, // 6
+    0b01100100, // 7
+    0b01111111, // 8
+    0b01111101, // 9
+};
+
+struct DisplayDigitSegment {
     uint8_t pixelIndexes[3];
 };
 
 struct DisplayDigitLeds {
-    DisplayDigitPart parts[7];
+    DisplayDigitSegment parts[7];
 };
 
 constexpr DisplayDigitLeds digitA = {
@@ -62,18 +79,18 @@ constexpr DisplayDigitLeds digitC = {
 
 constexpr DisplayDigitLeds digitD = {
     {
-        {40,39,38},
+        {40, 39, 38},
         {19, 18, 17},
-        {20,21,22},
-        {35,36,37},
-        {16,15,14},
-        {23,24,25},
-        {28,27,26}
+        {20, 21, 22},
+        {35, 36, 37},
+        {16, 15, 14},
+        {23, 24, 25},
+        {28, 27, 26}
     },
 };
 
 class DisplayDigit {
-    DisplayDigitPart parts[7] = {
+    DisplayDigitSegment parts[7] = {
 
     };
 };
