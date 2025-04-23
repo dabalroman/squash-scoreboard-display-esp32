@@ -4,12 +4,15 @@
 #include <Preferences.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
+#include <time.h>
 
-#include "GlyphDisplay.h"
-#include "secrets.h"
+#include "UserProfile.h"
+#include "Display/GlyphDisplay.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "../lib/RemoteInput/RemoteInputManager.h"
+#include "Match/Tournament.h"
+#include "Match/Rules/SquashRules.h"
 
 constexpr uint8_t OLED_SSD1106_SCREEN_WIDTH = 128;
 constexpr uint8_t OLED_SSD1106_SCREEN_HEIGHT = 64;
@@ -31,7 +34,7 @@ RemoteInputManager remoteInputManager(
 
 constexpr uint8_t LED_WS2812B_GPIO = 18;
 constexpr uint8_t LED_WS2812B_AMOUNT = 86;
-Adafruit_NeoPixel pixels(LED_WS2812B_AMOUNT, LED_WS2812B_GPIO, NEO_GRB + NEO_KHZ800);
+CRGB pixels[LED_WS2812B_AMOUNT];
 
 Preferences preferences;
 RemoteDevelopmentService developmentService(preferences);
@@ -48,6 +51,14 @@ unsigned long lastUpdate = 0;
 uint8_t digitPartOffset = 0;
 GlyphDisplay ledDisplay(pixels);
 
+
+UserProfile userA(0, "Andrzej", {255, 0, 0});
+UserProfile userB(1, "Bartosz", {0, 255, 0});
+UserProfile userC(2, "Cecil", {0, 0, 255});
+
+SquashRules squashRules;
+Tournament tournament(squashRules);
+
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
     if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_SSD1106_I2C_ADDRESS)) {
@@ -62,8 +73,11 @@ void initHardware() {
     display.println("Initializing...");
     display.display();
 
-    pixels.begin();
-    pixels.show();
+    FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
+    FastLED.setBrightness(10);
+    FastLED.setMaxRefreshRate(400);
+    FastLED.clear();
+    FastLED.show();
 
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D0), onRemoteReceiverInterrupt_d0, RISING);
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D1), onRemoteReceiverInterrupt_d1, RISING);
@@ -76,22 +90,66 @@ void setup() {
     developmentService.init(display);
 
     developmentService.printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
+
+    Match &match = tournament.getMatchBetween(userA, userB);
+    tournament.setActiveMatch(match);
+
+    const UserProfile &userA = match.getUserAProfile();
+    const UserProfile &userB = match.getUserBProfile();
+
+    MatchRound &round = tournament.getActiveMatch().getActiveRound();
+    round.scorePointA();
+    round.scorePointB();
+    round.commit();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    round.scorePointA();
+    round.commit();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    round.scorePointB();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    round.rollback();
+    round.commit();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.scorePointB();
+    round.commit();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    round.scorePointA();
+    round.commit();
+    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
+
+    developmentService.printLn("%d", round.getWinner());
 }
 
 void loop() {
     developmentService.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
 
-    if (lastUpdate + 50 < millis()) {
+    if (lastUpdate + 1000 < millis()) {
         lastUpdate = millis();
 
-        // pixels.setPixelColor(offset, Adafruit_NeoPixel::Color(1, 1, 1));
+        FastLED.clear();
 
-        pixels.fill(Adafruit_NeoPixel::Color(0, 0, 0));
-        ledDisplay.setValue(offset / 100, offset % 100);
+        time_t now = time(nullptr);
+        tm *timeinfo = localtime(&now);
+        ledDisplay.setValue(timeinfo->tm_hour, timeinfo->tm_min);
+        ledDisplay.toggleColon();
+
         ledDisplay.show();
-
-        pixels.show();
+        FastLED.show();
     }
 
     if (remoteInputManager.buttonA.takeActionIfPossible()) {
@@ -100,22 +158,17 @@ void loop() {
     }
 
     if (remoteInputManager.buttonB.takeActionIfPossible()) {
-        offset--;
+        offset += 100;
         developmentService.printLn("%d", offset);
     }
 
     if (remoteInputManager.buttonC.takeActionIfPossible()) {
-        offset += 100;
+        offset--;
         developmentService.printLn("%d", offset);
     }
 
     if (remoteInputManager.buttonD.takeActionIfPossible()) {
         offset -= 100;
         developmentService.printLn("%d", offset);
-
-        preferences.begin("wifi", false);
-        preferences.putString("ssid", WIFI_SSID);
-        preferences.putString("password", WIFI_PASSWORD);
-        preferences.end();
     }
 }

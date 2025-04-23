@@ -2,8 +2,7 @@
 #define DISPLAYDIGIT_H
 
 #include <Arduino.h>
-
-#include "Adafruit_NeoPixel.h"
+#include <FastLED.h>
 
 /**
  * LEDs and segment ids (masks)
@@ -21,7 +20,7 @@
  *                0x1
  */
 
-constexpr uint8_t SegmentToGlyphMap[10] = {
+constexpr uint8_t SegmentToGlyphMap[14] = {
     0b01110111, // 0
     0b00100100, // 1
     0b01101011, // 2
@@ -32,13 +31,35 @@ constexpr uint8_t SegmentToGlyphMap[10] = {
     0b01100100, // 7
     0b01111111, // 8
     0b01111101, // 9
+    0b01111110, // A
+    0b01111010, // P
+    0b00000001, // Colon
+    0b00000000, // Empty
+};
+
+enum class Glyph: uint8_t {
+    D0 = 0,
+    D1 = 1,
+    D2 = 2,
+    D3 = 3,
+    D4 = 4,
+    D5 = 5,
+    D6 = 6,
+    D7 = 7,
+    D8 = 8,
+    D9 = 9,
+    A = 10,
+    P = 11,
+    Colon = 12,
+    Empty = 13
 };
 
 enum class GlyphId: uint8_t {
     A = 0,
     B = 1,
     C = 2,
-    D = 3
+    D = 3,
+    Colon = 4,
 };
 
 struct PixelsToSegmentMap {
@@ -94,16 +115,20 @@ constexpr PixelsToSegmentMap glyphD = {
     },
 };
 
-class Glyph {
+constexpr PixelsToSegmentMap glyphColon = {
+    {{0, 0, 1}}
+};
+
+class GlyphDisplayUnit {
     GlyphId glyphId;
     uint8_t value = 0;
-    Adafruit_NeoPixel &pixels;
+    CRGB *pixels;
 
 public:
-    Glyph(Adafruit_NeoPixel &pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
+    GlyphDisplayUnit(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
     }
 
-    static const PixelsToSegmentMap* getGlyphPixels(const GlyphId glyph) {
+    static const PixelsToSegmentMap *getGlyphPixels(const GlyphId glyph) {
         switch (glyph) {
             default:
             case GlyphId::A:
@@ -114,7 +139,17 @@ public:
                 return &glyphC;
             case GlyphId::D:
                 return &glyphD;
+            case GlyphId::Colon:
+                return &glyphColon;
         }
+    }
+
+    Glyph getGlyph() {
+        return static_cast<Glyph>(value);
+    }
+
+    void setGlyph(Glyph glyph) {
+        this->value = static_cast<uint8_t>(glyph);
     }
 
     void setValue(uint8_t value) {
@@ -126,10 +161,13 @@ public:
     }
 
     void show() const {
-        for (uint8_t segment = 0; segment < 7; segment++) {
+        const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
+
+        const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
+        for (uint8_t segment = 0; segment < amountOfSegments; segment++) {
             if (SegmentToGlyphMap[value] >> segment & 0x1) {
                 for (uint8_t i = 0; i < 3; i++) {
-                    pixels.setPixelColor(getGlyphPixels(glyphId)->segments[segment][i], Adafruit_NeoPixel::Color(10, 10, 20));
+                    pixels[glyphSegments[segment][i]] = CRGB::Aqua;
                 }
             }
         }

@@ -147,6 +147,12 @@ void RemoteDevelopmentService::init(Adafruit_SSD1306 &display) {
 
     setupOTA(display);
     setupTelnet();
+
+    configTime(3600, 3600, "pool.ntp.org");
+    tm timeInfo;
+    while (!getLocalTime(&timeInfo)) {
+        delay(100);
+    }
 }
 
 void RemoteDevelopmentService::handleTelnet() {

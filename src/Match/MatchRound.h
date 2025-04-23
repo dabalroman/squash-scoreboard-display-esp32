@@ -6,14 +6,31 @@
 #include "Rules/Rules.h"
 
 class MatchRound {
+    uint8_t id;
+
     int8_t scoreA = 0, scoreB = 0;
     int8_t deltaA = 0, deltaB = 0;
     MatchSide winner = MatchSide::none;
+    Rules &rules;
 
 public:
-    uint8_t id;
+    explicit MatchRound(const uint8_t id, Rules &rules) : id(id), rules(rules) {
+    }
 
-    explicit MatchRound(const uint8_t id) : id(id) {
+    uint8_t getId() const {
+        return id;
+    }
+
+    int8_t getScoreA() const {
+        return scoreA;
+    }
+
+    int8_t getScoreB() const {
+        return scoreB;
+    }
+
+    MatchSide getWinner() const {
+        return winner;
     }
 
     void scorePointA() {
@@ -53,13 +70,16 @@ public:
         deltaB = 0;
     }
 
-    void commit(const Rules &rules) {
+    MatchSide commit() {
         if (winner != MatchSide::none) {
-            return;
+            return winner;
         }
 
         scoreA += deltaA;
         scoreB += deltaB;
+
+        deltaA = 0;
+        deltaB = 0;
 
         if (scoreA < 0) {
             scoreA = 0;
@@ -70,6 +90,7 @@ public:
         }
 
         winner = rules.checkWinner(scoreA, scoreB);
+        return winner;
     }
 };
 
