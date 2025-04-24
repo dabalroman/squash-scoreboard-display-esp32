@@ -10,7 +10,7 @@ class RemoteDevelopmentService {
     WebServer *OTAServer = nullptr;
     WiFiServer *telnetServer = nullptr;
     WiFiClient telnetClient;
-    Preferences &preferences;
+    Preferences preferences;
 
     std::deque<String> logBuffer;
     const size_t MAX_LOGS = 20;
@@ -19,11 +19,11 @@ class RemoteDevelopmentService {
 
     void setupTelnet();
 
+    static void setupNTP();
+
     void handleTelnet();
 
 public:
-    explicit RemoteDevelopmentService(Preferences &preferences) : preferences(preferences) {};
-
     void init(Adafruit_SSD1306 &display);
 
     void loop();

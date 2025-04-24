@@ -83,6 +83,16 @@ void RemoteDevelopmentService::setupTelnet() {
     telnetServer->setNoDelay(true);
 }
 
+void RemoteDevelopmentService::setupNTP() {
+    if (WiFiClass::status() != WL_CONNECTED) {
+        return;
+    }
+
+    configTime(3600, 3600, "pool.ntp.org");
+    tm timeInfo;
+    getLocalTime(&timeInfo);
+}
+
 void RemoteDevelopmentService::printLn(const char *format, ...) {
     char buf[256];
     va_list args;
@@ -147,12 +157,7 @@ void RemoteDevelopmentService::init(Adafruit_SSD1306 &display) {
 
     setupOTA(display);
     setupTelnet();
-
-    configTime(3600, 3600, "pool.ntp.org");
-    tm timeInfo;
-    while (!getLocalTime(&timeInfo)) {
-        delay(100);
-    }
+    setupNTP();
 }
 
 void RemoteDevelopmentService::handleTelnet() {

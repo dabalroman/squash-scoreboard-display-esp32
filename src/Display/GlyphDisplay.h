@@ -30,7 +30,7 @@ public:
         }
     }
 
-    void show() const {
+    void show() {
         glyphA.show();
         glyphB.show();
         glyphC.show();

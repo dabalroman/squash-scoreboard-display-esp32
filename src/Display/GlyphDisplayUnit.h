@@ -123,6 +123,7 @@ class GlyphDisplayUnit {
     GlyphId glyphId;
     uint8_t value = 0;
     CRGB *pixels;
+    uint8_t hue = 0;
 
 public:
     GlyphDisplayUnit(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
@@ -160,14 +161,16 @@ public:
         this->value = value;
     }
 
-    void show() const {
+    void show() {
+        hue++;
+
         const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
 
         const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
         for (uint8_t segment = 0; segment < amountOfSegments; segment++) {
             if (SegmentToGlyphMap[value] >> segment & 0x1) {
                 for (uint8_t i = 0; i < 3; i++) {
-                    pixels[glyphSegments[segment][i]] = CRGB::Aqua;
+                    pixels[glyphSegments[segment][i]] = CHSV(hue, 255, 255);
                 }
             }
         }

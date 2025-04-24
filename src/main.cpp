@@ -1,12 +1,12 @@
 #include <version.h>
 
 #include <Arduino.h>
-#include <Preferences.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
 #include <time.h>
 
+#include "DeviceMode.h"
 #include "UserProfile.h"
 #include "Display/GlyphDisplay.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
@@ -35,9 +35,11 @@ RemoteInputManager remoteInputManager(
 constexpr uint8_t LED_WS2812B_GPIO = 18;
 constexpr uint8_t LED_WS2812B_AMOUNT = 86;
 CRGB pixels[LED_WS2812B_AMOUNT];
+GlyphDisplay ledDisplay(pixels);
 
-Preferences preferences;
-RemoteDevelopmentService developmentService(preferences);
+RemoteDevelopmentService developmentService;
+DeviceMode deviceState = DeviceMode::Booting;
+
 
 volatile uint8_t interruptTriggeredGpio = 0;
 void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
@@ -47,10 +49,6 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_
 
 uint16_t offset = 2137;
 unsigned long lastUpdate = 0;
-
-uint8_t digitPartOffset = 0;
-GlyphDisplay ledDisplay(pixels);
-
 
 UserProfile userA(0, "Andrzej", {255, 0, 0});
 UserProfile userB(1, "Bartosz", {0, 255, 0});
@@ -132,6 +130,8 @@ void setup() {
     developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
 
     developmentService.printLn("%d", round.getWinner());
+
+    deviceState = DeviceMode::Clock;
 }
 
 void loop() {
