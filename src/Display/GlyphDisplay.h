@@ -30,12 +30,20 @@ public:
         }
     }
 
-    void show() {
-        glyphA.show();
-        glyphB.show();
-        glyphC.show();
-        glyphD.show();
-        glyphColon.show();
+    static void clear() {
+        FastLED.clear();
+    }
+
+    static void show() {
+        FastLED.show();
+    }
+
+    void render() {
+        glyphA.render();
+        glyphB.render();
+        glyphC.render();
+        glyphD.render();
+        glyphColon.render();
     }
 };
 

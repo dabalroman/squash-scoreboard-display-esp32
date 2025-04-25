@@ -6,11 +6,13 @@
 #include <FastLED.h>
 #include <time.h>
 
-#include "DeviceMode.h"
+#include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
 #include "Display/GlyphDisplay.h"
 #include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "../lib/RemoteInput/RemoteInputManager.h"
+#include "DeviceMode/DeviceMode.h"
+#include "DeviceMode/SquashMode/SquashMode.h"
 #include "Match/Tournament.h"
 #include "Match/Rules/SquashRules.h"
 
@@ -38,7 +40,7 @@ CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
 RemoteDevelopmentService developmentService;
-DeviceMode deviceState = DeviceMode::Booting;
+DeviceModeState deviceState = DeviceModeState::Booting;
 
 
 volatile uint8_t interruptTriggeredGpio = 0;
@@ -56,6 +58,7 @@ UserProfile userC(2, "Cecil", {0, 0, 255});
 
 SquashRules squashRules;
 Tournament tournament(squashRules);
+DeviceMode *deviceMode = nullptr;
 
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
@@ -72,7 +75,7 @@ void initHardware() {
     display.display();
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
-    FastLED.setBrightness(10);
+    FastLED.setBrightness(100);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
@@ -83,92 +86,50 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D3), onRemoteReceiverInterrupt_d3, RISING);
 }
 
+void printStats() {
+    developmentService.printLn(
+        "Match %d between %s and %s, round %d",
+        tournament.getActiveMatch().getId(),
+        tournament.getActiveMatch().getUserAProfile().getName(),
+        tournament.getActiveMatch().getUserBProfile().getName(),
+        tournament.getActiveMatch().getActiveRound().getId() + 1
+    );
+    developmentService.printLn(
+        "%s: %d vs %s: %d. Winner is %d",
+        tournament.getActiveMatch().getUserAProfile().getName(),
+        tournament.getActiveMatch().getActiveRound().getScoreA(),
+        tournament.getActiveMatch().getUserBProfile().getName(),
+        tournament.getActiveMatch().getActiveRound().getScoreB(),
+        tournament.getActiveMatch().getActiveRound().getWinner()
+    );
+}
+
+
 void setup() {
     initHardware();
     developmentService.init(display);
 
     developmentService.printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
 
-    Match &match = tournament.getMatchBetween(userA, userB);
-    tournament.setActiveMatch(match);
-
-    const UserProfile &userA = match.getUserAProfile();
-    const UserProfile &userB = match.getUserBProfile();
-
-    MatchRound &round = tournament.getActiveMatch().getActiveRound();
-    round.scorePointA();
-    round.scorePointB();
-    round.commit();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    round.scorePointA();
-    round.commit();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    round.scorePointB();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    round.rollback();
-    round.commit();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.scorePointB();
-    round.commit();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    round.scorePointA();
-    round.commit();
-    developmentService.printLn("%s: %d vs %s: %d", userA.getName(), round.getScoreA(), userB.getName(), round.getScoreB());
-
-    developmentService.printLn("%d", round.getWinner());
-
-    deviceState = DeviceMode::Clock;
+    deviceState = DeviceModeState::Clock;
+    deviceMode = new SquashMode(ledDisplay, display, remoteInputManager);
 }
 
 void loop() {
     developmentService.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
+    deviceMode->loop();
 
     if (lastUpdate + 1000 < millis()) {
         lastUpdate = millis();
-
-        FastLED.clear();
 
         time_t now = time(nullptr);
         tm *timeinfo = localtime(&now);
         ledDisplay.setValue(timeinfo->tm_hour, timeinfo->tm_min);
         ledDisplay.toggleColon();
 
+        ledDisplay.clear();
+        ledDisplay.render();
         ledDisplay.show();
-        FastLED.show();
-    }
-
-    if (remoteInputManager.buttonA.takeActionIfPossible()) {
-        offset++;
-        developmentService.printLn("%d", offset);
-    }
-
-    if (remoteInputManager.buttonB.takeActionIfPossible()) {
-        offset += 100;
-        developmentService.printLn("%d", offset);
-    }
-
-    if (remoteInputManager.buttonC.takeActionIfPossible()) {
-        offset--;
-        developmentService.printLn("%d", offset);
-    }
-
-    if (remoteInputManager.buttonD.takeActionIfPossible()) {
-        offset -= 100;
-        developmentService.printLn("%d", offset);
     }
 }

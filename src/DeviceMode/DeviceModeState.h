@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-enum class DeviceMode: uint8_t {
+enum class DeviceModeState: uint8_t {
     Booting = 0,
     PlaySquash = 1,
     Clock = 2,

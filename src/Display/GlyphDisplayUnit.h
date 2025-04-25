@@ -161,7 +161,7 @@ public:
         this->value = value;
     }
 
-    void show() {
+    void render() {
         hue++;
 
         const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
