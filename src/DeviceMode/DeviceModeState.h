@@ -5,7 +5,7 @@
 
 enum class DeviceModeState: uint8_t {
     Booting = 0,
-    PlaySquash = 1,
+    SquashMode = 1,
     Clock = 2,
     Development = 3
 };

@@ -9,6 +9,7 @@ class Tournament {
     Match *activeMatch = nullptr;
     size_t activeMatchId = 0;
     Rules &rules;
+    std::vector<UserProfile*> players;
 
 public:
     explicit Tournament(Rules &rules) : rules(rules) {
@@ -18,6 +19,18 @@ public:
         const auto newMatchId = matches.size();
         matches.emplace_back(newMatchId, userProfileA, userProfileB, rules);
         return matches.back();
+    }
+
+    void addPlayer(UserProfile &userProfile) {
+        players.push_back(&userProfile);
+    }
+
+    void removePlayer(UserProfile &userProfile) {
+        players.erase(std::remove(players.begin(), players.end(), &userProfile), players.end());
+    }
+
+    bool isPlayerIn(const UserProfile &userProfile) {
+        return std::find(players.begin(), players.end(), &userProfile) != players.end();
     }
 
     void setActiveMatch(const size_t matchId) {

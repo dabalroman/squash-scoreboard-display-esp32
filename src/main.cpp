@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
+#include <LoggerHelper.h>
 #include <time.h>
 
 #include "DeviceMode/DeviceModeState.h"
@@ -14,7 +15,6 @@
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "Match/Tournament.h"
-#include "Match/Rules/SquashRules.h"
 
 constexpr uint8_t OLED_SSD1106_SCREEN_WIDTH = 128;
 constexpr uint8_t OLED_SSD1106_SCREEN_HEIGHT = 64;
@@ -39,9 +39,8 @@ constexpr uint8_t LED_WS2812B_AMOUNT = 86;
 CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
-RemoteDevelopmentService developmentService;
+RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 DeviceModeState deviceState = DeviceModeState::Booting;
-
 
 volatile uint8_t interruptTriggeredGpio = 0;
 void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
@@ -52,18 +51,17 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_
 uint16_t offset = 2137;
 unsigned long lastUpdate = 0;
 
-UserProfile userA(0, "Andrzej", {255, 0, 0});
-UserProfile userB(1, "Bartosz", {0, 255, 0});
-UserProfile userC(2, "Cecil", {0, 0, 255});
+UserProfile userA(0, "Andrzej", Colors::Cyan);
+UserProfile userB(1, "Bartosz", Colors::Yellow);
+UserProfile userC(2, "Cecil", Colors::Magenta);
+std::vector<UserProfile *> users = {&userA, &userB, &userC};
 
-SquashRules squashRules;
-Tournament tournament(squashRules);
 DeviceMode *deviceMode = nullptr;
 
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
     if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_SSD1106_I2C_ADDRESS)) {
-        developmentService.printLn("SSD1106 allocation failed!");
+        printLn("SSD1106 allocation failed!");
     }
 
     display.setRotation(2);
@@ -75,7 +73,7 @@ void initHardware() {
     display.display();
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
-    FastLED.setBrightness(100);
+    FastLED.setBrightness(10);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
@@ -86,50 +84,44 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D3), onRemoteReceiverInterrupt_d3, RISING);
 }
 
-void printStats() {
-    developmentService.printLn(
-        "Match %d between %s and %s, round %d",
-        tournament.getActiveMatch().getId(),
-        tournament.getActiveMatch().getUserAProfile().getName(),
-        tournament.getActiveMatch().getUserBProfile().getName(),
-        tournament.getActiveMatch().getActiveRound().getId() + 1
-    );
-    developmentService.printLn(
-        "%s: %d vs %s: %d. Winner is %d",
-        tournament.getActiveMatch().getUserAProfile().getName(),
-        tournament.getActiveMatch().getActiveRound().getScoreA(),
-        tournament.getActiveMatch().getUserBProfile().getName(),
-        tournament.getActiveMatch().getActiveRound().getScoreB(),
-        tournament.getActiveMatch().getActiveRound().getWinner()
-    );
-}
-
-
 void setup() {
     initHardware();
-    developmentService.init(display);
 
-    developmentService.printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
+    static RemoteDevelopmentService remoteDev;
+    remoteDev.init(display);
+    gRemoteDevelopmentService = &remoteDev;
 
-    deviceState = DeviceModeState::Clock;
-    deviceMode = new SquashMode(ledDisplay, display, remoteInputManager);
+    printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
+
+    deviceState = DeviceModeState::SquashMode;
+    deviceMode = new SquashMode(ledDisplay, display, remoteInputManager, users);
 }
 
 void loop() {
-    developmentService.loop();
+    gRemoteDevelopmentService->loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
-    deviceMode->loop();
 
-    if (lastUpdate + 1000 < millis()) {
-        lastUpdate = millis();
-
-        time_t now = time(nullptr);
-        tm *timeinfo = localtime(&now);
-        ledDisplay.setValue(timeinfo->tm_hour, timeinfo->tm_min);
-        ledDisplay.toggleColon();
-
-        ledDisplay.clear();
-        ledDisplay.render();
-        ledDisplay.show();
+    // At most 10 fps, for now
+    if (lastUpdate + 100 > millis()) {
+        return;
     }
+
+    lastUpdate = millis();
+
+    if (deviceMode) {
+        deviceMode->loop();
+    }
+
+    // if (lastUpdate + 1000 < millis()) {
+    //     lastUpdate = millis();
+    //
+    //     time_t now = time(nullptr);
+    //     tm *timeinfo = localtime(&now);
+    //     ledDisplay.setValue(timeinfo->tm_hour, timeinfo->tm_min);
+    //     ledDisplay.toggleColon();
+    //
+    //     ledDisplay.clear();
+    //     ledDisplay.render();
+    //     ledDisplay.show();
+    // }
 }

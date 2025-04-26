@@ -176,7 +176,6 @@ void RemoteDevelopmentService::handleTelnet() {
     }
 }
 
-
 void RemoteDevelopmentService::loop() {
     this->OTAServer->handleClient();
     handleTelnet();

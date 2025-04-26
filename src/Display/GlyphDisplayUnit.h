@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
+#include "Color.h"
+
 /**
  * LEDs and segment ids (masks)
  *
@@ -20,7 +22,7 @@
  *                0x1
  */
 
-constexpr uint8_t SegmentToGlyphMap[14] = {
+constexpr uint8_t SegmentToGlyphMap[17] = {
     0b01110111, // 0
     0b00100100, // 1
     0b01101011, // 2
@@ -34,6 +36,9 @@ constexpr uint8_t SegmentToGlyphMap[14] = {
     0b01111110, // A
     0b01111010, // P
     0b00000001, // Colon
+    0b00001000, // Minus
+    0b00001111, // LowerDot
+    0b01111000, // UpperDot
     0b00000000, // Empty
 };
 
@@ -51,7 +56,10 @@ enum class Glyph: uint8_t {
     A = 10,
     P = 11,
     Colon = 12,
-    Empty = 13
+    Minus = 13,
+    LowerDot = 14,
+    UpperDot = 15,
+    Empty = 16
 };
 
 enum class GlyphId: uint8_t {
@@ -123,7 +131,7 @@ class GlyphDisplayUnit {
     GlyphId glyphId;
     uint8_t value = 0;
     CRGB *pixels;
-    uint8_t hue = 0;
+    CRGB color = CRGB::White;
 
 public:
     GlyphDisplayUnit(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
@@ -145,7 +153,7 @@ public:
         }
     }
 
-    Glyph getGlyph() {
+    Glyph getGlyph() const {
         return static_cast<Glyph>(value);
     }
 
@@ -161,16 +169,22 @@ public:
         this->value = value;
     }
 
-    void render() {
-        hue++;
+    void setColor(const CRGB color) {
+        this->color = color;
+    }
 
+    void setColor(const Color color) {
+        this->color = CRGB(color.r, color.g, color.b);
+    }
+
+    void render() const {
         const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
 
         const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
         for (uint8_t segment = 0; segment < amountOfSegments; segment++) {
             if (SegmentToGlyphMap[value] >> segment & 0x1) {
                 for (uint8_t i = 0; i < 3; i++) {
-                    pixels[glyphSegments[segment][i]] = CHSV(hue, 255, 255);
+                    pixels[glyphSegments[segment][i]] = color;
                 }
             }
         }

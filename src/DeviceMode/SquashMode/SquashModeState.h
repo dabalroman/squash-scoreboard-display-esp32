@@ -5,9 +5,11 @@
 
 enum class SquashModeState : uint8_t {
     Init = 0,
-    ChoosePlayers = 1,
-    Match = 2,
-    MatchOver = 3,
+    TournamentChoosePlayers = 1,
+    MatchChoosePlayers = 2,
+    MatchOn = 3,
+    MatchOver = 4,
+    TournamentSummary = 5
 };
 
 #endif //SQUASHMODESTATE_H

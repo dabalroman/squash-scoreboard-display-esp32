@@ -7,10 +7,10 @@
 class UserProfile {
     uint8_t id = 0;
     char name[16] = {};
-    Color color = {0, 0, 0};
+    Color color = Colors::White;
 
 public:
-    UserProfile(const uint8_t id, const char* _name, const Color color) : id(id), color(color) {
+    UserProfile(const uint8_t id, const char *_name, const Color color) : id(id), color(color) {
         strncpy(name, _name, sizeof(name) - 1);
         name[sizeof(name) - 1] = '\0';
     }
@@ -19,7 +19,7 @@ public:
         return id;
     }
 
-    const char* getName() const {
+    const char *getName() const {
         return name;
     }
 
