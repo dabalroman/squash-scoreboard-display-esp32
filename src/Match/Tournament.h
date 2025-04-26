@@ -33,6 +33,10 @@ public:
         return std::find(players.begin(), players.end(), &userProfile) != players.end();
     }
 
+    std::vector<UserProfile*> &getPlayers() {
+        return players;
+    }
+
     void setActiveMatch(const size_t matchId) {
         activeMatchId = matchId;
         activeMatch = &matches.at(matchId);

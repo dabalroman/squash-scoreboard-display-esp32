@@ -1,5 +1,5 @@
-#ifndef TOURNAMETCHOOSEPLAYERSVIEW_H
-#define TOURNAMETCHOOSEPLAYERSVIEW_H
+#ifndef TOURNAMENTCHOOSEPLAYERSVIEW_H
+#define TOURNAMENTCHOOSEPLAYERSVIEW_H
 
 #include <utility>
 #include <vector>
@@ -9,7 +9,7 @@
 
 class TournamentChoosePlayersView final : public View {
     Tournament &tournament;
-    std::vector<UserProfile *> &players;
+    std::vector<UserProfile *> &users;
     std::function<void(SquashModeState)> onStateChange;
     uint8_t playerIndex = 0;
 
@@ -19,45 +19,50 @@ public:
         std::vector<UserProfile *> &players,
         std::function<void(SquashModeState)> onStateChange
     )
-        : tournament(tournament), players(players), onStateChange(std::move(onStateChange)) {
+        : tournament(tournament), users(players), onStateChange(std::move(onStateChange)) {
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (players.empty()) {
+        if (users.empty()) {
             return;
         }
 
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             playerIndex++;
-            printLn("Player index: %d", playerIndex);
+            printLn("Player index: %d", playerIndex % users.size());
         }
 
-        if (playerIndex == players.size()) {
+        if (playerIndex == users.size()) {
             playerIndex = 0;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
-            if (tournament.isPlayerIn(*players.at(playerIndex))) {
-                tournament.removePlayer(*players.at(playerIndex));
+            if (tournament.isPlayerIn(*users.at(playerIndex))) {
+                tournament.removePlayer(*users.at(playerIndex));
             } else {
-                tournament.addPlayer(*players.at(playerIndex));
+                tournament.addPlayer(*users.at(playerIndex));
             }
 
             printLn("Added/removed player");
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            onStateChange(SquashModeState::MatchChoosePlayers);
+            // TODO: exit squash mode
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            // exit squash mode
+            if (tournament.getPlayers().size() < 2) {
+                printLn("Not enough players");
+                return;
+            }
+
+            onStateChange(SquashModeState::MatchChoosePlayers);
         }
     }
 
     void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
-        const bool isPlayerIn = tournament.isPlayerIn(*players.at(playerIndex));
-        const Color playerColor = players.at(playerIndex)->getColor();
+        const bool isPlayerIn = tournament.isPlayerIn(*users.at(playerIndex));
+        const Color playerColor = users.at(playerIndex)->getColor();
 
         glyphDisplay.clear();
         glyphDisplay.setGlyphs(Glyph::P, GlyphDisplay::digitToGlyph(playerIndex), Glyph::Minus,
@@ -69,4 +74,4 @@ public:
 };
 
 
-#endif //TOURNAMETCHOOSEPLAYERSVIEW_H
+#endif //TOURNAMENTCHOOSEPLAYERSVIEW_H

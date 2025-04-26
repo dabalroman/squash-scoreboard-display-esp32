@@ -129,9 +129,11 @@ constexpr PixelsToSegmentMap glyphColon = {
 
 class GlyphDisplayUnit {
     GlyphId glyphId;
-    uint8_t value = 0;
     CRGB *pixels;
-    CRGB color = CRGB::White;
+
+    uint8_t value = 0;
+    CRGB color = CRGB::Black;
+    bool isBlinking = false;
 
 public:
     GlyphDisplayUnit(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
@@ -161,12 +163,12 @@ public:
         this->value = static_cast<uint8_t>(glyph);
     }
 
-    void setValue(uint8_t value) {
-        if (value > 9) {
-            value = 0;
+    void setToDigit(uint8_t digit) {
+        if (digit > 9) {
+            digit = 0;
         }
 
-        this->value = value;
+        this->value = digit;
     }
 
     void setColor(const CRGB color) {
@@ -177,7 +179,15 @@ public:
         this->color = CRGB(color.r, color.g, color.b);
     }
 
-    void render() const {
+    void setBlinking(const bool isBlinking) {
+        this->isBlinking = isBlinking;
+    }
+
+    void render(const uint32_t &tickMs) const {
+        if (isBlinking && tickMs % 1000 < 500) {
+            return;
+        }
+
         const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
 
         const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
