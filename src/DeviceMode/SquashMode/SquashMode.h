@@ -7,6 +7,7 @@
 #include "Match/Tournament.h"
 #include "Match/Rules/SquashRules.h"
 #include "Views/MatchChoosePlayersView.h"
+#include "Views/MatchPlayingView.h"
 #include "Views/TournamentChoosePlayersView.h"
 
 class SquashMode final : public DeviceMode {
@@ -37,6 +38,14 @@ class SquashMode final : public DeviceMode {
             case SquashModeState::MatchChoosePlayers:
                 activeView.reset(
                     new MatchChoosePlayersView(
+                        *tournament,
+                        [this](const SquashModeState newState) { setState(newState); }
+                    )
+                );
+                break;
+            case SquashModeState::MatchOn:
+                activeView.reset(
+                    new MatchPlayingView(
                         *tournament,
                         [this](const SquashModeState newState) { setState(newState); }
                     )

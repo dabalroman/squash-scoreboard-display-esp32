@@ -132,7 +132,7 @@ class GlyphDisplayUnit {
     CRGB *pixels;
 
     uint8_t value = 0;
-    CRGB color = CRGB::Black;
+    CRGB color = CRGB::White;
     bool isBlinking = false;
 
 public:

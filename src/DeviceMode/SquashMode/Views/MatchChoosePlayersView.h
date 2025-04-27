@@ -61,9 +61,10 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
+            tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
             onStateChange(SquashModeState::MatchOn);
         }
-    };
+    }
 
     void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
         glyphDisplay.clear();
@@ -73,16 +74,11 @@ public:
             Glyph::P,
             GlyphDisplay::digitToGlyph(playerB->getId())
         );
-        glyphDisplay.setGlyphColor(
-            playerA->getColor(),
-            playerA->getColor(),
-            playerB->getColor(),
-            playerB->getColor()
-        );
+        glyphDisplay.setGlyphColor(playerA->getColor(), playerB->getColor());
         glyphDisplay.setGlyphBlinking(true, true, true, true);
         glyphDisplay.render();
         glyphDisplay.show();
-    };
+    }
 };
 
 #endif //MATCHCHOOSEPLAYERSVIEW_H

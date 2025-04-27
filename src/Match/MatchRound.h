@@ -21,48 +21,68 @@ public:
         return id;
     }
 
-    int8_t getScoreA() const {
-        return scoreA;
+    int8_t getRealScore(const MatchSide side) const {
+        if (side == MatchSide::a) {
+            return scoreA;
+        }
+
+        if (side == MatchSide::b) {
+            return scoreB;
+        }
+
+        return 0;
     }
 
-    int8_t getScoreB() const {
-        return scoreB;
+    int8_t getTemporaryScore(const MatchSide side) const {
+        if (side == MatchSide::a) {
+            return scoreA + (deltaA > 0 ? deltaA : 0);
+        }
+
+        if (side == MatchSide::b) {
+            return scoreB + (deltaB > 0 ? deltaB : 0);
+        }
+
+        return 0;
     }
 
     MatchSide getWinner() const {
         return winner;
     }
 
-    void scorePointA() {
+    void scorePoint(const MatchSide side) {
         if (winner != MatchSide::none) {
             return;
         }
 
-        deltaA++;
+        if (side == MatchSide::a) {
+            deltaA++;
+        } else if (side == MatchSide::b) {
+            deltaB++;
+        }
     }
 
-    void losePointA() {
+    void losePoint(const MatchSide side) {
         if (winner != MatchSide::none) {
             return;
         }
 
-        deltaA--;
+        if (side == MatchSide::a && deltaA > 0) {
+            deltaA--;
+        } else if (side == MatchSide::b && deltaB > 0) {
+            deltaB--;
+        }
     }
 
-    void scorePointB() {
-        if (winner != MatchSide::none) {
-            return;
+    bool hasUncommitedPoints(const MatchSide side) const {
+        if (side == MatchSide::a) {
+            return deltaA != 0;
         }
 
-        deltaB++;
-    }
-
-    void losePointB() {
-        if (winner != MatchSide::none) {
-            return;
+        if (side == MatchSide::b) {
+            return deltaB != 0;
         }
 
-        deltaB--;
+        return false;
     }
 
     void rollback() {

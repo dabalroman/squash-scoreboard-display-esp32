@@ -37,29 +37,31 @@ public:
         return players;
     }
 
-    void setActiveMatch(const size_t matchId) {
-        activeMatchId = matchId;
-        activeMatch = &matches.at(matchId);
-    }
+    void setActiveMatch(const Match &match) {
+        for (size_t i = 0; i < matches.size(); i++) {
+            if (matches.at(i).getId() == match.getId()) {
+                activeMatchId = match.getId();
+                activeMatch = &matches.at(i);
+                return;
+            }
+        }
 
-    void setActiveMatch(Match &match) {
-        activeMatchId = match.getId();
-        activeMatch = &match;
+        printLn("Could not find match with id %d", match.getId());
     }
 
     Match &getActiveMatch() const {
-        return *activeMatch;
-    }
+        if (activeMatch == nullptr) {
+            printLn("No active match");
+        }
 
-    Match &getMatch(const size_t id) {
-        return matches.at(id);
+        return *activeMatch;
     }
 
     Match &getMatchBetween(UserProfile &userProfileA, UserProfile &userProfileB) {
         for (uint8_t i = 0; i < matches.size(); i++) {
             if (
-                matches.at(i).getUserAProfile().getId() == userProfileA.getId()
-                && matches.at(i).getUserBProfile().getId() == userProfileB.getId()
+                matches.at(i).getPlayerA().getId() == userProfileA.getId()
+                && matches.at(i).getPlayerB().getId() == userProfileB.getId()
             ) {
                 return matches.at(i);
             }

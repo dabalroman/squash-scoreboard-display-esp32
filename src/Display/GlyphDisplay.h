@@ -17,6 +17,7 @@ public:
     GlyphDisplayUnit glyphColon = GlyphDisplayUnit(pixels, GlyphId::Colon);
 
     explicit GlyphDisplay(CRGB *pixels) : pixels(pixels) {
+        setColonState(false);
     }
 
     void setValue(const uint8_t valueA, const uint8_t valueB) {
@@ -40,6 +41,10 @@ public:
         glyphD.setColor(colorD);
     }
 
+    void setGlyphColor(const Color colorA, const Color colorB) {
+        setGlyphColor(colorA, colorA, colorB, colorB);
+    }
+
     void setGlyphBlinking(const bool isBlinkingA, const bool isBlinkingB, const bool isBlinkingC, const bool isBlinkingD) {
         glyphA.setBlinking(isBlinkingA);
         glyphB.setBlinking(isBlinkingB);
@@ -47,12 +52,20 @@ public:
         glyphD.setBlinking(isBlinkingD);
     }
 
-    void toggleColon() {
-        if (glyphColon.getGlyph() == Glyph::Colon) {
-            glyphColon.setGlyph(Glyph::Empty);
-        } else {
-            glyphColon.setGlyph(Glyph::Colon);
-        }
+    void setGlyphBlinking(const bool isBlinkingA, const bool isBlinkingB) {
+        setGlyphBlinking(isBlinkingA, isBlinkingA, isBlinkingB, isBlinkingB);
+    }
+
+    void setColonBlinking(const bool isBlinking) {
+        glyphColon.setBlinking(isBlinking);
+    }
+
+    void setColonState(const bool enabled) {
+        glyphColon.setGlyph(enabled ? Glyph::Colon : Glyph::Empty);
+    }
+
+    void setColonColor(const Color color) {
+        glyphColon.setColor(color);
     }
 
     static Glyph digitToGlyph(const uint8_t digit) {

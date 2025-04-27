@@ -10,43 +10,50 @@
 class Match {
     uint8_t id;
 
-    UserProfile &userAProfile;
-    UserProfile &userBProfile;
+    UserProfile &playerA;
+    UserProfile &playerB;
 
     std::vector<MatchRound> rounds;
     size_t activeRoundId = 0;
     MatchRound *activeRound = nullptr;
     Rules &rules;
+
 public:
     Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules &rules)
-        : id(id), userAProfile(userAProfile), userBProfile(userBProfile), rules(rules) {
+        : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
     }
 
     uint8_t getId() const {
         return id;
     }
 
-    MatchRound& createMatchRound() {
+    MatchRound &createMatchRound() {
         const auto newRoundId = rounds.size();
         rounds.emplace_back(newRoundId, rules);
-        setActiveRound(newRoundId);
         return rounds.back();
     }
 
-    void setActiveRound(const size_t roundId) {
-        activeRoundId = roundId;
-        activeRound = &rounds.at(roundId);
+    void setActiveRound(const MatchRound &round) {
+        for (size_t i = 0; i < rounds.size(); i++) {
+            if (rounds.at(i).getId() == round.getId()) {
+                activeRoundId = i;
+                activeRound = &rounds.at(i);
+                return;
+            }
+        }
+
+        printLn("Could not find round with id %d", round.getId());
     }
 
-    MatchRound& getActiveRound() {
-        if (activeRound == nullptr) {
-            createMatchRound();
+    MatchRound &getActiveRound() {
+        if (activeRound == nullptr || activeRound->getWinner() != MatchSide::none) {
+            setActiveRound(createMatchRound());
         }
 
         return *activeRound;
     }
 
-    MatchRound& getRound(const size_t id) {
+    MatchRound &getRound(const size_t id) {
         return rounds.at(id);
     }
 
@@ -54,12 +61,12 @@ public:
         return rounds.size();
     }
 
-    UserProfile &getUserAProfile() const {
-        return userAProfile;
+    UserProfile &getPlayerA() const {
+        return playerA;
     }
 
-    UserProfile &getUserBProfile() const {
-        return userBProfile;
+    UserProfile &getPlayerB() const {
+        return playerB;
     }
 };
 
