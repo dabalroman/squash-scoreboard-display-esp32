@@ -7,6 +7,7 @@
 #include "Match/Tournament.h"
 #include "Match/Rules/SquashRules.h"
 #include "Views/MatchChoosePlayersView.h"
+#include "Views/MatchOverView.h"
 #include "Views/MatchPlayingView.h"
 #include "Views/TournamentChoosePlayersView.h"
 
@@ -50,6 +51,13 @@ class SquashMode final : public DeviceMode {
                         [this](const SquashModeState newState) { setState(newState); }
                     )
                 );
+                break;
+            case SquashModeState::MatchOver:
+                activeView.reset(
+                    new MatchOverView(
+                        *tournament,
+                        [this](const SquashModeState newState) { setState(newState); }
+                    ));
                 break;
             default:
                 printLn("TRIED TO CHANGE TO UNSUPPORTED STATE");

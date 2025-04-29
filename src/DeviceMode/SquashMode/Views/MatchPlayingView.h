@@ -22,7 +22,9 @@ public:
     MatchPlayingView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = &tournament.getActiveMatch();
-        round = &match->getActiveRound();
+        round = &match->createMatchRound();
+        match->setActiveRound(*round);
+
         playerA = &match->getPlayerA();
         playerB = &match->getPlayerB();
     };
@@ -53,6 +55,12 @@ public:
         }
 
         if (commitResultWinner != MatchSide::none) {
+            if (commitResultWinner == MatchSide::a) {
+                playerA->scorePoint();
+            } else if (commitResultWinner == MatchSide::b) {
+                playerB->scorePoint();
+            }
+
             onStateChange(SquashModeState::MatchOver);
         }
     }
@@ -63,8 +71,10 @@ public:
         glyphDisplay.setColonBlinking(true);
         glyphDisplay.setValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
         glyphDisplay.setGlyphColor(playerA->getColor(), playerB->getColor());
-        glyphDisplay.setGlyphBlinking(round->hasUncommitedPoints(MatchSide::a),
-                                      round->hasUncommitedPoints(MatchSide::b));
+        glyphDisplay.setGlyphBlinking(
+            round->hasUncommitedPoints(MatchSide::a),
+            round->hasUncommitedPoints(MatchSide::b)
+        );
         glyphDisplay.render();
         glyphDisplay.show();
     };

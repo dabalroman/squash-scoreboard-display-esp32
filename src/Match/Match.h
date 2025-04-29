@@ -28,6 +28,7 @@ public:
     }
 
     MatchRound &createMatchRound() {
+        printLn("Creating new round");
         const auto newRoundId = rounds.size();
         rounds.emplace_back(newRoundId, rules);
         return rounds.back();
@@ -46,7 +47,7 @@ public:
     }
 
     MatchRound &getActiveRound() {
-        if (activeRound == nullptr || activeRound->getWinner() != MatchSide::none) {
+        if (activeRound == nullptr) {
             setActiveRound(createMatchRound());
         }
 

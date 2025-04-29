@@ -16,6 +16,7 @@ public:
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
+        printLn("Creating new match");
         const auto newMatchId = matches.size();
         matches.emplace_back(newMatchId, userProfileA, userProfileB, rules);
         return matches.back();

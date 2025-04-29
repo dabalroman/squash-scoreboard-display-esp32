@@ -51,10 +51,12 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_
 uint16_t offset = 2137;
 unsigned long lastUpdate = 0;
 
-UserProfile userA(0, "Andrzej", Colors::Cyan);
+UserProfile userA(0, "Andrzej", Colors::Green);
 UserProfile userB(1, "Bartosz", Colors::Yellow);
-UserProfile userC(2, "Cecil", Colors::Magenta);
-std::vector<UserProfile *> users = {&userA, &userB, &userC};
+UserProfile userC(2, "Cecil", Colors::Pink);
+UserProfile userD(2, "Roman", Colors::Blue);
+UserProfile userE(2, "Adrian", Colors::Red);
+std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE};
 
 DeviceMode *deviceMode = nullptr;
 
@@ -73,7 +75,7 @@ void initHardware() {
     display.display();
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
-    FastLED.setBrightness(10);
+    FastLED.setBrightness(127);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();

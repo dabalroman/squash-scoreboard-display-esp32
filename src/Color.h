@@ -29,13 +29,12 @@ struct Color {
 
 namespace Colors {
     static constexpr auto White = Color(0xFFFFFF);
-    static constexpr auto Green = Color(0x00FF00);
-    static constexpr auto Red = Color(0xFF0000);
+    static constexpr auto Green = Color(0x3dff1f);
+    static constexpr auto Red = Color(0xff1f1f);
     static constexpr auto Black = Color(0x000000);
-    static constexpr auto Blue = Color(0x0000FF);
-    static constexpr auto Yellow = Color(0xFFFF00);
-    static constexpr auto Magenta = Color(0xFF00FF);
-    static constexpr auto Cyan = Color(0x00FFFF);
+    static constexpr auto Blue = Color(0x006eff);
+    static constexpr auto Yellow = Color(0xffe600);
+    static constexpr auto Pink = Color(0xf7058e);
 }
 
 #endif //COLOR_H

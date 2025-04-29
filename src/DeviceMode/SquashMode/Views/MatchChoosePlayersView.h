@@ -35,6 +35,16 @@ public:
 
         playerA = players.at(0);
         playerB = players.at(1);
+
+        const Match *match = &tournament.getActiveMatch();
+        if (!match) {
+            return;
+        }
+
+        playerA = &match->getPlayerA();
+        playerB = &match->getPlayerB();
+        playerAIndex = playerA->getId();
+        playerBIndex = playerB->getId();
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {

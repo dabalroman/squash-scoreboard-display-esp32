@@ -66,9 +66,9 @@ public:
             return;
         }
 
-        if (side == MatchSide::a && deltaA > 0) {
+        if (side == MatchSide::a && scoreA + deltaA > 0) {
             deltaA--;
-        } else if (side == MatchSide::b && deltaB > 0) {
+        } else if (side == MatchSide::b && scoreB + deltaB > 0) {
             deltaB--;
         }
     }
