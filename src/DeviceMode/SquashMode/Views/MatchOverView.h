@@ -33,7 +33,11 @@ public:
         }
     }
 
-    void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
+    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+        if (!shouldRenderGlyphs) {
+            return;
+        }
+
         glyphDisplay.clear();
         glyphDisplay.setColonState(false);
         glyphDisplay.setValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
@@ -41,7 +45,10 @@ public:
         glyphDisplay.setGlyphBlinking(false, false);
         glyphDisplay.render();
         glyphDisplay.show();
-    };
+    }
+
+    void renderBack(Adafruit_SSD1306 &backDisplay) override {
+    }
 };
 
 #endif //MATCH_OVER_VIEW_H

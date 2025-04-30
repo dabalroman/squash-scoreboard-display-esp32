@@ -85,7 +85,8 @@ public:
 
         if (activeView) {
             activeView->handleInput(remoteInputManager);
-            activeView->render(glyphDisplay, backDisplay);
+            activeView->renderGlyphs(glyphDisplay);
+            activeView->renderBack(backDisplay);
         }
     }
 };

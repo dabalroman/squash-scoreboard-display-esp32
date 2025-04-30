@@ -60,7 +60,7 @@ public:
         }
     }
 
-    void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
+    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
         const bool isPlayerIn = tournament.isPlayerIn(*users.at(playerIndex));
         const Color playerColor = users.at(playerIndex)->getColor();
 
@@ -70,6 +70,20 @@ public:
         glyphDisplay.setGlyphColor(playerColor, playerColor, Colors::Black, isPlayerIn ? Colors::Green : Colors::Red);
         glyphDisplay.render();
         glyphDisplay.show();
+    }
+
+    void renderBack(Adafruit_SSD1306 &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
+        backDisplay.clearDisplay();
+        backDisplay.setFont(&FreeMonoBold24pt7b);
+        backDisplay.setCursor(0, 24);
+        backDisplay.print("B/C");
+        backDisplay.display();
+
+        shouldRenderBack = false;
     }
 };
 

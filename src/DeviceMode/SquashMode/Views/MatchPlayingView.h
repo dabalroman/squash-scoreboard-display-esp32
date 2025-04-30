@@ -65,7 +65,7 @@ public:
         }
     }
 
-    void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
+    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
         glyphDisplay.clear();
         glyphDisplay.setColonState(true);
         glyphDisplay.setColonBlinking(true);
@@ -77,7 +77,10 @@ public:
         );
         glyphDisplay.render();
         glyphDisplay.show();
-    };
+    }
+
+    void renderBack(Adafruit_SSD1306 &backDisplay) override {
+    }
 };
 
 #endif //MATCH_PLAYING_VIEW_H

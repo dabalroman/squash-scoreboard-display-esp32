@@ -1,11 +1,13 @@
 #ifndef MATCHCHOOSEPLAYERSVIEW_H
 #define MATCHCHOOSEPLAYERSVIEW_H
+
 #include "LoggerHelper.h"
 #include "RemoteInputManager.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/GlyphDisplay.h"
 #include "Match/Tournament.h"
+#include <Fonts/FreeMonoBold24pt7b.h>  // ~40px
 
 class Adafruit_SSD1306;
 class GlyphDisplay;
@@ -76,7 +78,8 @@ public:
         }
     }
 
-    void render(GlyphDisplay &glyphDisplay, Adafruit_SSD1306 &backDisplay) override {
+    // Blinking, so always should render
+    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
         glyphDisplay.clear();
         glyphDisplay.setGlyphs(
             Glyph::P,
@@ -88,6 +91,19 @@ public:
         glyphDisplay.setGlyphBlinking(true, true, true, true);
         glyphDisplay.render();
         glyphDisplay.show();
+    }
+
+    void renderBack(Adafruit_SSD1306 &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
+        backDisplay.setFont(&FreeMonoBold24pt7b);
+        backDisplay.setCursor(0, 0);
+        backDisplay.print("B : C");
+        backDisplay.display();
+
+        shouldRenderBack = false;
     }
 };
 
