@@ -15,37 +15,50 @@ public:
     GlyphDisplayUnit glyphC = GlyphDisplayUnit(pixels, GlyphId::C);
     GlyphDisplayUnit glyphD = GlyphDisplayUnit(pixels, GlyphId::D);
     GlyphDisplayUnit glyphColon = GlyphDisplayUnit(pixels, GlyphId::Colon);
+    GlyphDisplayUnit glyphPlayerAIndicator = GlyphDisplayUnit(pixels, GlyphId::PlayerAIndicator);
+    GlyphDisplayUnit glyphPlayerBIndicator = GlyphDisplayUnit(pixels, GlyphId::PlayerBIndicator);
 
     explicit GlyphDisplay(CRGB *pixels) : pixels(pixels) {
-        setColonState(false);
+        setColonAppearance();
+        setPlayersIndicatorsState(false);
     }
 
-    void setValue(const uint8_t valueA, const uint8_t valueB) {
+    void setNumericValue(const uint8_t valueA, const uint8_t valueB) {
         glyphA.setToDigit(valueA / 10);
         glyphB.setToDigit(valueA % 10);
         glyphC.setToDigit(valueB / 10);
         glyphD.setToDigit(valueB % 10);
     }
 
-    void setGlyphs(const Glyph a, const Glyph b, const Glyph c, const Glyph d) {
+    void setGlyphsGlyph(const Glyph a, const Glyph b, const Glyph c, const Glyph d) {
         glyphA.setGlyph(a);
         glyphB.setGlyph(b);
         glyphC.setGlyph(c);
         glyphD.setGlyph(d);
     }
 
-    void setGlyphColor(const Color colorA, const Color colorB, const Color colorC, const Color colorD) {
+    void setGlyphsColor(const Color colorA, const Color colorB, const Color colorC, const Color colorD) {
         glyphA.setColor(colorA);
         glyphB.setColor(colorB);
         glyphC.setColor(colorC);
         glyphD.setColor(colorD);
     }
 
-    void setGlyphColor(const Color colorA, const Color colorB) {
-        setGlyphColor(colorA, colorA, colorB, colorB);
+    void setGlyphsColor(const Color colorA, const Color colorB) {
+        setGlyphsColor(colorA, colorA, colorB, colorB);
     }
 
-    void setGlyphBlinking(const bool isBlinkingA, const bool isBlinkingB, const bool isBlinkingC, const bool isBlinkingD) {
+    void setGlyphsAppearance(const Color colorA, const Color colorB, const bool isBlinkingA = false, const bool isBlinkingB = false) {
+        setGlyphsColor(colorA, colorA, colorB, colorB);
+        setGlyphBlinking(isBlinkingA, isBlinkingB);
+    }
+
+    void setGlyphBlinking(
+        const bool isBlinkingA,
+        const bool isBlinkingB,
+        const bool isBlinkingC,
+        const bool isBlinkingD
+    ) {
         glyphA.setBlinking(isBlinkingA);
         glyphB.setBlinking(isBlinkingB);
         glyphC.setBlinking(isBlinkingC);
@@ -56,16 +69,24 @@ public:
         setGlyphBlinking(isBlinkingA, isBlinkingA, isBlinkingB, isBlinkingB);
     }
 
-    void setColonBlinking(const bool isBlinking) {
+    void setColonAppearance(const Color color = Colors::Black, const bool isBlinking = false) {
+        glyphColon.setColor(color);
         glyphColon.setBlinking(isBlinking);
     }
 
-    void setColonState(const bool enabled) {
-        glyphColon.setGlyph(enabled ? Glyph::Colon : Glyph::Empty);
+    void setPlayersIndicatorsState(const bool enabled) {
+        glyphPlayerAIndicator.setGlyph(enabled ? Glyph::All : Glyph::Empty);
+        glyphPlayerBIndicator.setGlyph(enabled ? Glyph::All : Glyph::Empty);
     }
 
-    void setColonColor(const Color color) {
-        glyphColon.setColor(color);
+    void setPlayerAIndicatorAppearance(const Color color, const bool isBlinking = false) {
+        glyphPlayerAIndicator.setColor(color);
+        glyphPlayerAIndicator.setBlinking(isBlinking);
+    }
+
+    void setPlayerBIndicatorAppearance(const Color color, const bool isBlinking = false) {
+        glyphPlayerBIndicator.setColor(color);
+        glyphPlayerBIndicator.setBlinking(isBlinking);
     }
 
     static Glyph digitToGlyph(const uint8_t digit) {
@@ -76,11 +97,9 @@ public:
         return static_cast<Glyph>(digit);
     }
 
-    static void clear() {
+    void display() {
         FastLED.clear();
-    }
-
-    static void show() {
+        render();
         FastLED.show();
     }
 
@@ -92,6 +111,8 @@ public:
         glyphC.render(tickMs);
         glyphD.render(tickMs);
         glyphColon.render(tickMs);
+        glyphPlayerAIndicator.render(tickMs);
+        glyphPlayerBIndicator.render(tickMs);
     }
 };
 

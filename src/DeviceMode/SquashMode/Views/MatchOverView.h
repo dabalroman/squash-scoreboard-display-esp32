@@ -38,16 +38,28 @@ public:
             return;
         }
 
-        glyphDisplay.clear();
-        glyphDisplay.setColonState(false);
-        glyphDisplay.setValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
-        glyphDisplay.setGlyphColor(playerA->getColor(), playerB->getColor());
-        glyphDisplay.setGlyphBlinking(false, false);
-        glyphDisplay.render();
-        glyphDisplay.show();
+        glyphDisplay.setColonAppearance();
+
+        glyphDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
+        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
+
+        glyphDisplay.setPlayersIndicatorsState(true);
+        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor());
+        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor());
+
+        glyphDisplay.display();
     }
 
     void renderBack(Adafruit_SSD1306 &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
+        backDisplay.clearDisplay();
+        backDisplay.setFont(&FreeMonoBold24pt7b);
+        backDisplay.setCursor(0, 24);
+        backDisplay.print(round->getRealScore(MatchSide::a) + ":" + round->getRealScore(MatchSide::b));
+        backDisplay.display();
     }
 };
 

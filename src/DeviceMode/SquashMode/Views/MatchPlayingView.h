@@ -33,21 +33,29 @@ public:
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             round->scorePoint(MatchSide::a);
             lastPointScoredAtMs = millis();
+
+            queueRender();
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
             round->scorePoint(MatchSide::b);
             lastPointScoredAtMs = millis();
+
+            queueRender();
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
             round->losePoint(MatchSide::a);
             lastPointScoredAtMs = millis();
+
+            queueRender();
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             round->losePoint(MatchSide::b);
             lastPointScoredAtMs = millis();
+
+            queueRender();
         }
 
         if (lastPointScoredAtMs + 5000 <= millis()) {
@@ -62,24 +70,38 @@ public:
             }
 
             onStateChange(SquashModeState::MatchOver);
+            queueRender();
         }
     }
 
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        glyphDisplay.clear();
-        glyphDisplay.setColonState(true);
-        glyphDisplay.setColonBlinking(true);
-        glyphDisplay.setValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
-        glyphDisplay.setGlyphColor(playerA->getColor(), playerB->getColor());
-        glyphDisplay.setGlyphBlinking(
+        glyphDisplay.setColonAppearance(Colors::White, true);
+
+        glyphDisplay.setNumericValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
+        glyphDisplay.setGlyphsAppearance(
+            playerA->getColor(),
+            playerB->getColor(),
             round->hasUncommitedPoints(MatchSide::a),
             round->hasUncommitedPoints(MatchSide::b)
         );
-        glyphDisplay.render();
-        glyphDisplay.show();
+
+        glyphDisplay.setPlayersIndicatorsState(true);
+        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
+        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
+
+        glyphDisplay.display();
     }
 
     void renderBack(Adafruit_SSD1306 &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
+        backDisplay.clearDisplay();
+        backDisplay.setFont(&FreeMonoBold24pt7b);
+        backDisplay.setCursor(0, 24);
+        backDisplay.print(round->getTemporaryScore(MatchSide::a) + ":" + round->getTemporaryScore(MatchSide::b));
+        backDisplay.display();
     }
 };
 

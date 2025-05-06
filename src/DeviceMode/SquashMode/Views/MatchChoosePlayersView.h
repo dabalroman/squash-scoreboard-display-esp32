@@ -57,6 +57,8 @@ public:
                 } while (players.at(playerAIndex) == playerB);
 
                 playerA = players.at(playerAIndex);
+
+                queueRender();
             }
 
             if (remoteInputManager.buttonB.takeActionIfPossible()) {
@@ -65,6 +67,7 @@ public:
                 } while (players.at(playerBIndex) == playerA);
 
                 playerB = players.at(playerBIndex);
+                queueRender();
             }
         }
 
@@ -75,22 +78,27 @@ public:
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
             onStateChange(SquashModeState::MatchOn);
+            queueRender();
         }
     }
 
     // Blinking, so always should render
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        glyphDisplay.clear();
-        glyphDisplay.setGlyphs(
+        glyphDisplay.setColonAppearance();
+
+        glyphDisplay.setGlyphsGlyph(
             Glyph::P,
             GlyphDisplay::digitToGlyph(playerA->getId()),
             Glyph::P,
             GlyphDisplay::digitToGlyph(playerB->getId())
         );
-        glyphDisplay.setGlyphColor(playerA->getColor(), playerB->getColor());
-        glyphDisplay.setGlyphBlinking(true, true, true, true);
-        glyphDisplay.render();
-        glyphDisplay.show();
+        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor(), true, true);
+
+        glyphDisplay.setPlayersIndicatorsState(true);
+        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), true);
+        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), true);
+
+        glyphDisplay.display();
     }
 
     void renderBack(Adafruit_SSD1306 &backDisplay) override {
@@ -99,8 +107,8 @@ public:
         }
 
         backDisplay.setFont(&FreeMonoBold24pt7b);
-        backDisplay.setCursor(0, 0);
-        backDisplay.print("B : C");
+        backDisplay.setCursor(0, 24);
+        backDisplay.print(playerA->getId() + ":" + playerB->getId());
         backDisplay.display();
 
         shouldRenderBack = false;

@@ -35,10 +35,10 @@ constexpr uint8_t SegmentToGlyphMap[17] = {
     0b01111101, // 9
     0b01111110, // A
     0b01111010, // P
-    0b00000001, // Colon
     0b00001000, // Minus
     0b00001111, // LowerDot
     0b01111000, // UpperDot
+    0b11111111, // All
     0b00000000, // Empty
 };
 
@@ -55,10 +55,10 @@ enum class Glyph: uint8_t {
     D9 = 9,
     A = 10,
     P = 11,
-    Colon = 12,
-    Minus = 13,
-    LowerDot = 14,
-    UpperDot = 15,
+    Minus = 12,
+    LowerDot = 13,
+    UpperDot = 14,
+    All = 15,
     Empty = 16
 };
 
@@ -68,6 +68,8 @@ enum class GlyphId: uint8_t {
     C = 2,
     D = 3,
     Colon = 4,
+    PlayerAIndicator = 5,
+    PlayerBIndicator = 6
 };
 
 struct PixelsToSegmentMap {
@@ -76,50 +78,49 @@ struct PixelsToSegmentMap {
 
 constexpr PixelsToSegmentMap glyphA = {
     {
-        {85, 84, 83},
-        {49, 48, 47},
-        {50, 51, 52},
-        {74, 75, 76},
-        {46, 45, 44},
-        {53, 54, 55},
-        {73, 72, 71}
+        {87, 86, 85},
+        {51, 50, 49},
+        {52, 53, 54},
+        {76, 77, 78},
+        {48, 47, 46},
+        {55, 56, 57},
+        {75, 74, 73}
     },
 };
 
 constexpr PixelsToSegmentMap glyphB = {
     {
-        {82, 81, 80},
-        {61, 60, 59},
-        {62, 63, 64},
-        {77, 78, 79},
-        {58, 57, 56},
-        {65, 66, 67},
-        {70, 69, 68}
+        {84, 83, 82},
+        {63, 62, 61},
+        {64, 65, 66},
+        {79, 80, 81},
+        {60, 59, 58},
+        {67, 68, 69},
+        {72, 71, 70}
     },
 };
 
-
 constexpr PixelsToSegmentMap glyphC = {
     {
-        {43, 42, 41},
-        {7, 6, 5},
-        {8, 9, 10},
-        {32, 33, 34},
-        {4, 3, 2},
-        {11, 12, 13},
-        {31, 30, 29}
+        {45, 44, 43},
+        {9, 8, 7},
+        {10, 11, 12},
+        {34, 35, 36},
+        {6, 5, 4},
+        {13, 14, 15},
+        {33, 32, 31}
     },
 };
 
 constexpr PixelsToSegmentMap glyphD = {
     {
-        {40, 39, 38},
-        {19, 18, 17},
-        {20, 21, 22},
-        {35, 36, 37},
-        {16, 15, 14},
-        {23, 24, 25},
-        {28, 27, 26}
+        {42, 41, 40},
+        {21, 20, 19},
+        {22, 23, 24},
+        {37, 38, 39},
+        {18, 17, 16},
+        {25, 26, 27},
+        {30, 29, 28}
     },
 };
 
@@ -127,7 +128,16 @@ constexpr PixelsToSegmentMap glyphColon = {
     {{0, 0, 1}}
 };
 
+constexpr PixelsToSegmentMap glyphPlayerAIndicator = {
+    {{3, 3, 3}}
+};
+
+constexpr PixelsToSegmentMap glyphPlayerBIndicator = {
+    {{2, 2, 2}}
+};
+
 class GlyphDisplayUnit {
+protected:
     GlyphId glyphId;
     CRGB *pixels;
 
@@ -152,6 +162,10 @@ public:
                 return &glyphD;
             case GlyphId::Colon:
                 return &glyphColon;
+            case GlyphId::PlayerAIndicator:
+                return &glyphPlayerAIndicator;
+            case GlyphId::PlayerBIndicator:
+                return &glyphPlayerBIndicator;
         }
     }
 
@@ -188,7 +202,12 @@ public:
             return;
         }
 
-        const uint8_t amountOfSegments = glyphId == GlyphId::Colon ? 1 : 7;
+        const uint8_t amountOfSegments =
+                glyphId == GlyphId::Colon
+                || glyphId == GlyphId::PlayerAIndicator
+                || glyphId == GlyphId::PlayerBIndicator
+                    ? 1
+                    : 7;
 
         const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
         for (uint8_t segment = 0; segment < amountOfSegments; segment++) {

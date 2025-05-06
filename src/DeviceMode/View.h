@@ -14,6 +14,11 @@ public:
     virtual void renderGlyphs(GlyphDisplay &glyphDisplay) = 0;
 
     virtual void renderBack(Adafruit_SSD1306 &backDisplay) = 0;
+
+    void queueRender() {
+        shouldRenderGlyphs = true;
+        shouldRenderBack = true;
+    }
 };
 
 #endif //VIEW_H

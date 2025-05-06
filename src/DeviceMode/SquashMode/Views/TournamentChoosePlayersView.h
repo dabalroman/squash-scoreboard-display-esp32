@@ -29,7 +29,7 @@ public:
 
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             playerIndex++;
-            printLn("Player index: %d", playerIndex % users.size());
+            queueRender();
         }
 
         if (playerIndex == users.size()) {
@@ -43,7 +43,7 @@ public:
                 tournament.addPlayer(*users.at(playerIndex));
             }
 
-            printLn("Added/removed player");
+            queueRender();
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
@@ -52,24 +52,34 @@ public:
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             if (tournament.getPlayers().size() < 2) {
-                printLn("Not enough players");
                 return;
             }
 
             onStateChange(SquashModeState::MatchChoosePlayers);
+            queueRender();
         }
     }
 
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+        if (!shouldRenderGlyphs) {
+            return;
+        }
+
         const bool isPlayerIn = tournament.isPlayerIn(*users.at(playerIndex));
         const Color playerColor = users.at(playerIndex)->getColor();
+        const Color playerStateColor = isPlayerIn ? Colors::Green : Colors::Red;
+        const Glyph playerGlyph = isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot;
 
-        glyphDisplay.clear();
-        glyphDisplay.setGlyphs(Glyph::P, GlyphDisplay::digitToGlyph(playerIndex), Glyph::Minus,
-                               isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot);
-        glyphDisplay.setGlyphColor(playerColor, playerColor, Colors::Black, isPlayerIn ? Colors::Green : Colors::Red);
-        glyphDisplay.render();
-        glyphDisplay.show();
+        glyphDisplay.setColonAppearance();
+
+        glyphDisplay.setGlyphsGlyph(Glyph::P, GlyphDisplay::digitToGlyph(playerIndex), Glyph::Empty, playerGlyph);
+        glyphDisplay.setGlyphsColor(playerColor, playerColor, Colors::Black, playerStateColor);
+
+        glyphDisplay.setPlayersIndicatorsState(true);
+        glyphDisplay.setPlayerAIndicatorAppearance(playerColor);
+        glyphDisplay.setPlayerBIndicatorAppearance(playerStateColor);
+
+        glyphDisplay.display();
     }
 
     void renderBack(Adafruit_SSD1306 &backDisplay) override {
@@ -80,7 +90,7 @@ public:
         backDisplay.clearDisplay();
         backDisplay.setFont(&FreeMonoBold24pt7b);
         backDisplay.setCursor(0, 24);
-        backDisplay.print("B/C");
+        backDisplay.print("P" + users.at(playerIndex)->getId());
         backDisplay.display();
 
         shouldRenderBack = false;

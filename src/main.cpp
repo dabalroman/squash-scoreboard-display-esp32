@@ -5,7 +5,6 @@
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
 #include <LoggerHelper.h>
-#include <time.h>
 
 #include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
@@ -35,7 +34,7 @@ RemoteInputManager remoteInputManager(
 );
 
 constexpr uint8_t LED_WS2812B_GPIO = 18;
-constexpr uint8_t LED_WS2812B_AMOUNT = 86;
+constexpr uint8_t LED_WS2812B_AMOUNT = 88;
 CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
@@ -48,7 +47,6 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d1() { interruptTriggeredGpio = REMOTE_
 void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D2; }
 void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D3; }
 
-uint16_t offset = 2137;
 unsigned long lastUpdate = 0;
 
 UserProfile userA(0, "Andrzej", Colors::Green);
@@ -56,7 +54,8 @@ UserProfile userB(1, "Bartosz", Colors::Yellow);
 UserProfile userC(2, "Cecil", Colors::Pink);
 UserProfile userD(2, "Roman", Colors::Blue);
 UserProfile userE(2, "Adrian", Colors::Red);
-std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE};
+UserProfile userF(2, "Igor", Colors::Aqua);
+std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF};
 
 DeviceMode *deviceMode = nullptr;
 
