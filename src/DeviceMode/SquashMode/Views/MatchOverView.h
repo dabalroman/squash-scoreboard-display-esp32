@@ -7,7 +7,7 @@
 #include "Display/GlyphDisplay.h"
 #include "Match/Tournament.h"
 
-#define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 5000
+#define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
 
 class MatchOverView final : public View {
     Tournament &tournament;
@@ -15,9 +15,6 @@ class MatchOverView final : public View {
     MatchRound *round = nullptr;
     UserProfile *playerA = nullptr, *playerB = nullptr;
     std::function<void(SquashModeState)> onStateChange;
-
-    uint32_t lastBackDisplayPlayerChangeMs = 0;
-    MatchSide lastBackDisplayPlayerSide = MatchSide::a;
 
 public:
     MatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
@@ -29,15 +26,9 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        const uint32_t now = millis();
-
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
+            remoteInputManager.preventTriggerForMs();
             onStateChange(SquashModeState::MatchChoosePlayers);
-        }
-
-        if (lastBackDisplayPlayerChangeMs + MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS <= now) {
-            lastBackDisplayPlayerChangeMs = millis();
-            lastBackDisplayPlayerSide = lastBackDisplayPlayerSide == MatchSide::a ? MatchSide::b : MatchSide::a;
         }
     }
 
@@ -47,25 +38,15 @@ public:
         glyphDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        // Standard display, cycle between players
-        if (lastBackDisplayPlayerSide == MatchSide::a) {
-            glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), false);
-            glyphDisplay.setPlayerBIndicatorAppearance(Colors::Black, false);
-        } else {
-            glyphDisplay.setPlayerAIndicatorAppearance(Colors::Black, false);
-            glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), false);
-        }
+        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), round->getWinner() == MatchSide::a);
+        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), round->getWinner() == MatchSide::b);
 
         glyphDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {
         backDisplay.clear();
-        backDisplay.setCursorTo2CharCenter();
-
-        backDisplay.setBlinking(round->getWinner() == lastBackDisplayPlayerSide);
-        backDisplay.renderScore(round->getRealScore(lastBackDisplayPlayerSide));
-
+        backDisplay.renderScore(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         backDisplay.display();
     }
 };

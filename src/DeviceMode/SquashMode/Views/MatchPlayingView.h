@@ -8,7 +8,7 @@
 #include "Match/Tournament.h"
 
 #define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 5000
-#define MATCH_PLAYING_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 5000
+#define MATCH_PLAYING_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
 
 class MatchPlayingView final : public View {
     Tournament &tournament;
@@ -57,23 +57,22 @@ public:
             lastPointScoredAtMs = now;
         }
 
-        if (lastBackDisplayPlayerChangeMs + MATCH_PLAYING_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS <= now) {
+        // Handle back display player cycle
+        if (!round->hasUncommitedPoints() && lastBackDisplayPlayerChangeMs + MATCH_PLAYING_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS <= now) {
             lastBackDisplayPlayerChangeMs = millis();
             lastBackDisplayPlayerSide = lastBackDisplayPlayerSide == MatchSide::a ? MatchSide::b : MatchSide::a;
         }
 
-        if (lastPointScoredAtMs + MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
+        // Handle score commits
+        if (round->hasUncommitedPoints() && lastPointScoredAtMs + MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
+            lastBackDisplayPlayerChangeMs = millis();
+            lastBackDisplayPlayerSide = round->hasUncommitedPoints(MatchSide::a) ? MatchSide::a : MatchSide::b;
             commitResultWinner = round->commit();
-        }
 
-        if (commitResultWinner != MatchSide::none) {
-            if (commitResultWinner == MatchSide::a) {
-                playerA->scorePoint();
-            } else if (commitResultWinner == MatchSide::b) {
-                playerB->scorePoint();
+            if (commitResultWinner != MatchSide::none) {
+                remoteInputManager.preventTriggerForMs();
+                onStateChange(SquashModeState::MatchOver);
             }
-
-            onStateChange(SquashModeState::MatchOver);
         }
     }
 
@@ -88,22 +87,24 @@ public:
             round->hasUncommitedPoints(MatchSide::b)
         );
 
-        // Uncommited points, blink the player that just scored
         if (round->hasUncommitedPoints()) {
-            glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
-            glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
-            glyphDisplay.display();
-
-            return;
-        }
-
-        // Standard display, cycle between players
-        if (lastBackDisplayPlayerSide == MatchSide::a) {
-            glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), false);
-            glyphDisplay.setPlayerBIndicatorAppearance(Colors::Black, false);
+            // Uncommited points, blink the player that just scored
+            if (round->hasUncommitedPoints(MatchSide::a)) {
+                glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), true);
+                glyphDisplay.setPlayerBIndicatorAppearance(Colors::Black);
+            } else {
+                glyphDisplay.setPlayerAIndicatorAppearance(Colors::Black);
+                glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), true);
+            }
         } else {
-            glyphDisplay.setPlayerAIndicatorAppearance(Colors::Black, false);
-            glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), false);
+            // Standard display, cycle between players
+            if (lastBackDisplayPlayerSide == MatchSide::a) {
+                glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor());
+                glyphDisplay.setPlayerBIndicatorAppearance(Colors::Black);
+            } else {
+                glyphDisplay.setPlayerAIndicatorAppearance(Colors::Black);
+                glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor());
+            }
         }
 
         glyphDisplay.display();
@@ -111,7 +112,6 @@ public:
 
     void renderScreen(BackDisplay &backDisplay) override {
         backDisplay.clear();
-        backDisplay.setCursorTo2CharCenter();
 
         if (round->hasUncommitedPoints(MatchSide::a)) {
             backDisplay.setBlinking(true);

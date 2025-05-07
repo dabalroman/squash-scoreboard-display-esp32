@@ -44,7 +44,7 @@ public:
         triggeredGpio = 0;
     }
 
-    void preventTriggerForMs(const ulong delayMs = 500) {
+    void preventTriggerForMs(const ulong delayMs = 1000) {
         buttonA.preventTriggerForMs(delayMs);
         buttonB.preventTriggerForMs(delayMs);
         buttonC.preventTriggerForMs(delayMs);

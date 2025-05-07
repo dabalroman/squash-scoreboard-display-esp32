@@ -76,6 +76,7 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
+            remoteInputManager.preventTriggerForMs();
             tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
             onStateChange(SquashModeState::MatchOn);
             queueRender();
@@ -107,8 +108,7 @@ public:
         }
 
         backDisplay.clear();
-        backDisplay.setCursorTo2CharCenter();
-        backDisplay.screen->print("VS");
+        backDisplay.printCentered("VS");
         backDisplay.display();
 
         shouldRenderBack = false;

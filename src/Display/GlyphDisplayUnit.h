@@ -200,7 +200,7 @@ public:
     }
 
     void render(const uint32_t &tickMs) const {
-        if (isBlinking && tickMs % GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS < GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS / 2) {
+        if (isBlinking && tickMs % GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS < GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS / 4) {
             return;
         }
 
