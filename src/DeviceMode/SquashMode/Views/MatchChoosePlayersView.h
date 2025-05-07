@@ -101,14 +101,14 @@ public:
         glyphDisplay.display();
     }
 
-    void renderBack(Adafruit_SSD1306 &backDisplay) override {
+    void renderScreen(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
         }
 
-        backDisplay.setFont(&FreeMonoBold24pt7b);
-        backDisplay.setCursor(0, 24);
-        backDisplay.print(playerA->getId() + ":" + playerB->getId());
+        backDisplay.clear();
+        backDisplay.setCursorTo2CharCenter();
+        backDisplay.screen->print("VS");
         backDisplay.display();
 
         shouldRenderBack = false;

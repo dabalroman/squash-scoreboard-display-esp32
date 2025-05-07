@@ -1,20 +1,20 @@
 #ifndef BASEDEVICEMODE_H
 #define BASEDEVICEMODE_H
 
-#include "Adafruit_SSD1306.h"
 #include "RemoteInputManager.h"
-#include "../Display/GlyphDisplay.h"
+#include "Display/GlyphDisplay.h"
+#include "Display/BackDisplay.h"
 
 class DeviceMode {
 protected:
     GlyphDisplay &glyphDisplay;
-    Adafruit_SSD1306 &backDisplay;
+    BackDisplay &backDisplay;
     RemoteInputManager &remoteInputManager;
 
 public:
     DeviceMode(
         GlyphDisplay &glyphDisplay,
-        Adafruit_SSD1306 &backDisplay,
+        BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager
     ) : glyphDisplay(glyphDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager) {
     }

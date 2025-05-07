@@ -21,28 +21,28 @@ public:
         return id;
     }
 
-    int8_t getRealScore(const MatchSide side) const {
+    uint8_t getRealScore(const MatchSide side) const {
         if (side == MatchSide::a) {
-            return scoreA;
+            return static_cast<uint8_t>(scoreA);
         }
 
         if (side == MatchSide::b) {
-            return scoreB;
+            return static_cast<uint8_t>(scoreB);
         }
 
         return 0;
     }
 
-    int8_t getTemporaryScore(const MatchSide side) const {
+    uint8_t getTemporaryScore(const MatchSide side) const {
+        int8_t score = 0;
+
         if (side == MatchSide::a) {
-            return scoreA + (deltaA > 0 ? deltaA : 0);
+            score = scoreA + deltaA;
+        } else if (side == MatchSide::b) {
+            score = scoreB + deltaB;
         }
 
-        if (side == MatchSide::b) {
-            return scoreB + (deltaB > 0 ? deltaB : 0);
-        }
-
-        return 0;
+        return static_cast<uint8_t>(score < 0 ? 0 : score);
     }
 
     MatchSide getWinner() const {
@@ -83,6 +83,10 @@ public:
         }
 
         return false;
+    }
+
+    bool hasUncommitedPoints() const {
+        return hasUncommitedPoints(MatchSide::a) || hasUncommitedPoints(MatchSide::b);
     }
 
     void rollback() {

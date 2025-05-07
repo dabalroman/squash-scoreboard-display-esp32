@@ -38,8 +38,10 @@ constexpr uint8_t LED_WS2812B_AMOUNT = 88;
 CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
+// Need to wait for I2C init
+BackDisplay *backDisplay = nullptr;
+
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
-DeviceModeState deviceState = DeviceModeState::Booting;
 
 volatile uint8_t interruptTriggeredGpio = 0;
 void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
@@ -49,15 +51,15 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_
 
 unsigned long lastUpdate = 0;
 
-UserProfile userA(0, "Andrzej", Colors::Green);
-UserProfile userB(1, "Bartosz", Colors::Yellow);
-UserProfile userC(2, "Cecil", Colors::Pink);
-UserProfile userD(2, "Roman", Colors::Blue);
-UserProfile userE(2, "Adrian", Colors::Red);
-UserProfile userF(2, "Igor", Colors::Aqua);
-std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF};
-
 DeviceMode *deviceMode = nullptr;
+DeviceModeState deviceState = DeviceModeState::Booting;
+
+UserProfile userA(0, "ADRIAN", Colors::Green);
+UserProfile userB(1, "ROMAN", Colors::Yellow);
+UserProfile userC(2, "BASIA", Colors::Pink);
+UserProfile userD(3, "KRYSTIAN", Colors::Blue);
+UserProfile userE(4, "JOLA", Colors::Red);
+std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE};
 
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
@@ -65,13 +67,7 @@ void initHardware() {
         printLn("SSD1106 allocation failed!");
     }
 
-    display.setRotation(2);
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("Initializing...");
-    display.display();
+    backDisplay = new BackDisplay(&display);
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
     FastLED.setBrightness(127);
@@ -95,15 +91,15 @@ void setup() {
     printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
 
     deviceState = DeviceModeState::SquashMode;
-    deviceMode = new SquashMode(ledDisplay, display, remoteInputManager, users);
+    deviceMode = new SquashMode(ledDisplay, *backDisplay, remoteInputManager, users);
 }
 
 void loop() {
     gRemoteDevelopmentService->loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
 
-    // At most 10 fps, for now
-    if (lastUpdate + 100 > millis()) {
+    // At most 20 fps, for now
+    if (lastUpdate + 50 > millis()) {
         return;
     }
 

@@ -6,12 +6,14 @@
 
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
+#include "Fonts/FreeMonoBold18pt7b.h"
 
 class TournamentChoosePlayersView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &users;
     std::function<void(SquashModeState)> onStateChange;
     uint8_t playerIndex = 0;
+    uint32_t playerIndexChangeAtMs = 0;
 
 public:
     explicit TournamentChoosePlayersView(
@@ -29,6 +31,7 @@ public:
 
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             playerIndex++;
+            playerIndexChangeAtMs = millis();
             queueRender();
         }
 
@@ -82,18 +85,27 @@ public:
         glyphDisplay.display();
     }
 
-    void renderBack(Adafruit_SSD1306 &backDisplay) override {
-        if (!shouldRenderBack) {
-            return;
-        }
+    void renderScreen(BackDisplay &backDisplay) override {
+        constexpr uint16_t spaceWidth = 2 * backDisplay.ONE_CHAR_WIDTH_2x_24p7b;
+        const String playerName = users.at(playerIndex)->getName();
+        const uint16_t textWidth = playerName.length() * backDisplay.ONE_CHAR_WIDTH_2x_24p7b;
+        const uint16_t segmentWidth = textWidth + spaceWidth;
+        const uint16_t totalWidth = (textWidth + spaceWidth) * 2;
 
-        backDisplay.clearDisplay();
-        backDisplay.setFont(&FreeMonoBold24pt7b);
-        backDisplay.setCursor(0, 24);
-        backDisplay.print("P" + users.at(playerIndex)->getId());
+        const int scrollX =
+            ((millis() - playerIndexChangeAtMs) / 25 % segmentWidth) * -1 + backDisplay.ONE_CHAR_WIDTH_2x_24p7b / 2;
+
+        GFXcanvas1 canvas(totalWidth, 64);
+        canvas.setFont(&FreeMonoBold24pt7b);
+        canvas.setTextSize(2);
+        canvas.setCursor(0, backDisplay.VERTICAL_CURSOR_OFFSET_2x_24p7b);
+        canvas.print(playerName);
+        canvas.setCursor(segmentWidth, backDisplay.VERTICAL_CURSOR_OFFSET_2x_24p7b);
+        canvas.print(playerName);
+
+        backDisplay.clear();
+        backDisplay.screen->drawBitmap(scrollX, 0, canvas.getBuffer(), totalWidth, 64, WHITE);
         backDisplay.display();
-
-        shouldRenderBack = false;
     }
 };
 

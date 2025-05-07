@@ -1,12 +1,13 @@
 #ifndef MATCH_OVER_VIEW_H
 #define MATCH_OVER_VIEW_H
 
-#include "Adafruit_SSD1306.h"
 #include "RemoteInputManager.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/GlyphDisplay.h"
 #include "Match/Tournament.h"
+
+#define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 5000
 
 class MatchOverView final : public View {
     Tournament &tournament;
@@ -15,8 +16,8 @@ class MatchOverView final : public View {
     UserProfile *playerA = nullptr, *playerB = nullptr;
     std::function<void(SquashModeState)> onStateChange;
 
-    uint32_t lastPointScoredAtMs = 0;
-    MatchSide commitResultWinner = MatchSide::none;
+    uint32_t lastBackDisplayPlayerChangeMs = 0;
+    MatchSide lastBackDisplayPlayerSide = MatchSide::a;
 
 public:
     MatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
@@ -28,37 +29,43 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
+        const uint32_t now = millis();
+
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             onStateChange(SquashModeState::MatchChoosePlayers);
+        }
+
+        if (lastBackDisplayPlayerChangeMs + MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS <= now) {
+            lastBackDisplayPlayerChangeMs = millis();
+            lastBackDisplayPlayerSide = lastBackDisplayPlayerSide == MatchSide::a ? MatchSide::b : MatchSide::a;
         }
     }
 
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        if (!shouldRenderGlyphs) {
-            return;
-        }
-
         glyphDisplay.setColonAppearance();
 
         glyphDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        glyphDisplay.setPlayersIndicatorsState(true);
-        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor());
-        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor());
+        // Standard display, cycle between players
+        if (lastBackDisplayPlayerSide == MatchSide::a) {
+            glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), false);
+            glyphDisplay.setPlayerBIndicatorAppearance(Colors::Black, false);
+        } else {
+            glyphDisplay.setPlayerAIndicatorAppearance(Colors::Black, false);
+            glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), false);
+        }
 
         glyphDisplay.display();
     }
 
-    void renderBack(Adafruit_SSD1306 &backDisplay) override {
-        if (!shouldRenderBack) {
-            return;
-        }
+    void renderScreen(BackDisplay &backDisplay) override {
+        backDisplay.clear();
+        backDisplay.setCursorTo2CharCenter();
 
-        backDisplay.clearDisplay();
-        backDisplay.setFont(&FreeMonoBold24pt7b);
-        backDisplay.setCursor(0, 24);
-        backDisplay.print(round->getRealScore(MatchSide::a) + ":" + round->getRealScore(MatchSide::b));
+        backDisplay.setBlinking(round->getWinner() == lastBackDisplayPlayerSide);
+        backDisplay.renderScore(round->getRealScore(lastBackDisplayPlayerSide));
+
         backDisplay.display();
     }
 };

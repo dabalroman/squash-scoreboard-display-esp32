@@ -68,12 +68,15 @@ class SquashMode final : public DeviceMode {
 public:
     SquashMode(
         GlyphDisplay &glyphDisplay,
-        Adafruit_SSD1306 &backDisplay,
+        BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         std::vector<UserProfile *> &users
     )
         : DeviceMode(glyphDisplay, backDisplay, remoteInputManager), users(users) {
         tournament = new Tournament(squashRules);
+
+        glyphDisplay.initForSquashMode();
+        backDisplay.initForSquashMode();
 
         setState(SquashModeState::TournamentChoosePlayers);
     }
@@ -86,7 +89,7 @@ public:
         if (activeView) {
             activeView->handleInput(remoteInputManager);
             activeView->renderGlyphs(glyphDisplay);
-            activeView->renderBack(backDisplay);
+            activeView->renderScreen(backDisplay);
         }
     }
 };

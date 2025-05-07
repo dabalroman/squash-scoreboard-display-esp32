@@ -155,6 +155,8 @@ void RemoteDevelopmentService::init(Adafruit_SSD1306 &display) {
         display.display();
     }
 
+    delay(1000);
+
     setupOTA(display);
     setupTelnet();
     setupNTP();

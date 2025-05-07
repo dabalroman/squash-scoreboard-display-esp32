@@ -1,6 +1,8 @@
 #ifndef VIEW_H
 #define VIEW_H
 
+#include "Display/BackDisplay.h"
+
 class View {
 protected:
     bool shouldRenderGlyphs = true;
@@ -13,7 +15,7 @@ public:
 
     virtual void renderGlyphs(GlyphDisplay &glyphDisplay) = 0;
 
-    virtual void renderBack(Adafruit_SSD1306 &backDisplay) = 0;
+    virtual void renderScreen(BackDisplay &backDisplay) = 0;
 
     void queueRender() {
         shouldRenderGlyphs = true;

@@ -6,6 +6,8 @@
 
 #include "Color.h"
 
+#define GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS 1000
+
 /**
  * LEDs and segment ids (masks)
  *
@@ -198,7 +200,7 @@ public:
     }
 
     void render(const uint32_t &tickMs) const {
-        if (isBlinking && tickMs % 1000 < 500) {
+        if (isBlinking && tickMs % GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS < GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS / 2) {
             return;
         }
 

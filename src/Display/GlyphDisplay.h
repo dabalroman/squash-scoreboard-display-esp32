@@ -23,6 +23,13 @@ public:
         setPlayersIndicatorsState(false);
     }
 
+    void initForSquashMode() {
+        setColonAppearance();
+        setPlayersIndicatorsState(true);
+        setPlayerAIndicatorAppearance(Colors::Black);
+        setPlayerBIndicatorAppearance(Colors::Black);
+    }
+
     void setNumericValue(const uint8_t valueA, const uint8_t valueB) {
         glyphA.setToDigit(valueA / 10);
         glyphB.setToDigit(valueA % 10);
