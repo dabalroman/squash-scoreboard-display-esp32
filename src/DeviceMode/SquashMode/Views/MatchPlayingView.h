@@ -40,42 +40,30 @@ public:
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             round->scorePoint(MatchSide::a);
             lastPointScoredAtMs = now;
-
-            queueRender();
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
             round->scorePoint(MatchSide::b);
             lastPointScoredAtMs = now;
-
-            queueRender();
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
             round->losePoint(MatchSide::a);
             lastPointScoredAtMs = now;
-
-            queueRender();
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             round->losePoint(MatchSide::b);
             lastPointScoredAtMs = now;
-
-            queueRender();
         }
 
         if (lastBackDisplayPlayerChangeMs + MATCH_PLAYING_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS <= now) {
             lastBackDisplayPlayerChangeMs = millis();
             lastBackDisplayPlayerSide = lastBackDisplayPlayerSide == MatchSide::a ? MatchSide::b : MatchSide::a;
-
-            queueRender();
         }
 
         if (lastPointScoredAtMs + MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
             commitResultWinner = round->commit();
-
-            queueRender();
         }
 
         if (commitResultWinner != MatchSide::none) {
@@ -86,7 +74,6 @@ public:
             }
 
             onStateChange(SquashModeState::MatchOver);
-            queueRender();
         }
     }
 
@@ -123,10 +110,6 @@ public:
     }
 
     void renderScreen(BackDisplay &backDisplay) override {
-        if (!shouldRenderBack || round->hasUncommitedPoints()) {
-            return;
-        }
-
         backDisplay.clear();
         backDisplay.setCursorTo2CharCenter();
 
