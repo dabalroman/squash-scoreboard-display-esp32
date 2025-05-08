@@ -2,6 +2,7 @@
 #define VIEW_H
 
 #include "Display/BackDisplay.h"
+#include "RemoteInput/RemoteInputManager.h"
 
 class View {
 protected:

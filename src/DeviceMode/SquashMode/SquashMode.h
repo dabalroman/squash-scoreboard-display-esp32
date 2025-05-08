@@ -1,11 +1,12 @@
-#ifndef SQUASHMODE_H
-#define SQUASHMODE_H
+#ifndef SQUASH_MODE_H
+#define SQUASH_MODE_H
 
 #include "SquashModeState.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Match/Tournament.h"
 #include "Match/Rules/SquashRules.h"
+#include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/MatchChoosePlayersView.h"
 #include "Views/MatchOverView.h"
 #include "Views/MatchPlayingView.h"
@@ -94,4 +95,4 @@ public:
     }
 };
 
-#endif //SQUASHMODE_H
+#endif //SQUASH_MODE_H

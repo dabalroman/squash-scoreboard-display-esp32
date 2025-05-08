@@ -1,13 +1,10 @@
 #ifndef MATCHCHOOSEPLAYERSVIEW_H
 #define MATCHCHOOSEPLAYERSVIEW_H
 
-#include "LoggerHelper.h"
-#include "RemoteInputManager.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/GlyphDisplay.h"
 #include "Match/Tournament.h"
-#include <Fonts/FreeMonoBold24pt7b.h>  // ~40px
 
 class Adafruit_SSD1306;
 class GlyphDisplay;

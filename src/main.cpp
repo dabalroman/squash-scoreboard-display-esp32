@@ -4,16 +4,16 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
-#include <LoggerHelper.h>
 
 #include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
 #include "Display/GlyphDisplay.h"
-#include "../lib/RemoteDevelopmentService/RemoteDevelopmentService.h"
-#include "../lib/RemoteInput/RemoteInputManager.h"
 #include "DeviceMode/DeviceMode.h"
+#include "DeviceMode/ConfigMode/ConfigMode.h"
 #include "DeviceMode/SquashMode/SquashMode.h"
-#include "Match/Tournament.h"
+#include "RemoteInput/RemoteInputManager.h"
+#include "RemoteDevelopmentService/RemoteDevelopmentService.h"
+#include "RemoteDevelopmentService/LoggerHelper.h"
 
 constexpr uint8_t OLED_SSD1106_SCREEN_WIDTH = 128;
 constexpr uint8_t OLED_SSD1106_SCREEN_HEIGHT = 64;
@@ -42,6 +42,7 @@ GlyphDisplay ledDisplay(pixels);
 BackDisplay *backDisplay = nullptr;
 
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
+PreferencesManager preferencesManager;
 
 volatile uint8_t interruptTriggeredGpio = 0;
 void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
@@ -70,7 +71,7 @@ void initHardware() {
     backDisplay = new BackDisplay(&display);
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
-    FastLED.setBrightness(127);
+    FastLED.setBrightness(preferencesManager.settings.brightness);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
@@ -82,16 +83,28 @@ void initHardware() {
 }
 
 void setup() {
+    preferencesManager.read();
     initHardware();
 
     static RemoteDevelopmentService remoteDev;
-    remoteDev.init(display);
+    remoteDev.init(preferencesManager, display);
     gRemoteDevelopmentService = &remoteDev;
 
     printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
+    printLn("Read from config:");
+    printLn("  enableAp: %d", preferencesManager.settings.enableAp);
+    printLn("  enableWifi: %d", preferencesManager.settings.enableWifi);
+    printLn("  brightness: %d", preferencesManager.settings.brightness);
+    printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
+    printLn("  wifiPassword: %s", preferencesManager.settings.wifiPassword);
 
-    deviceState = DeviceModeState::SquashMode;
-    deviceMode = new SquashMode(ledDisplay, *backDisplay, remoteInputManager, users);
+    if (gRemoteDevelopmentService->getIsAPEnabled() || true) {
+        deviceState = DeviceModeState::ApWifiConfigMode;
+        deviceMode = new ConfigMode(ledDisplay, *backDisplay, remoteInputManager, preferencesManager);
+    } else {
+        deviceState = DeviceModeState::SquashMode;
+        deviceMode = new SquashMode(ledDisplay, *backDisplay, remoteInputManager, users);
+    }
 }
 
 void loop() {

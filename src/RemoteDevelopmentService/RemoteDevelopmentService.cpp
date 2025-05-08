@@ -3,34 +3,41 @@
 #include <Update.h>
 #include <Adafruit_SSD1306.h>
 
-#include "../../include/secrets.h"
+#include "../../src/PreferencesManager.h"
 
-void RemoteDevelopmentService::setupOTA(Adafruit_SSD1306 &display) {
+void RemoteDevelopmentService::setupOTA() {
     OTAServer = new WebServer(80);
 
     OTAServer->on("/", HTTP_GET, [this] {
         const String html = "<html><body><form action=\"/connect\" method=\"POST\">"
                 "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
-                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
+                "Password:<br><input type=\"text\" name=\"password\"><br><br>"
                 "<input type=\"submit\" value=\"Connect\">"
                 "</form></body></html>";
         OTAServer->send(200, "text/html", html);
     });
 
-    OTAServer->on("/connect", HTTP_POST, [this, &display] {
+    OTAServer->on("/connect", HTTP_POST, [this] {
         if (OTAServer->hasArg("ssid") && OTAServer->hasArg("password")) {
             const String newSSID = OTAServer->arg("ssid");
             const String newPassword = OTAServer->arg("password");
 
-            preferences.begin("wifi", false);
-            preferences.putString("ssid", newSSID);
-            preferences.putString("password", newPassword);
-            preferences.end();
+            printLn("New data: '%s' '%s'", newSSID.c_str(), newPassword.c_str());
 
-            display.clearDisplay();
-            display.setCursor(0, 0);
-            display.println("Credentials saved! Rebooting...");
-            display.display();
+            strncpy(preferencesManager->settings.wifiSSID, newSSID.c_str(), sizeof(preferencesManager->settings.wifiSSID));
+            preferencesManager->settings.wifiSSID[sizeof(preferencesManager->settings.wifiSSID) - 1] = '\0';
+
+            strncpy(preferencesManager->settings.wifiPassword, newPassword.c_str(), sizeof(preferencesManager->settings.wifiPassword));
+            preferencesManager->settings.wifiPassword[sizeof(preferencesManager->settings.wifiPassword) - 1] = '\0';
+
+            preferencesManager->save();
+
+            printLn("SAVED");
+
+            display->clearDisplay();
+            display->setCursor(0, 0);
+            display->println("Credentials saved! Rebooting...");
+            display->display();
 
             OTAServer->send(200, "text/html", "Credentials saved! Rebooting...");
             delay(1000);
@@ -70,6 +77,8 @@ void RemoteDevelopmentService::setupOTA(Adafruit_SSD1306 &display) {
     );
 
     OTAServer->begin();
+
+    isOTAEnabled = true;
 }
 
 void RemoteDevelopmentService::setupTelnet() {
@@ -81,6 +90,8 @@ void RemoteDevelopmentService::setupTelnet() {
 
     telnetServer->begin();
     telnetServer->setNoDelay(true);
+
+    isTelnetEnabled = true;
 }
 
 void RemoteDevelopmentService::setupNTP() {
@@ -91,6 +102,8 @@ void RemoteDevelopmentService::setupNTP() {
     configTime(3600, 3600, "pool.ntp.org");
     tm timeInfo;
     getLocalTime(&timeInfo);
+
+    isNTPEnabled = true;
 }
 
 void RemoteDevelopmentService::printLn(const char *format, ...) {
@@ -117,49 +130,64 @@ void RemoteDevelopmentService::telnetFlushLogBuffer() {
     }
 }
 
-void RemoteDevelopmentService::init(Adafruit_SSD1306 &display) {
-    preferences.begin("wifi", true);
-    const String savedSSID = preferences.getString("ssid", WIFI_SSID);
-    const String savedPassword = preferences.getString("password", WIFI_PASSWORD);
-    preferences.end();
+void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Adafruit_SSD1306 &screen) {
+    preferencesManager = &_preferencesManager;
+    display = &screen;
+
+    const String savedSSID = preferencesManager->settings.wifiSSID;
+    const String savedPassword = preferencesManager->settings.wifiPassword;
+    printLn("Read: '%s' '%s'", savedSSID.c_str(), savedPassword.c_str());
 
     WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
 
     const unsigned long startAttemptTime = millis();
     constexpr unsigned long timeout = 10000;
 
-    display.clearDisplay();
-    display.println("Connecting to " + savedSSID);
-    display.println("Using " + savedPassword);
-    display.display();
+    display->clearDisplay();
+    display->println("Connecting to " + savedSSID);
+    display->println("Using " + savedPassword);
+    display->display();
 
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {
         delay(500);
     }
 
     if (WiFiClass::status() != WL_CONNECTED) {
-        WiFi.softAP("ESP32_Setup", "12345678");
-
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.println("AP MODE");
-        display.println("SSID: ESP32_Setup");
-        display.println("Password: 12345678");
-        display.println("IP address: " + WiFi.softAPIP().toString());
-        display.display();
+        enableAP();
     } else {
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.println("Connected to " + WiFi.SSID());
-        display.println(String("IP: ") + WiFi.localIP().toString());
-        display.display();
+        display->clearDisplay();
+        display->setCursor(0, 0);
+        display->println("Connected to " + WiFi.SSID());
+        display->println(String("IP: ") + WiFi.localIP().toString());
+        display->display();
+
+        isWifiConnected = true;
     }
 
     delay(1000);
 
-    setupOTA(display);
+    setupOTA();
     setupTelnet();
-    setupNTP();
+    // setupNTP();
+}
+
+void RemoteDevelopmentService::enableAP() {
+    WiFi.softAP("ESP32_Setup", "12345678");
+
+    display->clearDisplay();
+    display->setCursor(0, 0);
+    display->println(F("AP MODE"));
+    display->println(F("SSID: ESP32_Setup"));
+    display->println(F("Password: 12345678"));
+    display->println("IP address: " + WiFi.softAPIP().toString());
+    display->display();
+
+    isAPEnabled = true;
+}
+
+void RemoteDevelopmentService::disableAP() {
+    WiFi.softAPdisconnect();
+    isAPEnabled = false;
 }
 
 void RemoteDevelopmentService::handleTelnet() {

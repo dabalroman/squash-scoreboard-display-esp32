@@ -5,7 +5,8 @@
 
 enum class DeviceModeState: uint8_t {
     Booting = 0,
-    SquashMode = 1,
+    ApWifiConfigMode = 1,
+    SquashMode = 2,
     Clock = 2,
     Development = 3
 };

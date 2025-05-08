@@ -6,7 +6,6 @@
 
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
-#include "Fonts/FreeMonoBold18pt7b.h"
 
 class TournamentChoosePlayersView final : public View {
     Tournament &tournament;

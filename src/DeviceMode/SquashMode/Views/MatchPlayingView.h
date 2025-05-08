@@ -1,7 +1,6 @@
 #ifndef MATCH_PLAYING_VIEW_H
 #define MATCH_PLAYING_VIEW_H
 
-#include "RemoteInputManager.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/GlyphDisplay.h"
