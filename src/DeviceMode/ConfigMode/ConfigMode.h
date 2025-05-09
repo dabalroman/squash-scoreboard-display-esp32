@@ -15,13 +15,15 @@ public:
         GlyphDisplay &glyphDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
         PreferencesManager &preferencesManager
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager), preferencesManager(preferencesManager) {
+        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+          preferencesManager(preferencesManager) {
         glyphDisplay.initForConfigMode();
         backDisplay.initForConfigMode();
 
-        activeView.reset(new ConfigView(preferencesManager));
+        activeView.reset(new ConfigView(preferencesManager, onDeviceModeChange));
     }
 
     void loop() override {

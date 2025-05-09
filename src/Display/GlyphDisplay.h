@@ -129,6 +129,10 @@ public:
         glyphPlayerAIndicator.render(tickMs);
         glyphPlayerBIndicator.render(tickMs);
     }
+
+    static void setBrightness(const uint8_t brightness) {
+        FastLED.setBrightness(brightness);
+    }
 };
 
 

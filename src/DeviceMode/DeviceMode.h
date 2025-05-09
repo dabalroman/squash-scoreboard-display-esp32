@@ -10,13 +10,15 @@ protected:
     GlyphDisplay &glyphDisplay;
     BackDisplay &backDisplay;
     RemoteInputManager &remoteInputManager;
+    std::function<void(DeviceModeState)> onDeviceModeChange;
 
 public:
     DeviceMode(
         GlyphDisplay &glyphDisplay,
         BackDisplay &backDisplay,
-        RemoteInputManager &remoteInputManager
-    ) : glyphDisplay(glyphDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager) {
+        RemoteInputManager &remoteInputManager,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange
+    ) : glyphDisplay(glyphDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager), onDeviceModeChange(onDeviceModeChange) {
     }
 
     virtual ~DeviceMode() = default;

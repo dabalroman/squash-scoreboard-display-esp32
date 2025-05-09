@@ -5,13 +5,14 @@
 #include <WebServer.h>
 #include <Adafruit_SSD1306.h>
 #include "../PreferencesManager.h"
+#include "Display/BackDisplay.h"
 
 class RemoteDevelopmentService {
     WebServer *OTAServer = nullptr;
     WiFiServer *telnetServer = nullptr;
     WiFiClient telnetClient;
     PreferencesManager *preferencesManager = nullptr;
-    Adafruit_SSD1306 *display = nullptr;
+    BackDisplay *backDisplay = nullptr;
 
     bool isAPEnabled = false;
     bool isWifiConnected = false;
@@ -35,7 +36,7 @@ public:
 
     void disableAP();
 
-    void init(PreferencesManager &_preferencesManager, Adafruit_SSD1306 &screen);
+    void init(PreferencesManager &_preferencesManager, BackDisplay &_backDisplay);
 
     void loop();
 

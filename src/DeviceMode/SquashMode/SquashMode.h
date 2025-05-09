@@ -33,6 +33,7 @@ class SquashMode final : public DeviceMode {
                     new TournamentChoosePlayersView(
                         *tournament,
                         users,
+                        onDeviceModeChange,
                         [this](const SquashModeState newState) { setState(newState); }
                     )
                 );
@@ -71,9 +72,10 @@ public:
         GlyphDisplay &glyphDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager), users(users) {
+        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange), users(users) {
         tournament = new Tournament(squashRules);
 
         glyphDisplay.initForSquashMode();

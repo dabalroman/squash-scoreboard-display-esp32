@@ -10,6 +10,7 @@
 class TournamentChoosePlayersView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &users;
+    std::function<void(DeviceModeState)> onDeviceModeChange;
     std::function<void(SquashModeState)> onStateChange;
     uint8_t playerIndex = 0;
     uint32_t playerIndexChangeAtMs = 0;
@@ -18,9 +19,10 @@ public:
     explicit TournamentChoosePlayersView(
         Tournament &tournament,
         std::vector<UserProfile *> &players,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::function<void(SquashModeState)> onStateChange
     )
-        : tournament(tournament), users(players), onStateChange(std::move(onStateChange)) {
+        : tournament(tournament), users(players), onDeviceModeChange(onDeviceModeChange), onStateChange(std::move(onStateChange)) {
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -49,7 +51,7 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            // TODO: exit squash mode
+            onDeviceModeChange(DeviceModeState::ConfigMode);
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
@@ -90,7 +92,7 @@ public:
         const String playerName = users.at(playerIndex)->getName();
 
         backDisplay.clear();
-        backDisplay.renderScrollingText(playerName, playerIndexChangeAtMs);
+        backDisplay.renderBigScrollingText(playerName, playerIndexChangeAtMs);
         backDisplay.display();
     }
 };

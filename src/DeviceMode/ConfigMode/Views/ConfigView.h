@@ -9,16 +9,19 @@ enum Settings {
     brightness = 0,
     enableAP = 1,
     enableWifi = 2,
-    goBack = 3,
+    reboot = 3,
+    goBack = 4,
 };
 
 class ConfigView final : public View {
     PreferencesManager &preferencesManager;
+    std::function<void(DeviceModeState)> onDeviceModeChange;
 
     const char *options[Settings::goBack + 1] = {
         "Brightness",
         "Fallbck AP",
         "WiFi",
+        "Reboot",
         "Return",
     };
 
@@ -28,7 +31,33 @@ class ConfigView final : public View {
     const uint8_t amountOfOptions = Settings::goBack + 1;
 
 public:
-    explicit ConfigView(PreferencesManager &preferencesManager) : preferencesManager(preferencesManager) {
+    explicit ConfigView(
+        PreferencesManager &preferencesManager,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange
+    )
+        : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange) {
+    }
+
+    static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
+        if (value < min) {
+            return min;
+        }
+
+        if (value > max) {
+            return max;
+        }
+
+        return value;
+    }
+
+    void quitConfig(const bool shouldReboot = false) const {
+        preferencesManager.save();
+
+        if (shouldReboot) {
+            ESP.restart();
+        }
+
+        onDeviceModeChange(DeviceModeState::SquashMode);
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -63,6 +92,50 @@ public:
         if (optionsListOffset > amountOfOptions - amountOfOptionsOnScreen) {
             optionsListOffset = amountOfOptions - amountOfOptionsOnScreen;
         }
+
+        if (remoteInputManager.buttonC.takeActionIfPossible()) {
+            switch (selectedOptionId) {
+                case Settings::brightness:
+                    preferencesManager.settings.brightness =
+                            (clamp(preferencesManager.settings.brightness / 32, 1, 8) - 1) * 32 + 31;
+                    break;
+                case Settings::enableWifi:
+                    preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
+                    break;
+                case Settings::enableAP:
+                    preferencesManager.settings.enableAp = !preferencesManager.settings.enableAp;
+                    break;
+                default:
+                    break;
+            }
+
+            queueRender();
+        }
+
+        if (remoteInputManager.buttonD.takeActionIfPossible()) {
+            switch (selectedOptionId) {
+                case Settings::brightness:
+                    preferencesManager.settings.brightness =
+                            clamp(preferencesManager.settings.brightness / 32 + 1, 0, 7) * 32 + 31;
+                    break;
+                case Settings::enableWifi:
+                    preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
+                    break;
+                case Settings::enableAP:
+                    preferencesManager.settings.enableAp = !preferencesManager.settings.enableAp;
+                    break;
+                case Settings::reboot:
+                    quitConfig(true);
+                    break;
+                case Settings::goBack:
+                    quitConfig(false);
+                    break;
+                default:
+                    break;
+            }
+
+            queueRender();
+        }
     }
 
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
@@ -75,8 +148,7 @@ public:
 
         switch (selectedOptionId) {
             case Settings::brightness:
-                value = preferencesManager.settings.brightness;
-                color = Color(value, value, value);
+                color = Colors::White;
                 break;
             case Settings::enableWifi:
                 value = preferencesManager.settings.enableWifi;
@@ -86,12 +158,16 @@ public:
                 value = preferencesManager.settings.enableAp;
                 color = value ? Colors::Green : Colors::Red;
                 break;
+            case Settings::reboot:
+                color = Colors::Red;
+                break;
             default:
             case Settings::goBack:
                 color = Colors::Black;
                 break;
         }
 
+        glyphDisplay.setBrightness(preferencesManager.settings.brightness);
         glyphDisplay.setPlayerAIndicatorAppearance(color);
         glyphDisplay.setPlayerBIndicatorAppearance(color);
         glyphDisplay.display();
@@ -106,22 +182,19 @@ public:
 
         backDisplay.clear();
 
-        // backDisplay.setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_18pt7b);
-        // backDisplay.screen->print("Settings");
-
         // Indicator
         backDisplay.setCursor(
-            0, BackDisplay::VERTICAL_CURSOR_OFFSET_12pt7b * (1 + selectedOptionId - optionsListOffset));
+            0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * (1 + selectedOptionId - optionsListOffset));
         backDisplay.screen->print(">");
 
         // Options
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_12pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_12pt7b);
+        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
         backDisplay.screen->print(options[optionsListOffset]);
 
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_12pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_12pt7b * 2);
+        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 2);
         backDisplay.screen->print(options[optionsListOffset + 1]);
 
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_12pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_12pt7b * 3);
+        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 3);
         backDisplay.screen->print(options[optionsListOffset + 2]);
 
         backDisplay.display();

@@ -82,12 +82,39 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D3), onRemoteReceiverInterrupt_d3, RISING);
 }
 
+void changeDeviceMode(const DeviceModeState deviceModeState) {
+    deviceState = deviceModeState;
+
+    switch (deviceModeState) {
+        case DeviceModeState::ConfigMode:
+            deviceMode = new ConfigMode(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                preferencesManager
+            );
+            break;
+        case DeviceModeState::SquashMode:
+            deviceMode = new SquashMode(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                users
+            );
+            break;
+        default:
+            break;
+    }
+}
+
 void setup() {
     preferencesManager.read();
     initHardware();
 
     static RemoteDevelopmentService remoteDev;
-    remoteDev.init(preferencesManager, display);
+    remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
     printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
@@ -98,13 +125,7 @@ void setup() {
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
     printLn("  wifiPassword: %s", preferencesManager.settings.wifiPassword);
 
-    if (gRemoteDevelopmentService->getIsAPEnabled() || true) {
-        deviceState = DeviceModeState::ApWifiConfigMode;
-        deviceMode = new ConfigMode(ledDisplay, *backDisplay, remoteInputManager, preferencesManager);
-    } else {
-        deviceState = DeviceModeState::SquashMode;
-        deviceMode = new SquashMode(ledDisplay, *backDisplay, remoteInputManager, users);
-    }
+    changeDeviceMode(DeviceModeState::SquashMode);
 }
 
 void loop() {

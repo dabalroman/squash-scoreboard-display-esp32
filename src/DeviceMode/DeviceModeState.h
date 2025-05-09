@@ -5,10 +5,10 @@
 
 enum class DeviceModeState: uint8_t {
     Booting = 0,
-    ApWifiConfigMode = 1,
+    ConfigMode = 1,
     SquashMode = 2,
-    Clock = 2,
-    Development = 3
+    // Clock = 2,
+    // Development = 3
 };
 
 #endif //DEVICEMODE_H

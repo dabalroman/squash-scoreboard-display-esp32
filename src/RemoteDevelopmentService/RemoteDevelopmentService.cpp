@@ -4,6 +4,7 @@
 #include <Adafruit_SSD1306.h>
 
 #include "../../src/PreferencesManager.h"
+#include "Display/BackDisplay.h"
 
 void RemoteDevelopmentService::setupOTA() {
     OTAServer = new WebServer(80);
@@ -24,20 +25,22 @@ void RemoteDevelopmentService::setupOTA() {
 
             printLn("New data: '%s' '%s'", newSSID.c_str(), newPassword.c_str());
 
-            strncpy(preferencesManager->settings.wifiSSID, newSSID.c_str(), sizeof(preferencesManager->settings.wifiSSID));
+            strncpy(preferencesManager->settings.wifiSSID, newSSID.c_str(),
+                    sizeof(preferencesManager->settings.wifiSSID));
             preferencesManager->settings.wifiSSID[sizeof(preferencesManager->settings.wifiSSID) - 1] = '\0';
 
-            strncpy(preferencesManager->settings.wifiPassword, newPassword.c_str(), sizeof(preferencesManager->settings.wifiPassword));
+            strncpy(preferencesManager->settings.wifiPassword, newPassword.c_str(),
+                    sizeof(preferencesManager->settings.wifiPassword));
             preferencesManager->settings.wifiPassword[sizeof(preferencesManager->settings.wifiPassword) - 1] = '\0';
 
             preferencesManager->save();
 
             printLn("SAVED");
 
-            display->clearDisplay();
-            display->setCursor(0, 0);
-            display->println("Credentials saved! Rebooting...");
-            display->display();
+            backDisplay->clear();
+            backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+            backDisplay->print("Credentials saved! Rebooting...");
+            backDisplay->display();
 
             OTAServer->send(200, "text/html", "Credentials saved! Rebooting...");
             delay(1000);
@@ -130,23 +133,28 @@ void RemoteDevelopmentService::telnetFlushLogBuffer() {
     }
 }
 
-void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Adafruit_SSD1306 &screen) {
+void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, BackDisplay &_backDisplay) {
     preferencesManager = &_preferencesManager;
-    display = &screen;
+    backDisplay = &_backDisplay;
 
     const String savedSSID = preferencesManager->settings.wifiSSID;
     const String savedPassword = preferencesManager->settings.wifiPassword;
     printLn("Read: '%s' '%s'", savedSSID.c_str(), savedPassword.c_str());
+
+    // if (!preferencesManager->settings.enableWifi) {
+    //     return;
+    // }
 
     WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
 
     const unsigned long startAttemptTime = millis();
     constexpr unsigned long timeout = 10000;
 
-    display->clearDisplay();
-    display->println("Connecting to " + savedSSID);
-    display->println("Using " + savedPassword);
-    display->display();
+    backDisplay->clear();
+    backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+    backDisplay->print("Connecting to " + savedSSID);
+    backDisplay->print("Using " + savedPassword);
+    backDisplay->display();
 
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {
         delay(500);
@@ -155,11 +163,11 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Ada
     if (WiFiClass::status() != WL_CONNECTED) {
         enableAP();
     } else {
-        display->clearDisplay();
-        display->setCursor(0, 0);
-        display->println("Connected to " + WiFi.SSID());
-        display->println(String("IP: ") + WiFi.localIP().toString());
-        display->display();
+        backDisplay->clear();
+        backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+        backDisplay->print(WiFi.SSID());
+        backDisplay->print(WiFi.localIP().toString());
+        backDisplay->display();
 
         isWifiConnected = true;
     }
@@ -172,15 +180,18 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Ada
 }
 
 void RemoteDevelopmentService::enableAP() {
+    if (!preferencesManager->settings.enableAp) {
+        return;
+    }
+
     WiFi.softAP("ESP32_Setup", "12345678");
 
-    display->clearDisplay();
-    display->setCursor(0, 0);
-    display->println(F("AP MODE"));
-    display->println(F("SSID: ESP32_Setup"));
-    display->println(F("Password: 12345678"));
-    display->println("IP address: " + WiFi.softAPIP().toString());
-    display->display();
+    backDisplay->clear();
+    backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+    backDisplay->print(F("ESP32_Setup"));
+    backDisplay->print(F("Pass: 12345678"));
+    backDisplay->print(WiFi.softAPIP().toString());
+    backDisplay->display();
 
     isAPEnabled = true;
 }

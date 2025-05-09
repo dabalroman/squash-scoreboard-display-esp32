@@ -15,18 +15,19 @@ class BackDisplay {
 
 public:
     constexpr static uint8_t ONE_CHAR_WIDTH_2x_24pt7b = 52;
-    constexpr static uint8_t ONE_CHAR_WIDTH_12pt7b = 13;
+    constexpr static uint8_t ONE_CHAR_WIDTH_9pt7b = 13;
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_24pt7b = 59;
-    constexpr static uint8_t VERTICAL_CURSOR_OFFSET_12pt7b = 20;
+    constexpr static uint8_t VERTICAL_CURSOR_OFFSET_9pt7b = 20;
 
     Adafruit_SSD1306 *screen;
 
     explicit BackDisplay(Adafruit_SSD1306 *backDisplay) : screen(backDisplay) {
         screen->setRotation(2);
         screen->clearDisplay();
+        screen->setFont(&FreeMono9pt7b);
         screen->setTextSize(1);
         screen->setTextColor(SSD1306_WHITE);
-        screen->setCursor(0, 0);
+        screen->setCursor(0, VERTICAL_CURSOR_OFFSET_9pt7b);
         screen->println("Initializing...");
         screen->display();
     }
@@ -56,6 +57,10 @@ public:
         screen->print(text);
     }
 
+    void print(const String &text) const {
+        screen->print(text);
+    }
+
     void renderScore(const uint8_t score) const {
         printCentered(String(score));
     }
@@ -63,10 +68,10 @@ public:
     void renderScore(const uint8_t scoreA, const uint8_t scoreB) const {
         char buf[5];
         sprintf(buf, "%02u:%02u", scoreA, scoreB);
-        renderScrollingText(buf);
+        renderBigScrollingText(buf);
     }
 
-    void renderScrollingText(const String &text, const uint32_t scrollOffsetMs = 0) const {
+    void renderBigScrollingText(const String &text, const uint32_t scrollOffsetMs = 0) const {
         const uint16_t textWidth = text.length() * ONE_CHAR_WIDTH_2x_24pt7b;
         const uint16_t segmentWidth = textWidth + SCROLL_SEPARATOR_WIDTH_2x_24pt7b;
         const uint16_t totalWidth = (textWidth + SCROLL_SEPARATOR_WIDTH_2x_24pt7b) * 2;
