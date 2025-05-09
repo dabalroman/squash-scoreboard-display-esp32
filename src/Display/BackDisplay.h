@@ -61,6 +61,10 @@ public:
         screen->print(text);
     }
 
+    void println(const String &text) const {
+        screen->println(text);
+    }
+
     void renderScore(const uint8_t score) const {
         printCentered(String(score));
     }

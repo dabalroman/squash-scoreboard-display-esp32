@@ -3,7 +3,6 @@
 
 #include <deque>
 #include <WebServer.h>
-#include <Adafruit_SSD1306.h>
 #include "../PreferencesManager.h"
 #include "Display/BackDisplay.h"
 
@@ -14,11 +13,11 @@ class RemoteDevelopmentService {
     PreferencesManager *preferencesManager = nullptr;
     BackDisplay *backDisplay = nullptr;
 
-    bool isAPEnabled = false;
-    bool isWifiConnected = false;
-    bool isTelnetEnabled = false;
-    bool isOTAEnabled = false;
-    bool isNTPEnabled = false;
+    bool isAPActive = false;
+    bool isWifiActive = false;
+    bool isTelnetActive = false;
+    bool isOTAActive = false;
+    bool isNTPActive = false;
 
     std::deque<String> logBuffer;
     const size_t MAX_LOGS = 20;
@@ -44,12 +43,8 @@ public:
 
     void telnetFlushLogBuffer();
 
-    bool getIsAPEnabled() const {
-        return isAPEnabled;
-    }
-
-    bool getIsWifiConnected() const {
-        return isWifiConnected;
+    bool isAnyNetworkingActive() const {
+        return isAPActive || isWifiActive;
     }
 };
 

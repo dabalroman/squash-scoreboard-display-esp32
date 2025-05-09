@@ -1,18 +1,21 @@
 #include "RemoteDevelopmentService.h"
 
 #include <Update.h>
-#include <Adafruit_SSD1306.h>
 
 #include "../../src/PreferencesManager.h"
 #include "Display/BackDisplay.h"
 
 void RemoteDevelopmentService::setupOTA() {
+    if (!isAnyNetworkingActive()) {
+        return;
+    }
+
     OTAServer = new WebServer(80);
 
     OTAServer->on("/", HTTP_GET, [this] {
-        const String html = "<html><body><form action=\"/connect\" method=\"POST\">"
+        const String html = "<html><body><h1>Squash Scoreboard Display</h1><form action=\"/connect\" method=\"POST\">"
                 "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
-                "Password:<br><input type=\"text\" name=\"password\"><br><br>"
+                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
                 "<input type=\"submit\" value=\"Connect\">"
                 "</form></body></html>";
         OTAServer->send(200, "text/html", html);
@@ -81,11 +84,11 @@ void RemoteDevelopmentService::setupOTA() {
 
     OTAServer->begin();
 
-    isOTAEnabled = true;
+    isOTAActive = true;
 }
 
 void RemoteDevelopmentService::setupTelnet() {
-    if (WiFiClass::status() != WL_CONNECTED) {
+    if (!isWifiActive) {
         return;
     }
 
@@ -94,11 +97,11 @@ void RemoteDevelopmentService::setupTelnet() {
     telnetServer->begin();
     telnetServer->setNoDelay(true);
 
-    isTelnetEnabled = true;
+    isTelnetActive = true;
 }
 
 void RemoteDevelopmentService::setupNTP() {
-    if (WiFiClass::status() != WL_CONNECTED) {
+    if (!isWifiActive) {
         return;
     }
 
@@ -106,7 +109,7 @@ void RemoteDevelopmentService::setupNTP() {
     tm timeInfo;
     getLocalTime(&timeInfo);
 
-    isNTPEnabled = true;
+    isNTPActive = true;
 }
 
 void RemoteDevelopmentService::printLn(const char *format, ...) {
@@ -116,7 +119,7 @@ void RemoteDevelopmentService::printLn(const char *format, ...) {
     vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
 
-    if (WiFiClass::status() == WL_CONNECTED && telnetClient && telnetClient.connected()) {
+    if (isWifiActive && telnetClient && telnetClient.connected()) {
         telnetClient.println(buf);
     } else {
         if (logBuffer.size() >= MAX_LOGS) {
@@ -139,11 +142,10 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 
     const String savedSSID = preferencesManager->settings.wifiSSID;
     const String savedPassword = preferencesManager->settings.wifiPassword;
-    printLn("Read: '%s' '%s'", savedSSID.c_str(), savedPassword.c_str());
 
-    // if (!preferencesManager->settings.enableWifi) {
-    //     return;
-    // }
+    if (!preferencesManager->settings.enableWifi) {
+        return;
+    }
 
     WiFi.begin(savedSSID.c_str(), savedPassword.c_str());
 
@@ -169,14 +171,11 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
         backDisplay->print(WiFi.localIP().toString());
         backDisplay->display();
 
-        isWifiConnected = true;
+        isWifiActive = true;
     }
-
-    delay(1000);
 
     setupOTA();
     setupTelnet();
-    // setupNTP();
 }
 
 void RemoteDevelopmentService::enableAP() {
@@ -184,25 +183,27 @@ void RemoteDevelopmentService::enableAP() {
         return;
     }
 
-    WiFi.softAP("ESP32_Setup", "12345678");
+    WiFi.softAP("SquashCounter", "12345678");
 
     backDisplay->clear();
     backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
-    backDisplay->print(F("ESP32_Setup"));
-    backDisplay->print(F("Pass: 12345678"));
-    backDisplay->print(WiFi.softAPIP().toString());
+    backDisplay->println(F("SquashCount"));
+    backDisplay->println(F("12345678"));
+    backDisplay->println(WiFi.softAPIP().toString());
     backDisplay->display();
 
-    isAPEnabled = true;
+    delay(5000);
+
+    isAPActive = true;
 }
 
 void RemoteDevelopmentService::disableAP() {
     WiFi.softAPdisconnect();
-    isAPEnabled = false;
+    isAPActive = false;
 }
 
 void RemoteDevelopmentService::handleTelnet() {
-    if (WiFiClass::status() != WL_CONNECTED) {
+    if (!isWifiActive) {
         return;
     }
 
@@ -218,6 +219,10 @@ void RemoteDevelopmentService::handleTelnet() {
 }
 
 void RemoteDevelopmentService::loop() {
+    if (!isAnyNetworkingActive()) {
+        return;
+    }
+
     this->OTAServer->handleClient();
     handleTelnet();
 }

@@ -7,8 +7,8 @@
 
 enum Settings {
     brightness = 0,
-    enableAP = 1,
-    enableWifi = 2,
+    enableWifi = 1,
+    enableAP = 2,
     reboot = 3,
     goBack = 4,
 };
@@ -19,8 +19,8 @@ class ConfigView final : public View {
 
     const char *options[Settings::goBack + 1] = {
         "Brightness",
-        "Fallbck AP",
         "WiFi",
+        "Fallbck AP",
         "Reboot",
         "Return",
     };
