@@ -111,6 +111,10 @@ public:
             }
         }
 
+        if (p1->id > p2->id) {
+            std::swap(p1, p2);
+        }
+
         // return their IDs
         return MatchPlayersPair{p1->id, p2->id};
     }
