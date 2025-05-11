@@ -59,6 +59,15 @@ public:
                 return;
             }
 
+            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({1, 3});
+            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({3, 2});
+            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({0, 2});
+
+            for (uint8_t i = 0; i < 20; i++) {
+                MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
+                tournament.matchOrderKeeper->confirmMatchBetweenPlayers(pair);
+            }
+
             remoteInputManager.preventTriggerForMs();
             onStateChange(SquashModeState::MatchChoosePlayers);
 

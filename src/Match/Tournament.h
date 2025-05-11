@@ -3,16 +3,19 @@
 #include <vector>
 
 #include "Match.h"
+#include "MatchOrderKeeper.h"
 
 class Tournament {
     std::vector<Match> matches;
+    std::vector<UserProfile*> players;
     Match *activeMatch = nullptr;
     size_t activeMatchId = 0;
     Rules &rules;
-    std::vector<UserProfile*> players;
 
 public:
-    explicit Tournament(Rules &rules) : rules(rules) {
+    MatchOrderKeeper *matchOrderKeeper;
+
+    explicit Tournament(Rules &rules) : rules(rules), matchOrderKeeper(new MatchOrderKeeper()) {
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
@@ -24,10 +27,12 @@ public:
 
     void addPlayer(UserProfile &userProfile) {
         players.push_back(&userProfile);
+        matchOrderKeeper->addPlayers(players);
     }
 
     void removePlayer(UserProfile &userProfile) {
         players.erase(std::remove(players.begin(), players.end(), &userProfile), players.end());
+        matchOrderKeeper->addPlayers(players);
     }
 
     bool isPlayerIn(const UserProfile &userProfile) {
