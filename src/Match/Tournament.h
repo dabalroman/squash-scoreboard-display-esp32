@@ -7,7 +7,7 @@
 
 class Tournament {
     std::vector<Match> matches;
-    std::vector<UserProfile*> players;
+    std::vector<UserProfile *> players;
     Match *activeMatch = nullptr;
     size_t activeMatchId = 0;
     Rules &rules;
@@ -26,11 +26,19 @@ public:
     }
 
     void addPlayer(UserProfile &userProfile) {
+        if (isPlayerIn(userProfile)) {
+            return;
+        }
+
         players.push_back(&userProfile);
         matchOrderKeeper->addPlayers(players);
     }
 
     void removePlayer(UserProfile &userProfile) {
+        if (!isPlayerIn(userProfile)) {
+            return;
+        }
+
         players.erase(std::remove(players.begin(), players.end(), &userProfile), players.end());
         matchOrderKeeper->addPlayers(players);
     }
@@ -39,7 +47,7 @@ public:
         return std::find(players.begin(), players.end(), &userProfile) != players.end();
     }
 
-    std::vector<UserProfile*> &getPlayers() {
+    std::vector<UserProfile *> &getPlayers() {
         return players;
     }
 

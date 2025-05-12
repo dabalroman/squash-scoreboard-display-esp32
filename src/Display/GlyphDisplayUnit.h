@@ -70,8 +70,8 @@ enum class GlyphId: uint8_t {
     C = 2,
     D = 3,
     Colon = 4,
-    PlayerAIndicator = 5,
-    PlayerBIndicator = 6
+    IndicatorPlayerA = 5,
+    IndicatorPlayerB = 6
 };
 
 struct PixelsToSegmentMap {
@@ -164,9 +164,9 @@ public:
                 return &glyphD;
             case GlyphId::Colon:
                 return &glyphColon;
-            case GlyphId::PlayerAIndicator:
+            case GlyphId::IndicatorPlayerA:
                 return &glyphPlayerAIndicator;
-            case GlyphId::PlayerBIndicator:
+            case GlyphId::IndicatorPlayerB:
                 return &glyphPlayerBIndicator;
         }
     }
@@ -206,8 +206,8 @@ public:
 
         const uint8_t amountOfSegments =
                 glyphId == GlyphId::Colon
-                || glyphId == GlyphId::PlayerAIndicator
-                || glyphId == GlyphId::PlayerBIndicator
+                || glyphId == GlyphId::IndicatorPlayerA
+                || glyphId == GlyphId::IndicatorPlayerB
                     ? 1
                     : 7;
 

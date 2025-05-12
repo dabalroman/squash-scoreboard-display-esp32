@@ -168,8 +168,8 @@ public:
         }
 
         glyphDisplay.setBrightness(preferencesManager.settings.brightness);
-        glyphDisplay.setPlayerAIndicatorAppearance(color);
-        glyphDisplay.setPlayerBIndicatorAppearance(color);
+        glyphDisplay.setIndicatorAppearancePlayerA(color);
+        glyphDisplay.setIndicatorAppearancePlayerB(color);
         glyphDisplay.display();
 
         shouldRenderGlyphs = false;
@@ -183,18 +183,18 @@ public:
         backDisplay.clear();
 
         // Indicator
-        backDisplay.setCursor(
+        backDisplay.setCursorFromTopLeft(
             0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * (1 + selectedOptionId - optionsListOffset));
         backDisplay.screen->print(">");
 
         // Options
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
         backDisplay.screen->print(options[optionsListOffset]);
 
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 2);
+        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 2);
         backDisplay.screen->print(options[optionsListOffset + 1]);
 
-        backDisplay.setCursor(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 3);
+        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 3);
         backDisplay.screen->print(options[optionsListOffset + 2]);
 
         backDisplay.display();

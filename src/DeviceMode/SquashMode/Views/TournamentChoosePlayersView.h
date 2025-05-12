@@ -59,14 +59,10 @@ public:
                 return;
             }
 
-            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({1, 3});
-            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({3, 2});
-            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({0, 2});
-
-            for (uint8_t i = 0; i < 20; i++) {
-                MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
-                tournament.matchOrderKeeper->confirmMatchBetweenPlayers(pair);
-            }
+            // for (uint8_t i = 0; i < 20; i++) {
+            //     const MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
+            //     tournament.matchOrderKeeper->confirmMatchBetweenPlayers(pair);
+            // }
 
             remoteInputManager.preventTriggerForMs();
             onStateChange(SquashModeState::MatchChoosePlayers);
@@ -91,8 +87,8 @@ public:
         glyphDisplay.setGlyphsColor(playerColor, playerColor, Colors::Black, playerStateColor);
 
         glyphDisplay.setPlayersIndicatorsState(true);
-        glyphDisplay.setPlayerAIndicatorAppearance(playerColor);
-        glyphDisplay.setPlayerBIndicatorAppearance(playerStateColor);
+        glyphDisplay.setIndicatorAppearancePlayerA(playerColor);
+        glyphDisplay.setIndicatorAppearancePlayerB(playerStateColor);
 
         glyphDisplay.display();
     }

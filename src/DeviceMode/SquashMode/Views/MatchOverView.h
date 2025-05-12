@@ -37,15 +37,15 @@ public:
         glyphDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), round->getWinner() == MatchSide::a);
-        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), round->getWinner() == MatchSide::b);
+        glyphDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
+        glyphDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
 
         glyphDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {
         backDisplay.clear();
-        backDisplay.renderScore(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
+        backDisplay.renderScoreWidget(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         backDisplay.display();
     }
 };

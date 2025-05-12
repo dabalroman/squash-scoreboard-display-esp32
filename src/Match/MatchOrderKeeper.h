@@ -47,8 +47,6 @@ class MatchOrderKeeper {
         for (const auto &player: players) {
             player.second->playedWith.clear();
         }
-
-        printLn("---- LOOP ----");
     }
 
 public:
@@ -119,13 +117,7 @@ public:
         return MatchPlayersPair{p1->id, p2->id};
     }
 
-    static char playerIdToChar(const uint8_t id) {
-        return static_cast<char>('A' + id);
-    }
-
     void confirmMatchBetweenPlayers(const MatchPlayersPair pair) {
-        printLn("%c vs %c:", playerIdToChar(pair.playerA), playerIdToChar(pair.playerB));
-
         if (players.at(pair.playerA) == nullptr || players.at(pair.playerB) == nullptr) {
             return;
         }
@@ -139,15 +131,6 @@ public:
 
         players.at(pair.playerA)->waitingFor = 0;
         players.at(pair.playerB)->waitingFor = 0;
-
-        for (auto &player: players) {
-            String playedWith;
-            for (const auto &playedWithPlayer: player.second->playedWith) {
-                playedWith.concat(playerIdToChar(playedWithPlayer));
-            }
-
-            printLn("   %c: played with %s, waiting for %d", playerIdToChar(player.first), playedWith.c_str(), player.second->waitingFor);
-        }
 
         cleanupPlayedWithIfEveryoneAlreadyPlayedWithEachOther();
     }

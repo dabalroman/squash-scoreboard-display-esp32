@@ -41,7 +41,7 @@ void RemoteDevelopmentService::setupOTA() {
             printLn("SAVED");
 
             backDisplay->clear();
-            backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+            backDisplay->setCursorToLine();
             backDisplay->print("Credentials saved! Rebooting...");
             backDisplay->display();
 
@@ -153,7 +153,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
     constexpr unsigned long timeout = 10000;
 
     backDisplay->clear();
-    backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+    backDisplay->setCursorToLine();
     backDisplay->print("Connecting to " + savedSSID);
     backDisplay->print("Using " + savedPassword);
     backDisplay->display();
@@ -166,7 +166,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
         enableAP();
     } else {
         backDisplay->clear();
-        backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+        backDisplay->setCursorToLine();
         backDisplay->print(WiFi.SSID());
         backDisplay->print(WiFi.localIP().toString());
         backDisplay->display();
@@ -186,7 +186,7 @@ void RemoteDevelopmentService::enableAP() {
     WiFi.softAP("SquashCounter", "12345678");
 
     backDisplay->clear();
-    backDisplay->setCursor(0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
+    backDisplay->setCursorToLine();
     backDisplay->println(F("SquashCount"));
     backDisplay->println(F("12345678"));
     backDisplay->println(WiFi.softAPIP().toString());

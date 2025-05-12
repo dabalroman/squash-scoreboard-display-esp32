@@ -90,11 +90,11 @@ public:
             Glyph::P,
             GlyphDisplay::digitToGlyph(playerB->getId())
         );
-        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor(), true, true);
+        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
         glyphDisplay.setPlayersIndicatorsState(true);
-        glyphDisplay.setPlayerAIndicatorAppearance(playerA->getColor(), true);
-        glyphDisplay.setPlayerBIndicatorAppearance(playerB->getColor(), true);
+        glyphDisplay.setIndicatorAppearancePlayerA(playerA->getColor());
+        glyphDisplay.setIndicatorAppearancePlayerB(playerB->getColor());
 
         glyphDisplay.display();
     }
@@ -105,7 +105,7 @@ public:
         }
 
         backDisplay.clear();
-        backDisplay.printCentered("VS");
+        backDisplay.renderPlayerWidget(playerA->getName(), playerB->getName());
         backDisplay.display();
 
         shouldRenderBack = false;
