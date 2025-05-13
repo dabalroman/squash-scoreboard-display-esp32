@@ -19,14 +19,6 @@ class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
 
-    // const char *options[Settings::goBack + 1] = {
-    //     "Brightness",
-    //     "WiFi",
-    //     "Fallbck AP",
-    //     "Reboot",
-    //     "Return",
-    // };
-
     const std::vector<String> optionsList = {
         "Brightness",
         "WiFi",
@@ -34,11 +26,6 @@ class ConfigView final : public View {
         "Reboot",
         "Return",
     };
-
-    uint8_t selectedOptionId = 0;
-    uint8_t optionsListOffset = 0;
-    const uint8_t amountOfOptionsOnScreen = 3;
-    const uint8_t amountOfOptions = Settings::goBack + 1;
 
     Scrollable scrollable;
     ScrollableWidget scrollableWidget;
@@ -85,7 +72,7 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            switch (selectedOptionId) {
+            switch (scrollable.getSelectedOption()) {
                 case Settings::brightness:
                     preferencesManager.settings.brightness =
                             (clamp(preferencesManager.settings.brightness / 32, 1, 8) - 1) * 32 + 31;
@@ -104,7 +91,7 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            switch (selectedOptionId) {
+            switch (scrollable.getSelectedOption()) {
                 case Settings::brightness:
                     preferencesManager.settings.brightness =
                             clamp(preferencesManager.settings.brightness / 32 + 1, 0, 7) * 32 + 31;
@@ -137,7 +124,7 @@ public:
         uint8_t value = 0;
         Color color;
 
-        switch (selectedOptionId) {
+        switch (scrollable.getSelectedOption()) {
             case Settings::brightness:
                 color = Colors::White;
                 break;
