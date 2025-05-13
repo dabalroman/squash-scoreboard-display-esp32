@@ -23,8 +23,8 @@ class ConfigView final : public View {
         "Brightness",
         "WiFi",
         "Fallbck AP",
-        "Reboot",
-        "Return",
+        " [Reboot]",
+        " [Return]",
     };
 
     Scrollable scrollable;
@@ -72,7 +72,7 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            switch (scrollable.getSelectedOption()) {
+            switch (scrollable.getSelectedOptionId()) {
                 case Settings::brightness:
                     preferencesManager.settings.brightness =
                             (clamp(preferencesManager.settings.brightness / 32, 1, 8) - 1) * 32 + 31;
@@ -91,7 +91,7 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            switch (scrollable.getSelectedOption()) {
+            switch (scrollable.getSelectedOptionId()) {
                 case Settings::brightness:
                     preferencesManager.settings.brightness =
                             clamp(preferencesManager.settings.brightness / 32 + 1, 0, 7) * 32 + 31;
@@ -124,7 +124,7 @@ public:
         uint8_t value = 0;
         Color color;
 
-        switch (scrollable.getSelectedOption()) {
+        switch (scrollable.getSelectedOptionId()) {
             case Settings::brightness:
                 color = Colors::White;
                 break;
@@ -146,6 +146,7 @@ public:
         }
 
         glyphDisplay.setBrightness(preferencesManager.settings.brightness);
+        glyphDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
         glyphDisplay.setIndicatorAppearancePlayerA(color);
         glyphDisplay.setIndicatorAppearancePlayerB(color);
         glyphDisplay.display();

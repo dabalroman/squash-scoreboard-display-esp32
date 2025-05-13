@@ -55,11 +55,11 @@ unsigned long lastUpdate = 0;
 DeviceMode *deviceMode = nullptr;
 DeviceModeState deviceState = DeviceModeState::Booting;
 
-UserProfile userA(0, "ADRIAN", Colors::Green);
-UserProfile userB(1, "ROMAN", Colors::Yellow);
-UserProfile userC(2, "BASIA", Colors::Pink);
-UserProfile userD(3, "KRYSTIAN", Colors::Blue);
-UserProfile userE(4, "JOLA", Colors::Red);
+UserProfile userA(0, "Adrian", Colors::Green);
+UserProfile userB(1, "Roman", Colors::Yellow);
+UserProfile userC(2, "Basia", Colors::Pink);
+UserProfile userD(3, "Krystian", Colors::Blue);
+UserProfile userE(4, "Jola", Colors::Red);
 std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE};
 
 void initHardware() {

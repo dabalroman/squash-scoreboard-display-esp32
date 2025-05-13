@@ -1,12 +1,12 @@
-#ifndef DISPLAYDIGIT_H
-#define DISPLAYDIGIT_H
+#ifndef DISPLAY_DIGIT_H
+#define DISPLAY_DIGIT_H
 
 #include <Arduino.h>
 #include <FastLED.h>
 
 #include "Color.h"
 
-#define GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS 1000
+#define GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS 500
 
 /**
  * LEDs and segment ids (masks)
@@ -24,7 +24,7 @@
  *                0x1
  */
 
-constexpr uint8_t SegmentToGlyphMap[17] = {
+constexpr uint8_t SegmentToGlyphMap[22] = {
     0b01110111, // 0
     0b00100100, // 1
     0b01101011, // 2
@@ -36,7 +36,12 @@ constexpr uint8_t SegmentToGlyphMap[17] = {
     0b01111111, // 8
     0b01111101, // 9
     0b01111110, // A
+    0b01010011, // C
+    0b01011010, // F
+    0b01010111, // G
+    0b00010011, // L
     0b01111010, // P
+    0b00111101, // Y
     0b00001000, // Minus
     0b00001111, // LowerDot
     0b01111000, // UpperDot
@@ -56,12 +61,17 @@ enum class Glyph: uint8_t {
     D8 = 8,
     D9 = 9,
     A = 10,
-    P = 11,
-    Minus = 12,
-    LowerDot = 13,
-    UpperDot = 14,
-    All = 15,
-    Empty = 16
+    C = 11,
+    F = 12,
+    G = 13,
+    L = 14,
+    P = 15,
+    Y = 16,
+    Minus = 17,
+    LowerDot = 18,
+    UpperDot = 19,
+    All = 20,
+    Empty = 21
 };
 
 enum class GlyphId: uint8_t {
@@ -200,7 +210,7 @@ public:
     }
 
     void render(const uint32_t &tickMs) const {
-        if (isBlinking && tickMs % GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS < GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS / 4) {
+        if (isBlinking && tickMs % GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS < GLYPH_DISPLAY_UNIT_BLINK_INTERVAL_MS / 2) {
             return;
         }
 
@@ -223,4 +233,4 @@ public:
 };
 
 
-#endif //DISPLAYDIGIT_H
+#endif //DISPLAY_DIGIT_H

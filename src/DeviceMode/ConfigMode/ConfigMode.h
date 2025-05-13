@@ -21,7 +21,7 @@ public:
         : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
         glyphDisplay.initForConfigMode();
-        backDisplay.initForConfigMode();
+        backDisplay.initSmallFont();
 
         activeView.reset(new ConfigView(preferencesManager, onDeviceModeChange));
     }

@@ -17,7 +17,7 @@ public:
         amountOfOptions = optionsList.size();
     }
 
-    uint8_t getSelectedOption() const {
+    uint8_t getSelectedOptionId() const {
         return selectedOptionId;
     }
 

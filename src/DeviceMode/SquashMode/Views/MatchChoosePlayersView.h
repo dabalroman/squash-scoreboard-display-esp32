@@ -75,7 +75,7 @@ public:
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
-            onStateChange(SquashModeState::MatchOn);
+            onStateChange(SquashModeState::MatchPlaying);
             queueRender();
         }
     }

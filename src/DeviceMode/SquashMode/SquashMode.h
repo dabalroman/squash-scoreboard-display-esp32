@@ -29,6 +29,7 @@ class SquashMode final : public DeviceMode {
 
         switch (state) {
             case SquashModeState::TournamentChoosePlayers:
+                backDisplay.initSmallFont();
                 activeView.reset(
                     new TournamentChoosePlayersView(
                         *tournament,
@@ -39,6 +40,7 @@ class SquashMode final : public DeviceMode {
                 );
                 break;
             case SquashModeState::MatchChoosePlayers:
+                backDisplay.initBigFont();
                 activeView.reset(
                     new MatchChoosePlayersView(
                         *tournament,
@@ -46,7 +48,8 @@ class SquashMode final : public DeviceMode {
                     )
                 );
                 break;
-            case SquashModeState::MatchOn:
+            case SquashModeState::MatchPlaying:
+                backDisplay.initBigFont();
                 activeView.reset(
                     new MatchPlayingView(
                         *tournament,
@@ -55,6 +58,7 @@ class SquashMode final : public DeviceMode {
                 );
                 break;
             case SquashModeState::MatchOver:
+                backDisplay.initBigFont();
                 activeView.reset(
                     new MatchOverView(
                         *tournament,
@@ -79,7 +83,6 @@ public:
         tournament = new Tournament(squashRules);
 
         glyphDisplay.initForSquashMode();
-        backDisplay.initForSquashMode();
 
         setState(SquashModeState::TournamentChoosePlayers);
     }

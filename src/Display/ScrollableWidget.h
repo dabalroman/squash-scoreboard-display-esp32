@@ -15,7 +15,7 @@ public:
         backDisplay.setCursorFromTopLeft(
             0,
             BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b *
-            (1 + scrollable.getSelectedOption() - scrollable.getOptionsListOffset())
+            (1 + scrollable.getSelectedOptionId() - scrollable.getOptionsListOffset())
         );
         backDisplay.screen->print(">");
 

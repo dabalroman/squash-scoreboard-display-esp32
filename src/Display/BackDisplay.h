@@ -121,13 +121,13 @@ public:
         screen->drawBitmap(scrollX, 0, canvas.getBuffer(), totalWidth, 64, WHITE);
     }
 
-    void initForSquashMode() {
+    void initBigFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMonoBold24pt7b);
         currentFontDimensions = {ONE_CHAR_WIDTH_24pt7b, VERTICAL_CURSOR_OFFSET_24pt7b};
     }
 
-    void initForConfigMode() {
+    void initSmallFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMono9pt7b);
         currentFontDimensions = {ONE_CHAR_WIDTH_9pt7b, VERTICAL_CURSOR_OFFSET_9pt7b};

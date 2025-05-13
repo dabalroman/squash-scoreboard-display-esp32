@@ -41,6 +41,7 @@ public:
 
     void preventTriggerForMs(const ulong delayMs = 500) {
         canBeTriggerAtMs = millis() + delayMs;
+        canTakeAction = false;
     }
 };
 
