@@ -3,6 +3,8 @@
 
 #include "DeviceMode/View.h"
 #include "Display/GlyphDisplay.h"
+#include "Display/Scrollable.h"
+#include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
 enum Settings {
@@ -17,7 +19,15 @@ class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
 
-    const char *options[Settings::goBack + 1] = {
+    // const char *options[Settings::goBack + 1] = {
+    //     "Brightness",
+    //     "WiFi",
+    //     "Fallbck AP",
+    //     "Reboot",
+    //     "Return",
+    // };
+
+    const std::vector<String> optionsList = {
         "Brightness",
         "WiFi",
         "Fallbck AP",
@@ -30,12 +40,15 @@ class ConfigView final : public View {
     const uint8_t amountOfOptionsOnScreen = 3;
     const uint8_t amountOfOptions = Settings::goBack + 1;
 
+    Scrollable scrollable;
+    ScrollableWidget scrollableWidget;
+
 public:
     explicit ConfigView(
         PreferencesManager &preferencesManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
     )
-        : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange) {
+        : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange), scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
     static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
@@ -62,35 +75,13 @@ public:
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
-            selectedOptionId--;
+            scrollable.cycleSelectedOption(-1);
             queueRender();
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
-            selectedOptionId++;
+            scrollable.cycleSelectedOption(1);
             queueRender();
-        }
-
-        if (selectedOptionId == amountOfOptions) {
-            selectedOptionId = 0;
-        }
-
-        // Rollover to the last option
-        if (selectedOptionId > amountOfOptions) {
-            selectedOptionId = amountOfOptions - 1;
-        }
-
-        if (selectedOptionId >= optionsListOffset + amountOfOptionsOnScreen) {
-            optionsListOffset = selectedOptionId - amountOfOptionsOnScreen + 1;
-        }
-
-        if (selectedOptionId < optionsListOffset) {
-            optionsListOffset = selectedOptionId;
-        }
-
-        // Do not allow scrolling past the last option
-        if (optionsListOffset > amountOfOptions - amountOfOptionsOnScreen) {
-            optionsListOffset = amountOfOptions - amountOfOptionsOnScreen;
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
@@ -181,22 +172,7 @@ public:
         }
 
         backDisplay.clear();
-
-        // Indicator
-        backDisplay.setCursorFromTopLeft(
-            0, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * (1 + selectedOptionId - optionsListOffset));
-        backDisplay.screen->print(">");
-
-        // Options
-        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b);
-        backDisplay.screen->print(options[optionsListOffset]);
-
-        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 2);
-        backDisplay.screen->print(options[optionsListOffset + 1]);
-
-        backDisplay.setCursorFromTopLeft(BackDisplay::ONE_CHAR_WIDTH_9pt7b, BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * 3);
-        backDisplay.screen->print(options[optionsListOffset + 2]);
-
+        scrollableWidget.render(backDisplay);
         backDisplay.display();
 
         shouldRenderBack = false;
