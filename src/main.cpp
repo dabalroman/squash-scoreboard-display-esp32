@@ -60,7 +60,8 @@ UserProfile userB(1, "Roman", Colors::Yellow);
 UserProfile userC(2, "Basia", Colors::Pink);
 UserProfile userD(3, "Krystian", Colors::Blue);
 UserProfile userE(4, "Jola", Colors::Red);
-std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE};
+UserProfile userF(5, "Cegiel", Colors::White);
+std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF};
 
 void initHardware() {
     Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);

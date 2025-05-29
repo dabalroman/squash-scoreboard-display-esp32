@@ -8,8 +8,8 @@
 #include "UserProfile.h"
 
 struct MatchPlayersPair {
-    uint8_t playerA;
-    uint8_t playerB;
+    uint8_t playerAId;
+    uint8_t playerBId;
 };
 
 class PlayerKeeper {
@@ -44,19 +44,23 @@ class MatchOrderKeeper {
             return;
         }
 
+        printLn("Cleaning up playedWith");
+
         for (const auto &player: players) {
             player.second->playedWith.clear();
         }
     }
 
 public:
-    void addPlayers(const std::vector<UserProfile *> &_players) {
+    void setPlayers(const std::vector<UserProfile *> &_players) {
         players.clear();
 
         for (const auto *player: _players) {
             auto id = player->getId();
             players.emplace(id, std::unique_ptr<PlayerKeeper>(new PlayerKeeper(id)));
         }
+
+        printLn("Set players to %d", players.size());
     }
 
     void addPlayer(const UserProfile *player) {
@@ -113,24 +117,28 @@ public:
             std::swap(p1, p2);
         }
 
+        printLn("Suggestion %d vs %d", p1->id, p2->id);
+
         // return their IDs
         return MatchPlayersPair{p1->id, p2->id};
     }
 
     void confirmMatchBetweenPlayers(const MatchPlayersPair pair) {
-        if (players.at(pair.playerA) == nullptr || players.at(pair.playerB) == nullptr) {
+        if (players.at(pair.playerAId) == nullptr || players.at(pair.playerBId) == nullptr) {
             return;
         }
 
-        players.at(pair.playerA)->playedWith.push_back(pair.playerB);
-        players.at(pair.playerB)->playedWith.push_back(pair.playerA);
+        printLn("Confirmed %d vs %d", pair.playerAId, pair.playerBId);
+
+        players.at(pair.playerAId)->playedWith.push_back(pair.playerBId);
+        players.at(pair.playerBId)->playedWith.push_back(pair.playerAId);
 
         for (const auto &player: players) {
             player.second->waitingFor++;
         }
 
-        players.at(pair.playerA)->waitingFor = 0;
-        players.at(pair.playerB)->waitingFor = 0;
+        players.at(pair.playerAId)->waitingFor = 0;
+        players.at(pair.playerBId)->waitingFor = 0;
 
         cleanupPlayedWithIfEveryoneAlreadyPlayedWithEachOther();
     }

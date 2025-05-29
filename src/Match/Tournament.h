@@ -31,7 +31,7 @@ public:
         }
 
         players.push_back(&userProfile);
-        matchOrderKeeper->addPlayers(players);
+        matchOrderKeeper->setPlayers(players);
     }
 
     void removePlayer(UserProfile &userProfile) {
@@ -40,7 +40,7 @@ public:
         }
 
         players.erase(std::remove(players.begin(), players.end(), &userProfile), players.end());
-        matchOrderKeeper->addPlayers(players);
+        matchOrderKeeper->setPlayers(players);
     }
 
     bool isPlayerIn(const UserProfile &userProfile) {

@@ -32,8 +32,10 @@ public:
             return;
         }
 
-        playerA = players.at(0);
-        playerB = players.at(1);
+        const MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
+
+        playerA = players.at(pair.playerAId);
+        playerB = players.at(pair.playerBId);
 
         const Match *match = &tournament.getActiveMatch();
         if (!match) {
@@ -75,6 +77,7 @@ public:
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
+            tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});
             onStateChange(SquashModeState::MatchPlaying);
             queueRender();
         }

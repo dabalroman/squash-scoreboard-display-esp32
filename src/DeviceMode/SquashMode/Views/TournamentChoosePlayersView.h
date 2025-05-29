@@ -71,8 +71,6 @@ public:
         if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             const uint8_t selectedOptionId = scrollable->getSelectedOptionId();
 
-            printLn("%d", selectedOptionId);
-
             if (selectedOptionId == startOptionId) {
                 if (tournament.getPlayers().size() < 2) {
                     return;
@@ -97,11 +95,6 @@ public:
             }
 
             queueRender();
-
-            // for (uint8_t i = 0; i < 20; i++) {
-            //     const MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
-            //     tournament.matchOrderKeeper->confirmMatchBetweenPlayers(pair);
-            // }
         }
     }
 
