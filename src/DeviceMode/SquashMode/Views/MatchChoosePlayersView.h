@@ -32,10 +32,10 @@ public:
             return;
         }
 
-        const MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
+        // const MatchPlayersPair pair = tournament.matchOrderKeeper->getPlayersForNextMatch();
 
-        playerA = players.at(pair.playerAId);
-        playerB = players.at(pair.playerBId);
+        playerA = players.at(0);
+        playerB = players.at(1);
 
         const Match *match = &tournament.getActiveMatch();
         if (!match) {
