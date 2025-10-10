@@ -3,8 +3,7 @@
 A digital scoreboard built for squash games.  
 Portable, remote-controlled way to end all memory-related (or sometimes ego-related) arguments about the current score.
 
-![](assets/main.png)
-![](assets/closeup.png)
+![](assets/h_play.webp)
 
 
 ## Overview
@@ -22,6 +21,13 @@ Main features:
 - rechargeable internal battery
 - OTA updates and wireless debugging
 
+<table>
+  <tr>
+    <td><img src="assets/v_front_side.webp" width="250"/></td>
+    <td><img src="assets/v_back_close_score.webp" width="250"/></td>
+    <td><img src="assets/v_closeup_pink.webp" width="250"/></td>
+  </tr>
+</table>
 
 ## Motivation
 We often lost track of the score during squash matches.  
@@ -69,6 +75,12 @@ Highlights:
 - event-driven architecture
 - OTA updates and Wi-Fi logging
 
+<table>
+  <tr>
+    <td><img src="assets/v_front.webp" width="325"/></td>
+    <td><img src="assets/v_back_close.webp" width="325"/></td>
+  </tr>
+</table>
 
 ## Interaction & UI
 The remote provides direct control during the game.  
@@ -82,11 +94,12 @@ The front display shows the score using player colors.
 The rear OLED displays configuration, player names, and game info.  
 Player scores blink when a point is scored or when the game ends.
 
-![](assets/score.gif)
-
 
 ## Future Work
 * automatic matchmaking based on tournament match history  
 * display tournament and per-player statistics
 * web interface for match overview and data sync
 * implementation of rules for other games
+
+
+![](assets/h_front_closeup.webp)
