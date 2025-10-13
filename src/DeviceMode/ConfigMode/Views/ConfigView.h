@@ -11,8 +11,9 @@ enum Settings {
     brightness = 0,
     enableWifi = 1,
     enableAP = 2,
-    reboot = 3,
-    goBack = 4,
+    ipAddress = 3,
+    reboot = 4,
+    goBack = 5,
 };
 
 class ConfigView final : public View {
@@ -23,6 +24,7 @@ class ConfigView final : public View {
         "Brightness",
         "WiFi",
         "Fallbck AP",
+        preferencesManager.wifiIpAddress,
         " [Reboot]",
         " [Return]",
     };

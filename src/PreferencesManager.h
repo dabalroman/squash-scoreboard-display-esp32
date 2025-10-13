@@ -19,6 +19,7 @@ class PreferencesManager {
 
 public:
     PrefsData settings;
+    String wifiIpAddress = "[ip unknown]";
 
     PreferencesManager() {
     }

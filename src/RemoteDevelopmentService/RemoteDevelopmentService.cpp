@@ -171,6 +171,8 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
         backDisplay->print(WiFi.localIP().toString());
         backDisplay->display();
 
+        preferencesManager->wifiIpAddress = WiFi.localIP().toString();
+
         isWifiActive = true;
     }
 
