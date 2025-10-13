@@ -1,7 +1,6 @@
 #ifndef MATCH_ORDER_KEEPER_H
 #define MATCH_ORDER_KEEPER_H
 #include <memory>
-#include <unordered_map>
 #include <vector>
 #include <map>
 

@@ -14,5 +14,4 @@ class SquashRules final : public Rules {
     }
 };
 
-
 #endif //SQUASHRULES_H
