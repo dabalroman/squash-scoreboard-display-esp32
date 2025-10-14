@@ -24,7 +24,7 @@
  *                0x1
  */
 
-constexpr uint8_t SegmentToGlyphMap[22] = {
+constexpr uint8_t SegmentToGlyphMap[23] = {
     0b01110111, // 0
     0b00100100, // 1
     0b01101011, // 2
@@ -41,6 +41,7 @@ constexpr uint8_t SegmentToGlyphMap[22] = {
     0b01010111, // G
     0b00010011, // L
     0b01111010, // P
+    0b00110111, // U
     0b00111101, // Y
     0b00001000, // Minus
     0b00001111, // LowerDot
@@ -66,12 +67,13 @@ enum class Glyph: uint8_t {
     G = 13,
     L = 14,
     P = 15,
-    Y = 16,
-    Minus = 17,
-    LowerDot = 18,
-    UpperDot = 19,
-    All = 20,
-    Empty = 21
+    U = 16,
+    Y = 17,
+    Minus = 18,
+    LowerDot = 19,
+    UpperDot = 20,
+    All = 21,
+    Empty = 22
 };
 
 enum class GlyphId: uint8_t {

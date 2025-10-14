@@ -1,6 +1,7 @@
 #ifndef BASEDEVICEMODE_H
 #define BASEDEVICEMODE_H
 
+#include "DeviceModeState.h"
 #include "Display/GlyphDisplay.h"
 #include "Display/BackDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"

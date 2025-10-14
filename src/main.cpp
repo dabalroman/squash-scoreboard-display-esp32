@@ -10,7 +10,11 @@
 #include "Display/GlyphDisplay.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/ConfigMode/ConfigMode.h"
+#include "DeviceMode/ModeSwitcherMode/ModeSwitchingMode.h"
 #include "DeviceMode/SquashMode/SquashMode.h"
+#include "DeviceMode/VolleyballMode/VolleyballMode.h"
+#include "Match/Rules/ShortVolleyballRules.h"
+#include "Match/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
@@ -91,6 +95,16 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
     deviceState = deviceModeState;
 
     switch (deviceModeState) {
+        default:
+        case DeviceModeState::ModeSwitchingMode:
+            deviceMode = new ModeSwitchingMode(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); }
+            );
+            break;
+
         case DeviceModeState::ConfigMode:
             deviceMode = new ConfigMode(
                 ledDisplay,
@@ -100,6 +114,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 preferencesManager
             );
             break;
+
         case DeviceModeState::SquashMode:
             deviceMode = new SquashMode(
                 ledDisplay,
@@ -109,7 +124,27 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 users
             );
             break;
-        default:
+
+        case DeviceModeState::VolleyballMode:
+            deviceMode = new VolleyballMode(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                users,
+                new VolleyballRules()
+            );
+            break;
+
+        case DeviceModeState::ShortVolleyballMode:
+            deviceMode = new VolleyballMode(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                users,
+                new ShortVolleyballRules()
+            );
             break;
     }
 }
@@ -130,7 +165,7 @@ void setup() {
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
     printLn("  wifiPassword: %s", preferencesManager.settings.wifiPassword);
 
-    changeDeviceMode(DeviceModeState::SquashMode);
+    changeDeviceMode(DeviceModeState::ModeSwitchingMode);
 }
 
 void loop() {

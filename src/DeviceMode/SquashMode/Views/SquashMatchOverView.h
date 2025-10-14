@@ -1,5 +1,5 @@
-#ifndef MATCH_OVER_VIEW_H
-#define MATCH_OVER_VIEW_H
+#ifndef SQUASH_MODE__MATCH_OVER_VIEW_H
+#define SQUASH_MODE__MATCH_OVER_VIEW_H
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
@@ -8,7 +8,7 @@
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
 
-class MatchOverView final : public View {
+class SquashMatchOverView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
     MatchRound *round = nullptr;
@@ -16,7 +16,7 @@ class MatchOverView final : public View {
     std::function<void(SquashModeState)> onStateChange;
 
 public:
-    MatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
+    SquashMatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = &tournament.getActiveMatch();
         round = &match->getActiveRound();
@@ -50,4 +50,4 @@ public:
     }
 };
 
-#endif //MATCH_OVER_VIEW_H
+#endif //SQUASH_MODE__MATCH_OVER_VIEW_H

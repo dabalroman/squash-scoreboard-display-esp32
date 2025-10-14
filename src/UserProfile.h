@@ -6,7 +6,7 @@
 
 class UserProfile {
     uint8_t id = 0;
-    char name[16] = {};
+    char name[8] = {};
     Color color = Colors::White;
     uint8_t score = 0;
 

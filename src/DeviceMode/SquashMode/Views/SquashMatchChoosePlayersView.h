@@ -1,5 +1,5 @@
-#ifndef MATCHCHOOSEPLAYERSVIEW_H
-#define MATCHCHOOSEPLAYERSVIEW_H
+#ifndef SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H
+#define SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
@@ -10,9 +10,10 @@ class Adafruit_SSD1306;
 class GlyphDisplay;
 class RemoteInputManager;
 
-class MatchChoosePlayersView final : public View {
+class SquashMatchChoosePlayersView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &players;
+    std::function<void(DeviceModeState)> onDeviceModeChange;
     std::function<void(SquashModeState)> onStateChange;
 
     UserProfile *playerA = nullptr;
@@ -22,11 +23,13 @@ class MatchChoosePlayersView final : public View {
     size_t playerBIndex = 1;
 
 public:
-    MatchChoosePlayersView(
+    SquashMatchChoosePlayersView(
         Tournament &tournament,
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
         const std::function<void(SquashModeState)> &onStateChange
     )
-        : tournament(tournament), players(tournament.getPlayers()), onStateChange(onStateChange) {
+        : tournament(tournament), players(tournament.getPlayers()), onDeviceModeChange(onDeviceModeChange),
+          onStateChange(onStateChange) {
         if (players.size() < 2) {
             printLn("Not enough players");
             return;
@@ -71,7 +74,9 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            // TODO: Go to tournament summary
+            remoteInputManager.preventTriggerForMs();
+            onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+            return;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
@@ -115,4 +120,4 @@ public:
     }
 };
 
-#endif //MATCHCHOOSEPLAYERSVIEW_H
+#endif //SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H

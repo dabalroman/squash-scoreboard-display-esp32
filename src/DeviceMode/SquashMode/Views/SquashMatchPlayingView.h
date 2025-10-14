@@ -1,5 +1,5 @@
-#ifndef MATCH_PLAYING_VIEW_H
-#define MATCH_PLAYING_VIEW_H
+#ifndef SQUASH_MODE__MATCH_PLAYING_VIEW_H
+#define SQUASH_MODE__MATCH_PLAYING_VIEW_H
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
@@ -8,7 +8,7 @@
 
 #define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
 
-class MatchPlayingView final : public View {
+class SquashMatchPlayingView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
     MatchRound *round = nullptr;
@@ -19,7 +19,7 @@ class MatchPlayingView final : public View {
     MatchSide commitResultWinner = MatchSide::none;
 
 public:
-    MatchPlayingView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
+    SquashMatchPlayingView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = &tournament.getActiveMatch();
         round = &match->createMatchRound();
@@ -89,4 +89,4 @@ public:
     }
 };
 
-#endif //MATCH_PLAYING_VIEW_H
+#endif //SQUASH_MODE__MATCH_PLAYING_VIEW_H

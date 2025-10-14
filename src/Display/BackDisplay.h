@@ -96,7 +96,7 @@ public:
         print(playerNameA.substring(0, 2));
 
         const String text = playerNameB.substring(0, 2);
-        setCursorToLineRight(text, 1);
+        setCursorToLineRight(text, 1, 3);
         print(text);
 
         drawThiccTopToBottomLine(77, 128 - 83, 3);

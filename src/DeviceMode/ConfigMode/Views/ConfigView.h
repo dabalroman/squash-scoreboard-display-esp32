@@ -59,7 +59,7 @@ public:
             ESP.restart();
         }
 
-        onDeviceModeChange(DeviceModeState::SquashMode);
+        onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {

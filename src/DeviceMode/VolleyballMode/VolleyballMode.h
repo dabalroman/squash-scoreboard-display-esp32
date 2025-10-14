@@ -1,26 +1,27 @@
-#ifndef SQUASH_MODE_H
-#define SQUASH_MODE_H
+#ifndef VOLLEYBALL_MODE_H
+#define VOLLEYBALL_MODE_H
 
-#include "SquashModeState.h"
+#include "VolleyballModeState.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Match/Tournament.h"
-#include "Match/Rules/SquashRules.h"
+#include "Match/Rules/Rules.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
-#include "Views/SquashMatchChoosePlayersView.h"
-#include "Views/SquashMatchOverView.h"
-#include "Views/SquashMatchPlayingView.h"
-#include "Views/SquashTournamentChoosePlayersView.h"
+#include "Views/VolleyballMatchChoosePlayersView.h"
+#include "Views/VolleyballMatchOverView.h"
+#include "Views/VolleyballMatchPlayingView.h"
+#include "Views/VolleyballTournamentChoosePlayersView.h"
 
-class SquashMode final : public DeviceMode {
-    SquashModeState state = SquashModeState::Init;
-    SquashModeState previousState = SquashModeState::Init;
-    Rules *rules;
+enum class VolleyballModeState : uint8_t;
+
+class VolleyballMode final : public DeviceMode {
+    VolleyballModeState state = VolleyballModeState::Init;
+    VolleyballModeState previousState = VolleyballModeState::Init;
     Tournament *tournament;
     std::vector<UserProfile *> &users;
     std::unique_ptr<View> activeView;
 
-    void setState(const SquashModeState newState) {
+    void setState(const VolleyballModeState newState) {
         state = newState;
     }
 
@@ -28,42 +29,42 @@ class SquashMode final : public DeviceMode {
         previousState = state;
 
         switch (state) {
-            case SquashModeState::TournamentChoosePlayers:
+            case VolleyballModeState::TournamentChoosePlayers:
                 backDisplay.initSmallFont();
                 activeView.reset(
-                    new SquashTournamentChoosePlayersView(
+                    new VolleyballTournamentChoosePlayersView(
                         *tournament,
                         users,
                         onDeviceModeChange,
-                        [this](const SquashModeState newState) { setState(newState); }
+                        [this](const VolleyballModeState newState) { setState(newState); }
                     )
                 );
                 break;
-            case SquashModeState::MatchChoosePlayers:
+            case VolleyballModeState::MatchChoosePlayers:
                 backDisplay.initBigFont();
                 activeView.reset(
-                    new SquashMatchChoosePlayersView(
+                    new VolleyballMatchChoosePlayersView(
                         *tournament,
                         onDeviceModeChange,
-                        [this](const SquashModeState newState) { setState(newState); }
+                        [this](const VolleyballModeState newState) { setState(newState); }
                     )
                 );
                 break;
-            case SquashModeState::MatchPlaying:
+            case VolleyballModeState::MatchPlaying:
                 backDisplay.initBigFont();
                 activeView.reset(
-                    new SquashMatchPlayingView(
+                    new VolleyballMatchPlayingView(
                         *tournament,
-                        [this](const SquashModeState newState) { setState(newState); }
+                        [this](const VolleyballModeState newState) { setState(newState); }
                     )
                 );
                 break;
-            case SquashModeState::MatchOver:
+            case VolleyballModeState::MatchOver:
                 backDisplay.initBigFont();
                 activeView.reset(
-                    new SquashMatchOverView(
+                    new VolleyballMatchOverView(
                         *tournament,
-                        [this](const SquashModeState newState) { setState(newState); }
+                        [this](const VolleyballModeState newState) { setState(newState); }
                     ));
                 break;
             default:
@@ -73,20 +74,20 @@ class SquashMode final : public DeviceMode {
     }
 
 public:
-    SquashMode(
+    VolleyballMode(
         GlyphDisplay &glyphDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
-        std::vector<UserProfile *> &users
+        std::vector<UserProfile *> &users,
+        Rules *rules
     )
         : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange), users(users) {
-        rules = new SquashRules();
         tournament = new Tournament(*rules);
 
         glyphDisplay.initForSquashMode();
 
-        setState(SquashModeState::TournamentChoosePlayers);
+        setState(VolleyballModeState::TournamentChoosePlayers);
     }
 
     void loop() override {
@@ -102,4 +103,4 @@ public:
     }
 };
 
-#endif //SQUASH_MODE_H
+#endif //VOLLEYBALL_MODE_H

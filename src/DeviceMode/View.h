@@ -2,6 +2,7 @@
 #define VIEW_H
 
 #include "Display/BackDisplay.h"
+#include "Display/GlyphDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
 class View {

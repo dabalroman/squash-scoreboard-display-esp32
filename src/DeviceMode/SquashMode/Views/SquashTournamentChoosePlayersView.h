@@ -1,13 +1,18 @@
-#ifndef TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
-#define TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
+#ifndef SQUASH_MODE__TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
+#define SQUASH_MODE__TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
 
 #include <utility>
 #include <vector>
 
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
+#include "Match/Tournament.h"
+#include "DeviceMode/DeviceModeState.h"
+#include "DeviceMode/SquashMode/SquashModeState.h"
+#include "Display/Scrollable.h"
+#include "Display/ScrollableWidget.h"
 
-class TournamentChoosePlayersView final : public View {
+class SquashTournamentChoosePlayersView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &users;
     std::function<void(DeviceModeState)> onDeviceModeChange;
@@ -18,35 +23,34 @@ class TournamentChoosePlayersView final : public View {
     ScrollableWidget *scrollableWidget = nullptr;
 
     uint8_t startOptionId;
-    uint8_t settingsOptionId;
+    uint8_t exitOptionId;
 
 public:
-    explicit TournamentChoosePlayersView(
+    explicit SquashTournamentChoosePlayersView(
         Tournament &tournament,
         std::vector<UserProfile *> &players,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
-        std::function<void(SquashModeState)> onStateChange
+        const std::function<void(SquashModeState)> &onStateChange
     )
         : tournament(tournament), users(players), onDeviceModeChange(onDeviceModeChange),
-          onStateChange(std::move(onStateChange)) {
-
+          onStateChange(onStateChange) {
         menuOptions.reserve(players.size() + 2);
         menuOptions.push_back(F(" [Start] "));
 
         for (const UserProfile *user: players) {
             menuOptions.push_back(user->getName());
         }
-        menuOptions.push_back(F("[Settings]"));
+        menuOptions.push_back(F("  [Exit]  "));
 
         startOptionId = 0;
-        settingsOptionId = menuOptions.size() - 1;
+        exitOptionId = menuOptions.size() - 1;
 
         scrollable = new Scrollable(menuOptions);
         scrollableWidget = new ScrollableWidget(*scrollable);
     }
 
     uint8_t getPlayerIdFromOptionId(const uint8_t optionId) const {
-        if (optionId == startOptionId || optionId == settingsOptionId) {
+        if (optionId == startOptionId || optionId == exitOptionId) {
             return 0;
         }
 
@@ -81,9 +85,9 @@ public:
                 return;
             }
 
-            if (selectedOptionId == settingsOptionId) {
+            if (selectedOptionId == exitOptionId) {
                 remoteInputManager.preventTriggerForMs();
-                onDeviceModeChange(DeviceModeState::ConfigMode);
+                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
                 return;
             }
 
@@ -120,7 +124,7 @@ public:
             glyphDisplay.setGlyphsGlyph(Glyph::P, Glyph::L, Glyph::A, Glyph::Y);
             glyphDisplay.setIndicatorAppearancePlayerA(color);
             glyphDisplay.setIndicatorAppearancePlayerB(color);
-        } else if (optionId == settingsOptionId) {
+        } else if (optionId == exitOptionId) {
             glyphDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
             glyphDisplay.setGlyphsColor(Colors::White, Colors::White);
             glyphDisplay.setIndicatorAppearancePlayerA(Colors::White);
@@ -143,4 +147,4 @@ public:
 };
 
 
-#endif //TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
+#endif //SQUASH_MODE__TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
