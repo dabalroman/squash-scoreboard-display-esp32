@@ -73,7 +73,8 @@ public:
             }
         }
 
-        if (players.size() == 2
+        if (
+            players.size() == 2
             && (remoteInputManager.buttonA.takeActionIfPossible() || remoteInputManager.buttonB.takeActionIfPossible())
         ) {
             const size_t tempIndex = playerBIndex;

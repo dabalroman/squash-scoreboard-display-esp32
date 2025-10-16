@@ -12,7 +12,7 @@ class SquashMatchPlayingView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
     MatchRound *round = nullptr;
-    UserProfile *playerA = nullptr, *playerB = nullptr;
+    UserProfile *playerA = nullptr, *playerB = nullptr, *lastPointScoredBy = nullptr;
     std::function<void(SquashModeState)> onStateChange;
 
     uint32_t lastPointScoredAtMs = 0;
@@ -34,11 +34,13 @@ public:
 
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             round->scorePoint(MatchSide::a);
+            lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
             round->scorePoint(MatchSide::b);
+            lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
         }
 
@@ -64,7 +66,11 @@ public:
     }
 
     void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        glyphDisplay.setColonAppearance(Colors::White, true);
+        if (lastPointScoredBy == nullptr) {
+            glyphDisplay.setColonAppearance(Colors::White, true);
+        } else {
+            glyphDisplay.setColonAppearance(lastPointScoredBy->getColor(), true);
+        }
 
         glyphDisplay.setNumericValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
         glyphDisplay.setGlyphsAppearance(
