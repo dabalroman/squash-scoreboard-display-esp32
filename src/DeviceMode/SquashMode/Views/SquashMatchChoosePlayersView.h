@@ -73,6 +73,18 @@ public:
             }
         }
 
+        if (players.size() == 2
+            && (remoteInputManager.buttonA.takeActionIfPossible() || remoteInputManager.buttonB.takeActionIfPossible())
+        ) {
+            const size_t tempIndex = playerBIndex;
+            playerBIndex = playerAIndex;
+            playerAIndex = tempIndex;
+
+            playerA = players.at(playerAIndex);
+            playerB = players.at(playerBIndex);
+            queueRender();
+        }
+
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
