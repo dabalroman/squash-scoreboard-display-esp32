@@ -2,6 +2,7 @@
 #define CONFIG_MODE_H
 
 #include "PreferencesManager.h"
+#include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Views/ConfigView.h"
@@ -23,7 +24,7 @@ public:
         glyphDisplay.initForConfigMode();
         backDisplay.initSmallFont();
 
-        activeView.reset(new ConfigView(preferencesManager, onDeviceModeChange));
+        activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange);
     }
 
     void loop() override {

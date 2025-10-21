@@ -1,8 +1,6 @@
 #ifndef MATCH_H
 #define MATCH_H
 
-#include <vector>
-
 #include "UserProfile.h"
 #include "MatchRound.h"
 #include "Rules/Rules.h"
@@ -13,13 +11,13 @@ class Match {
     UserProfile &playerA;
     UserProfile &playerB;
 
-    std::vector<MatchRound> rounds;
+    std::deque<MatchRound> rounds;
     size_t activeRoundId = 0;
     MatchRound *activeRound = nullptr;
-    Rules &rules;
+    Rules *rules;
 
 public:
-    Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules &rules)
+    Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules)
         : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
     }
 
@@ -28,9 +26,11 @@ public:
     }
 
     MatchRound &createMatchRound() {
-        printLn("Creating new round");
         const auto newRoundId = rounds.size();
         rounds.emplace_back(newRoundId, rules);
+
+        printLn("Creating new round %u:%u", id, newRoundId);
+
         return rounds.back();
     }
 
@@ -39,11 +39,13 @@ public:
             if (rounds.at(i).getId() == round.getId()) {
                 activeRoundId = i;
                 activeRound = &rounds.at(i);
+
+                printLn("Active round is %u:%u", id, round.getId());
                 return;
             }
         }
 
-        printLn("Could not find round with id %d", round.getId());
+        printLn("Could not find round %u:%u", id, round.getId());
     }
 
     MatchRound &getActiveRound() {

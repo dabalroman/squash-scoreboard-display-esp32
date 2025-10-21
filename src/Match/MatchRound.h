@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 
+#include <algorithm>
+
 #include "Rules/Rules.h"
 
 class MatchRound {
@@ -11,10 +13,10 @@ class MatchRound {
     int8_t scoreA = 0, scoreB = 0;
     int8_t deltaA = 0, deltaB = 0;
     MatchSide winner = MatchSide::none;
-    Rules &rules;
+    Rules *rules;
 
 public:
-    explicit MatchRound(const uint8_t id, Rules &rules) : id(id), rules(rules) {
+    explicit MatchRound(const uint8_t id, Rules *rules) : id(id), rules(rules) {
     }
 
     uint8_t getId() const {
@@ -105,15 +107,10 @@ public:
         deltaA = 0;
         deltaB = 0;
 
-        if (scoreA < 0) {
-            scoreA = 0;
-        }
+        scoreA = std::max<int8_t>(scoreA, 0);
+        scoreB = std::max<int8_t>(scoreB, 0);
 
-        if (scoreB < 0) {
-            scoreB = 0;
-        }
-
-        winner = rules.checkWinner(scoreA, scoreB);
+        winner = rules->checkWinner(scoreA, scoreB);
         return winner;
     }
 };

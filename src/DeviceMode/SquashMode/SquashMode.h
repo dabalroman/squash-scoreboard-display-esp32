@@ -1,7 +1,9 @@
 #ifndef SQUASH_MODE_H
 #define SQUASH_MODE_H
 
+#include <memory>
 #include "SquashModeState.h"
+#include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Match/Tournament.h"
@@ -15,8 +17,7 @@
 class SquashMode final : public DeviceMode {
     SquashModeState state = SquashModeState::Init;
     SquashModeState previousState = SquashModeState::Init;
-    Rules *rules;
-    Tournament *tournament;
+    Tournament tournament;
     std::vector<UserProfile *> &users;
     std::unique_ptr<View> activeView;
 
@@ -30,41 +31,34 @@ class SquashMode final : public DeviceMode {
         switch (state) {
             case SquashModeState::TournamentChoosePlayers:
                 backDisplay.initSmallFont();
-                activeView.reset(
-                    new SquashTournamentChoosePlayersView(
-                        *tournament,
-                        users,
-                        onDeviceModeChange,
-                        [this](const SquashModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<SquashTournamentChoosePlayersView>(
+                    tournament,
+                    users,
+                    onDeviceModeChange,
+                    [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
             case SquashModeState::MatchChoosePlayers:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new SquashMatchChoosePlayersView(
-                        *tournament,
-                        onDeviceModeChange,
-                        [this](const SquashModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<SquashMatchChoosePlayersView>(
+                    tournament,
+                    onDeviceModeChange,
+                    [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
             case SquashModeState::MatchPlaying:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new SquashMatchPlayingView(
-                        *tournament,
-                        [this](const SquashModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<SquashMatchPlayingView>(
+                    tournament,
+                    [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
             case SquashModeState::MatchOver:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new SquashMatchOverView(
-                        *tournament,
-                        [this](const SquashModeState newState) { setState(newState); }
-                    ));
+                activeView = std::make_unique<SquashMatchOverView>(
+                    tournament,
+                    [this](const SquashModeState newState) { setState(newState); }
+                );
                 break;
             default:
                 printLn("TRIED TO CHANGE TO UNSUPPORTED STATE");
@@ -80,10 +74,9 @@ public:
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange), users(users) {
-        rules = new SquashRules();
-        tournament = new Tournament(*rules);
-
+        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+          tournament(std::make_unique<SquashRules>()),
+          users(users) {
         glyphDisplay.initForSquashMode();
 
         setState(SquashModeState::TournamentChoosePlayers);

@@ -43,7 +43,7 @@ CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
 // Need to wait for I2C init
-BackDisplay *backDisplay = nullptr;
+std::unique_ptr<BackDisplay> backDisplay;
 
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 PreferencesManager preferencesManager;
@@ -56,7 +56,7 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_
 
 unsigned long lastUpdate = 0;
 
-DeviceMode *deviceMode = nullptr;
+std::unique_ptr<DeviceMode> deviceMode;
 DeviceModeState deviceState = DeviceModeState::Booting;
 
 UserProfile userA(0, "Adrian", Colors::Green);
@@ -77,7 +77,7 @@ void initHardware() {
         printLn("SSD1106 allocation failed!");
     }
 
-    backDisplay = new BackDisplay(&display);
+    backDisplay = std::make_unique<BackDisplay>(&display);
 
     FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
     FastLED.setBrightness(preferencesManager.settings.brightness);
@@ -97,7 +97,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
     switch (deviceModeState) {
         default:
         case DeviceModeState::ModeSwitchingMode:
-            deviceMode = new ModeSwitchingMode(
+            deviceMode = std::make_unique<ModeSwitchingMode>(
                 ledDisplay,
                 *backDisplay,
                 remoteInputManager,
@@ -106,7 +106,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             break;
 
         case DeviceModeState::ConfigMode:
-            deviceMode = new ConfigMode(
+            deviceMode = std::make_unique<ConfigMode>(
                 ledDisplay,
                 *backDisplay,
                 remoteInputManager,
@@ -116,7 +116,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             break;
 
         case DeviceModeState::SquashMode:
-            deviceMode = new SquashMode(
+            deviceMode = std::make_unique<SquashMode>(
                 ledDisplay,
                 *backDisplay,
                 remoteInputManager,
@@ -126,24 +126,24 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             break;
 
         case DeviceModeState::VolleyballMode:
-            deviceMode = new VolleyballMode(
+            deviceMode = std::make_unique<VolleyballMode>(
                 ledDisplay,
                 *backDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
-                new VolleyballRules()
+                std::make_unique<VolleyballRules>()
             );
             break;
 
         case DeviceModeState::ShortVolleyballMode:
-            deviceMode = new VolleyballMode(
+            deviceMode = std::make_unique<VolleyballMode>(
                 ledDisplay,
                 *backDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
-                new ShortVolleyballRules()
+                std::make_unique<ShortVolleyballRules>()
             );
             break;
     }

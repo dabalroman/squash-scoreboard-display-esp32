@@ -16,12 +16,11 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange)
-    {
+        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange) {
         glyphDisplay.initForConfigMode();
         backDisplay.initSmallFont();
 
-        activeView.reset(new ModeSwitchingView(onDeviceModeChange));
+        activeView = std::make_unique<ModeSwitchingView>(onDeviceModeChange);
     }
 
     void loop() override {

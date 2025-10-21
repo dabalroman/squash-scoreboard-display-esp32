@@ -6,22 +6,23 @@
 #include "MatchOrderKeeper.h"
 
 class Tournament {
-    std::vector<Match> matches;
+    std::deque<Match> matches;
     std::vector<UserProfile *> players;
+    std::unique_ptr<Rules> rules;
     Match *activeMatch = nullptr;
     size_t activeMatchId = 0;
-    Rules &rules;
 
 public:
-    MatchOrderKeeper *matchOrderKeeper;
+    std::unique_ptr<MatchOrderKeeper> matchOrderKeeper;
 
-    explicit Tournament(Rules &rules) : rules(rules), matchOrderKeeper(new MatchOrderKeeper()) {
+    explicit Tournament(std::unique_ptr<Rules> r) : rules(std::move(r)),
+                                                    matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
         printLn("Creating new match");
         const auto newMatchId = matches.size();
-        matches.emplace_back(newMatchId, userProfileA, userProfileB, rules);
+        matches.emplace_back(newMatchId, userProfileA, userProfileB, rules.get());
         return matches.back();
     }
 
@@ -51,33 +52,35 @@ public:
         return players;
     }
 
-    void setActiveMatch(const Match &match) {
+    bool setActiveMatch(const Match &match) {
         for (size_t i = 0; i < matches.size(); i++) {
             if (matches.at(i).getId() == match.getId()) {
                 activeMatchId = match.getId();
                 activeMatch = &matches.at(i);
-                return;
+                return true;
             }
         }
 
         printLn("Could not find match with id %d", match.getId());
+
+        return false;
     }
 
-    Match &getActiveMatch() const {
-        if (activeMatch == nullptr) {
-            printLn("No active match");
-        }
-
-        return *activeMatch;
+    Match *getActiveMatch() const {
+        return activeMatch;
     }
 
     Match &getMatchBetween(UserProfile &userProfileA, UserProfile &userProfileB) {
-        for (uint8_t i = 0; i < matches.size(); i++) {
+        for (auto &match: matches) {
+            auto &matchPlayerA = match.getPlayerA();
+            auto &matchPlayerB = match.getPlayerB();
+
             if (
-                matches.at(i).getPlayerA().getId() == userProfileA.getId()
-                && matches.at(i).getPlayerB().getId() == userProfileB.getId()
+                (matchPlayerA.getId() == userProfileA.getId() && matchPlayerB.getId() == userProfileB.getId())
+                || (matchPlayerA.getId() == userProfileB.getId() && matchPlayerB.getId() == userProfileA.getId())
             ) {
-                return matches.at(i);
+                printLn("Match between %u and %u found as %u", userProfileA.getId(), userProfileB.getId(), match.getId());
+                return match;
             }
         }
 

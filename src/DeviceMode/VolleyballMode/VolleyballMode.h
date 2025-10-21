@@ -17,7 +17,7 @@ enum class VolleyballModeState : uint8_t;
 class VolleyballMode final : public DeviceMode {
     VolleyballModeState state = VolleyballModeState::Init;
     VolleyballModeState previousState = VolleyballModeState::Init;
-    Tournament *tournament;
+    Tournament tournament;
     std::vector<UserProfile *> &users;
     std::unique_ptr<View> activeView;
 
@@ -31,41 +31,34 @@ class VolleyballMode final : public DeviceMode {
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
                 backDisplay.initSmallFont();
-                activeView.reset(
-                    new VolleyballTournamentChoosePlayersView(
-                        *tournament,
-                        users,
-                        onDeviceModeChange,
-                        [this](const VolleyballModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<VolleyballTournamentChoosePlayersView>(
+                    tournament,
+                    users,
+                    onDeviceModeChange,
+                    [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
             case VolleyballModeState::MatchChoosePlayers:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new VolleyballMatchChoosePlayersView(
-                        *tournament,
-                        onDeviceModeChange,
-                        [this](const VolleyballModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<VolleyballMatchChoosePlayersView>(
+                    tournament,
+                    onDeviceModeChange,
+                    [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
             case VolleyballModeState::MatchPlaying:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new VolleyballMatchPlayingView(
-                        *tournament,
-                        [this](const VolleyballModeState newState) { setState(newState); }
-                    )
+                activeView = std::make_unique<VolleyballMatchPlayingView>(
+                    tournament,
+                    [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
             case VolleyballModeState::MatchOver:
                 backDisplay.initBigFont();
-                activeView.reset(
-                    new VolleyballMatchOverView(
-                        *tournament,
-                        [this](const VolleyballModeState newState) { setState(newState); }
-                    ));
+                activeView = std::make_unique<VolleyballMatchOverView>(
+                    tournament,
+                    [this](const VolleyballModeState newState) { setState(newState); }
+                );
                 break;
             default:
                 printLn("TRIED TO CHANGE TO UNSUPPORTED STATE");
@@ -80,11 +73,10 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        Rules *rules
+        std::unique_ptr<Rules> rules
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange), users(users) {
-        tournament = new Tournament(*rules);
-
+        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+          tournament(std::move(rules)), users(users) {
         glyphDisplay.initForSquashMode();
 
         setState(VolleyballModeState::TournamentChoosePlayers);

@@ -14,7 +14,7 @@ inline void printLn(const char *format, ...) {
     vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
 
-    gRemoteDevelopmentService->printLn("%s", buf);
+    gRemoteDevelopmentService->printLn(buf);
 }
 
 #endif //LOGGER_HELPER

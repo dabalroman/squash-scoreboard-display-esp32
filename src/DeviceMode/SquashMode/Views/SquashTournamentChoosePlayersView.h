@@ -1,7 +1,6 @@
 #ifndef SQUASH_MODE__TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
 #define SQUASH_MODE__TOURNAMENT_CHOOSE_PLAYERS_VIEW_H
 
-#include <utility>
 #include <vector>
 
 #include "UserProfile.h"
@@ -19,8 +18,8 @@ class SquashTournamentChoosePlayersView final : public View {
     std::function<void(SquashModeState)> onStateChange;
 
     std::vector<String> menuOptions;
-    Scrollable *scrollable = nullptr;
-    ScrollableWidget *scrollableWidget = nullptr;
+    std::unique_ptr<Scrollable> scrollable;
+    std::unique_ptr<ScrollableWidget> scrollableWidget;
 
     uint8_t startOptionId;
     uint8_t exitOptionId;
@@ -45,8 +44,8 @@ public:
         startOptionId = 0;
         exitOptionId = menuOptions.size() - 1;
 
-        scrollable = new Scrollable(menuOptions);
-        scrollableWidget = new ScrollableWidget(*scrollable);
+        scrollable = std::make_unique<Scrollable>(menuOptions);
+        scrollableWidget = std::make_unique<ScrollableWidget>(*scrollable);
     }
 
     uint8_t getPlayerIdFromOptionId(const uint8_t optionId) const {

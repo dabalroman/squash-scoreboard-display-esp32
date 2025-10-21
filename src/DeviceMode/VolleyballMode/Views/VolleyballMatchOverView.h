@@ -18,7 +18,12 @@ class VolleyballMatchOverView final : public View {
 public:
     VolleyballMatchOverView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
-        match = &tournament.getActiveMatch();
+        match = tournament.getActiveMatch();
+
+        if (!match) {
+            return;
+        }
+
         round = &match->getActiveRound();
         playerA = &match->getPlayerA();
         playerB = &match->getPlayerB();

@@ -20,7 +20,7 @@ class RemoteDevelopmentService {
     bool isNTPActive = false;
 
     std::deque<String> logBuffer;
-    const size_t MAX_LOGS = 20;
+    const size_t MAX_LOGS = 10;
 
     void setupOTA();
 
@@ -39,7 +39,7 @@ public:
 
     void loop();
 
-    void printLn(const char *format, ...);
+    void printLn(const char *message);
 
     void telnetFlushLogBuffer();
 

@@ -41,7 +41,7 @@ public:
         playerA = players.at(0);
         playerB = players.at(1);
 
-        const Match *match = &tournament.getActiveMatch();
+        const Match *match = tournament.getActiveMatch();
         if (!match) {
             return;
         }
@@ -94,8 +94,11 @@ public:
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
+
+            const Match& match = tournament.getMatchBetween(*playerA, *playerB);
+            tournament.setActiveMatch(match);
             tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});
+
             onStateChange(VolleyballModeState::MatchPlaying);
             queueRender();
         }

@@ -2,7 +2,6 @@
 #define REMOTE_INPUT_H
 
 #include <Arduino.h>
-constexpr uint8_t minimumTriggerDelayMs = 200;
 
 class RemoteInput {
     uint8_t gpio;
@@ -12,9 +11,9 @@ class RemoteInput {
     ulong triggeredAtMs = 0;
     ulong canBeTriggerAtMs = 0;
 
-    void takeAction() {
+    void takeAction(const ulong preventTriggerForMs = 500) {
         canTakeAction = false;
-        canBeTriggerAtMs = millis() + minimumTriggerDelayMs;
+        canBeTriggerAtMs = millis() + preventTriggerForMs;
     }
 
 public:
@@ -30,9 +29,9 @@ public:
         triggeredAtMs = millis();
     }
 
-    bool takeActionIfPossible() {
+    bool takeActionIfPossible(const ulong preventTriggerForMs = 500) {
         if (canTakeAction && canBeTriggerAtMs <= millis()) {
-            takeAction();
+            takeAction(preventTriggerForMs);
             return true;
         }
 

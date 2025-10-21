@@ -18,7 +18,11 @@ class SquashMatchOverView final : public View {
 public:
     SquashMatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
-        match = &tournament.getActiveMatch();
+        match = tournament.getActiveMatch();
+        if (!match) {
+            return;
+        }
+
         round = &match->getActiveRound();
         playerA = &match->getPlayerA();
         playerB = &match->getPlayerB();

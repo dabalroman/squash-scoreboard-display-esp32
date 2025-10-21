@@ -26,8 +26,6 @@ void RemoteDevelopmentService::setupOTA() {
             const String newSSID = OTAServer->arg("ssid");
             const String newPassword = OTAServer->arg("password");
 
-            printLn("New data: '%s' '%s'", newSSID.c_str(), newPassword.c_str());
-
             strncpy(preferencesManager->settings.wifiSSID, newSSID.c_str(),
                     sizeof(preferencesManager->settings.wifiSSID));
             preferencesManager->settings.wifiSSID[sizeof(preferencesManager->settings.wifiSSID) - 1] = '\0';
@@ -37,8 +35,6 @@ void RemoteDevelopmentService::setupOTA() {
             preferencesManager->settings.wifiPassword[sizeof(preferencesManager->settings.wifiPassword) - 1] = '\0';
 
             preferencesManager->save();
-
-            printLn("SAVED");
 
             backDisplay->clear();
             backDisplay->setCursorToLine();
@@ -68,7 +64,6 @@ void RemoteDevelopmentService::setupOTA() {
             if (upload.status == UPLOAD_FILE_START) {
                 if (telnetClient && telnetClient.connected()) {
                     telnetFlushLogBuffer();
-                    printLn(">>>>   OTA update started   <<<<");
                     telnetClient.stop();
                     telnetServer->close();
                 }
@@ -112,20 +107,14 @@ void RemoteDevelopmentService::setupNTP() {
     isNTPActive = true;
 }
 
-void RemoteDevelopmentService::printLn(const char *format, ...) {
-    char buf[256];
-    va_list args;
-    va_start(args, format);
-    vsnprintf(buf, sizeof(buf), format, args);
-    va_end(args);
-
+void RemoteDevelopmentService::printLn(const char *message) {
     if (isWifiActive && telnetClient && telnetClient.connected()) {
-        telnetClient.println(buf);
+        telnetClient.println(message);
     } else {
         if (logBuffer.size() >= MAX_LOGS) {
             logBuffer.pop_front();
         }
-        logBuffer.emplace_back(buf);
+        logBuffer.emplace_back(message);
     }
 }
 

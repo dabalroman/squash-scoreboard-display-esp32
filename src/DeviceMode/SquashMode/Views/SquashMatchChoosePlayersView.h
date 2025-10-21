@@ -40,7 +40,7 @@ public:
         playerA = players.at(0);
         playerB = players.at(1);
 
-        const Match *match = &tournament.getActiveMatch();
+        const Match *match = tournament.getActiveMatch();
         if (!match) {
             return;
         }

@@ -21,7 +21,13 @@ class SquashMatchPlayingView final : public View {
 public:
     SquashMatchPlayingView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
-        match = &tournament.getActiveMatch();
+        match = tournament.getActiveMatch();
+
+        if (match == nullptr) {
+            printLn("MATCH IS MISSING!");
+            return;
+        }
+
         round = &match->createMatchRound();
         match->setActiveRound(*round);
 
@@ -31,27 +37,36 @@ public:
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
         const uint32_t now = millis();
+        bool checkExit = false;
 
-        if (remoteInputManager.buttonA.takeActionIfPossible()) {
+        if (remoteInputManager.buttonA.takeActionIfPossible(1000)) {
             round->scorePoint(MatchSide::a);
             lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
         }
 
-        if (remoteInputManager.buttonB.takeActionIfPossible()) {
+        if (remoteInputManager.buttonB.takeActionIfPossible(1000)) {
             round->scorePoint(MatchSide::b);
             lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
         }
 
-        if (remoteInputManager.buttonC.takeActionIfPossible()) {
+        if (remoteInputManager.buttonC.takeActionIfPossible(1000)) {
             round->losePoint(MatchSide::a);
+            checkExit = true;
             lastPointScoredAtMs = now;
         }
 
-        if (remoteInputManager.buttonD.takeActionIfPossible()) {
+        if (remoteInputManager.buttonD.takeActionIfPossible(1000)) {
             round->losePoint(MatchSide::b);
+            checkExit = true;
             lastPointScoredAtMs = now;
+        }
+
+        // If both players are at 0, return to previous screen
+        if (checkExit && round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+            onStateChange(SquashModeState::MatchChoosePlayers);
+            return;
         }
 
         // Handle score commits
