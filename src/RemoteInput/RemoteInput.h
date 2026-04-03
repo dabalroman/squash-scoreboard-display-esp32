@@ -25,6 +25,10 @@ public:
     }
 
     void trigger() {
+        if (canBeTriggerAtMs > millis()) {
+            return;
+        }
+
         canTakeAction = true;
         triggeredAtMs = millis();
     }
