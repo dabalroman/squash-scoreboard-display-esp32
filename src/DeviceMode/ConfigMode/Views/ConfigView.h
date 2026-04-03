@@ -10,10 +10,9 @@
 enum Settings {
     brightness = 0,
     enableWifi = 1,
-    enableAP = 2,
-    ipAddress = 3,
-    reboot = 4,
-    goBack = 5,
+    ipAddress = 2,
+    reboot = 3,
+    goBack = 4,
 };
 
 class ConfigView final : public View {
@@ -23,7 +22,6 @@ class ConfigView final : public View {
     const std::vector<String> optionsList = {
         "Brightness",
         "WiFi",
-        "Fallbck AP",
         preferencesManager.wifiIpAddress,
         " [Reboot]",
         " [Return]",
@@ -82,9 +80,6 @@ public:
                 case Settings::enableWifi:
                     preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
                     break;
-                case Settings::enableAP:
-                    preferencesManager.settings.enableAp = !preferencesManager.settings.enableAp;
-                    break;
                 default:
                     break;
             }
@@ -100,9 +95,6 @@ public:
                     break;
                 case Settings::enableWifi:
                     preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
-                    break;
-                case Settings::enableAP:
-                    preferencesManager.settings.enableAp = !preferencesManager.settings.enableAp;
                     break;
                 case Settings::reboot:
                     quitConfig(true);
@@ -132,10 +124,6 @@ public:
                 break;
             case Settings::enableWifi:
                 value = preferencesManager.settings.enableWifi;
-                color = value ? Colors::Green : Colors::Red;
-                break;
-            case Settings::enableAP:
-                value = preferencesManager.settings.enableAp;
                 color = value ? Colors::Green : Colors::Red;
                 break;
             case Settings::reboot:

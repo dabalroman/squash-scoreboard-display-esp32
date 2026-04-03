@@ -7,7 +7,6 @@
 #include <Preferences.h>
 
 struct PrefsData {
-    bool enableAp = true;
     bool enableWifi = true;
     uint8_t brightness = 127;
     char wifiSSID[64] = "";

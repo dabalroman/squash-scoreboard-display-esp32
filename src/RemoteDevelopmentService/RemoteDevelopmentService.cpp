@@ -170,10 +170,6 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 }
 
 void RemoteDevelopmentService::enableAP() {
-    if (!preferencesManager->settings.enableAp) {
-        return;
-    }
-
     WiFi.softAP("SquashCounter", "12345678");
 
     backDisplay->clear();
