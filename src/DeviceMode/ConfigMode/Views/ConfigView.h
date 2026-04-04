@@ -119,7 +119,7 @@ public:
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
-        if (!shouldRenderGlyphs) {
+        if (!shouldRenderLedDisplay) {
             return;
         }
 
@@ -153,7 +153,7 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(color);
         ledDisplay.display();
 
-        shouldRenderGlyphs = false;
+        shouldRenderLedDisplay = false;
     }
 
     void renderScreen(BackDisplay &backDisplay) override {

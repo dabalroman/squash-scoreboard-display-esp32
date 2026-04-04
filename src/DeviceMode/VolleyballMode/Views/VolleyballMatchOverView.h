@@ -4,6 +4,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
 #include "Match/Tournament.h"
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
@@ -14,6 +15,8 @@ class VolleyballMatchOverView final : public View {
     MatchRound *round = nullptr;
     UserProfile *playerA = nullptr, *playerB = nullptr;
     std::function<void(VolleyballModeState)> onStateChange;
+
+    bool shouldUpdateLedBarHistoryState = true;
 
 public:
     VolleyballMatchOverView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
@@ -44,6 +47,16 @@ public:
 
         ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
         ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
+
+        if (shouldUpdateLedBarHistoryState) {
+            ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
+                playerA->getColor(),
+                playerB->getColor(),
+                round->getScoreHistory()
+            ));
+
+            shouldUpdateLedBarHistoryState = false;
+        }
 
         ledDisplay.display();
     }

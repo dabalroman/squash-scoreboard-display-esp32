@@ -102,7 +102,7 @@ public:
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
-        if (!shouldRenderGlyphs) {
+        if (!shouldRenderLedDisplay) {
             return;
         }
 
@@ -114,6 +114,7 @@ public:
         const Color playerStateColor = isPlayerIn ? Colors::Green : Colors::Red;
         const Glyph playerGlyph = isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot;
 
+        ledDisplay.resetHistoryBar();
         ledDisplay.setColonAppearance();
         ledDisplay.setPlayersIndicatorsState(true);
 

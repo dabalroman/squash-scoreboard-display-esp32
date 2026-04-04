@@ -7,7 +7,7 @@
 
 class View {
 protected:
-    bool shouldRenderGlyphs = true;
+    bool shouldRenderLedDisplay = true;
     bool shouldRenderBack = true;
 
 public:
@@ -20,7 +20,7 @@ public:
     virtual void renderScreen(BackDisplay &backDisplay) = 0;
 
     void queueRender() {
-        shouldRenderGlyphs = true;
+        shouldRenderLedDisplay = true;
         shouldRenderBack = true;
     }
 };

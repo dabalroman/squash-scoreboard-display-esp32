@@ -4,6 +4,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
 #include "Match/Tournament.h"
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
@@ -43,6 +44,12 @@ public:
 
         ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
         ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
+
+        ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
+            playerA->getColor(),
+            playerB->getColor(),
+            round->getScoreHistory()
+        ));
 
         ledDisplay.display();
     }

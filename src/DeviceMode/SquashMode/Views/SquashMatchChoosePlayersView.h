@@ -103,6 +103,7 @@ public:
 
     // Blinking, so always should render
     void renderLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.resetHistoryBar();
         ledDisplay.setColonAppearance();
 
         ledDisplay.setGlyphsGlyph(

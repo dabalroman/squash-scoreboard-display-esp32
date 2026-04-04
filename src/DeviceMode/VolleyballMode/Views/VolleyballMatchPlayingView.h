@@ -19,7 +19,7 @@ class VolleyballMatchPlayingView final : public View {
     uint32_t lastPointScoredAtMs = 0;
     MatchSide commitResultWinner = MatchSide::none;
 
-    bool shouldUpdateLedBarHistoryState = false;
+    bool shouldUpdateLedBarHistoryState = true;
 
 public:
     VolleyballMatchPlayingView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)

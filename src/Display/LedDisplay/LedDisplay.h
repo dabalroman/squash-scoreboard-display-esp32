@@ -73,6 +73,10 @@ public:
         bar.setState(state);
     }
 
+    void resetHistoryBar() {
+        bar.setState({});
+    }
+
     void setGlyphBlinking(
         const bool isBlinkingA,
         const bool isBlinkingB,
