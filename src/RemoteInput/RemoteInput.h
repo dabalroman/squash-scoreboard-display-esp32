@@ -11,9 +11,15 @@ class RemoteInput {
     ulong triggeredAtMs = 0;
     ulong canBeTriggerAtMs = 0;
 
+    void (*onActionTaken)() = nullptr;
+
     void takeAction(const ulong preventTriggerForMs = 500) {
         canTakeAction = false;
         canBeTriggerAtMs = millis() + preventTriggerForMs;
+
+        if (onActionTaken) {
+            onActionTaken();
+        }
     }
 
 public:
@@ -40,6 +46,10 @@ public:
         }
 
         return false;
+    }
+
+    void setOnActionTaken(void (*callback)()) {
+        onActionTaken = callback;
     }
 
     void preventTriggerForMs(const ulong delayMs = 500) {

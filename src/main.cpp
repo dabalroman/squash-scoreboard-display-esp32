@@ -16,6 +16,7 @@
 #include "Match/Rules/ShortVolleyballRules.h"
 #include "Match/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
+#include "Buzzer.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
@@ -38,12 +39,15 @@ RemoteInputManager remoteInputManager(
 );
 
 constexpr uint8_t LED_WS2812B_GPIO = 18;
-constexpr uint8_t LED_WS2812B_AMOUNT = 88;
+constexpr uint8_t LED_WS2812B_AMOUNT = 112;
 CRGB pixels[LED_WS2812B_AMOUNT];
 GlyphDisplay ledDisplay(pixels);
 
 // Need to wait for I2C init
 std::unique_ptr<BackDisplay> backDisplay;
+
+constexpr uint8_t BUZZER_GPIO = 3;
+Buzzer gBuzzer(BUZZER_GPIO);
 
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 PreferencesManager preferencesManager;
@@ -89,6 +93,8 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D1), onRemoteReceiverInterrupt_d1, RISING);
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D2), onRemoteReceiverInterrupt_d2, RISING);
     attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D3), onRemoteReceiverInterrupt_d3, RISING);
+
+    gBuzzer.init();
 }
 
 void changeDeviceMode(const DeviceModeState deviceModeState) {
@@ -157,9 +163,10 @@ void setup() {
     remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
+    remoteInputManager.setOnActionTaken([] { gBuzzer.trigger(); });
+
     printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");
-    printLn("  enableAp: %d", preferencesManager.settings.enableAp);
     printLn("  enableWifi: %d", preferencesManager.settings.enableWifi);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
@@ -171,6 +178,7 @@ void setup() {
 void loop() {
     gRemoteDevelopmentService->loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
+    gBuzzer.loop();
 
     // At most 20 fps, for now
     if (lastUpdate + 50 > millis()) {
@@ -182,17 +190,4 @@ void loop() {
     if (deviceMode) {
         deviceMode->loop();
     }
-
-    // if (lastUpdate + 1000 < millis()) {
-    //     lastUpdate = millis();
-    //
-    //     time_t now = time(nullptr);
-    //     tm *timeinfo = localtime(&now);
-    //     ledDisplay.setValue(timeinfo->tm_hour, timeinfo->tm_min);
-    //     ledDisplay.toggleColon();
-    //
-    //     ledDisplay.clear();
-    //     ledDisplay.render();
-    //     ledDisplay.show();
-    // }
 }

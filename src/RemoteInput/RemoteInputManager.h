@@ -44,6 +44,13 @@ public:
         triggeredGpio = 0;
     }
 
+    void setOnActionTaken(void (*callback)()) {
+        buttonA.setOnActionTaken(callback);
+        buttonB.setOnActionTaken(callback);
+        buttonC.setOnActionTaken(callback);
+        buttonD.setOnActionTaken(callback);
+    }
+
     void preventTriggerForMs(const ulong delayMs = 1000) {
         buttonA.preventTriggerForMs(delayMs);
         buttonB.preventTriggerForMs(delayMs);

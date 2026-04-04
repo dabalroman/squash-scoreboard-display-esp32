@@ -8,6 +8,8 @@
 class GlyphDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
+    uint32_t lastAnimProgressTickMs = 0;
+    uint8_t animProgress = 0;
 
 public:
     GlyphDisplayUnit glyphA = GlyphDisplayUnit(pixels, GlyphId::A);
@@ -118,6 +120,22 @@ public:
         FastLED.show();
     }
 
+    static Color getColor(uint8_t i) {
+        i = i % 8;
+
+        switch (i) {
+            default:
+            case 0: return Colors::White;
+            case 1: return Colors::Green;
+            case 2: return Colors::Red;
+            case 3: return Colors::Black;
+            case 4: return Colors::Blue;
+            case 5: return Colors::Yellow;
+            case 6: return Colors::Pink;
+            case 7: return Colors::Aqua;
+        }
+    }
+
     void render() {
         tickMs = millis();
 
@@ -128,6 +146,27 @@ public:
         glyphColon.render(tickMs);
         glyphIndicatorPlayerA.render(tickMs);
         glyphIndicatorPlayerB.render(tickMs);
+
+        if (lastAnimProgressTickMs + 1000 <= tickMs) {
+            animProgress++;
+            if (animProgress >= 24) {
+                animProgress = 0;
+            }
+
+            lastAnimProgressTickMs = tickMs;
+        }
+
+        for (uint8_t i = 0; i < 24; i++) {
+            const Color color = getColor(i);
+            pixels[88 + i] = (i < animProgress)
+                ? CRGB(color.r, color.g, color.b)
+                : CRGB::Black;
+        }
+
+        // 88, 89, 90, 91, 92, 93,
+        // 94, 95, 96, 97, 98, 99,
+        // 100, 101, 102, 103, 104, 105,
+        // 106, 107, 108, 109, 110, 111
     }
 
     static void setBrightness(const uint8_t brightness) {
