@@ -118,6 +118,13 @@ public:
         }
     }
 
+    void initLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.resetHistoryBar();
+        ledDisplay.setColonAppearance();
+        ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
+        ledDisplay.setPlayersIndicatorsState(true);
+    }
+
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderLedDisplay) {
             return;
@@ -148,7 +155,6 @@ public:
         }
 
         ledDisplay.setBrightness(preferencesManager.settings.brightness);
-        ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
         ledDisplay.display();
@@ -156,7 +162,7 @@ public:
         shouldRenderLedDisplay = false;
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
         }

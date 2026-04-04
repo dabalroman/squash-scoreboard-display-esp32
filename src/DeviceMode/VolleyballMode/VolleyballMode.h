@@ -31,7 +31,6 @@ class VolleyballMode final : public DeviceMode {
 
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
-                backDisplay.initSmallFont();
                 activeView = std::make_unique<VolleyballTournamentChoosePlayersView>(
                     tournament,
                     users,
@@ -40,7 +39,6 @@ class VolleyballMode final : public DeviceMode {
                 );
                 break;
             case VolleyballModeState::MatchChoosePlayers:
-                backDisplay.initBigFont();
                 activeView = std::make_unique<VolleyballMatchChoosePlayersView>(
                     tournament,
                     onDeviceModeChange,
@@ -48,15 +46,12 @@ class VolleyballMode final : public DeviceMode {
                 );
                 break;
             case VolleyballModeState::MatchPlaying:
-                backDisplay.initBigFont();
                 activeView = std::make_unique<VolleyballMatchPlayingView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
             case VolleyballModeState::MatchOver:
-                backDisplay.initBigFont();
-
                 if (onMatchOver) {
                     onMatchOver();
                 }
@@ -70,6 +65,9 @@ class VolleyballMode final : public DeviceMode {
                 printLn("TRIED TO CHANGE TO UNSUPPORTED STATE");
                 break;
         }
+
+        activeView->initLedDisplay(ledDisplay);
+        activeView->initBackDisplay(backDisplay);
     }
 
 public:
@@ -97,7 +95,7 @@ public:
         if (activeView) {
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
-            activeView->renderScreen(backDisplay);
+            activeView->renderBackDisplay(backDisplay);
         }
     }
 };

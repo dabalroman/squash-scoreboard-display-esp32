@@ -90,7 +90,14 @@ public:
         }
     }
 
+    void initLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.resetHistoryBar();
+        ledDisplay.setPlayersIndicatorsState(true);
+    }
+
     void renderLedDisplay(LedDisplay &ledDisplay) override {
+        // blinking - update every tick
+
         if (lastPointScoredBy == nullptr) {
             ledDisplay.setColonAppearance(Colors::White, true);
         } else {
@@ -121,7 +128,11 @@ public:
         ledDisplay.display();
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void initBackDisplay(BackDisplay &backDisplay) override {
+        backDisplay.initBigFont();
+    }
+
+    void renderBackDisplay(BackDisplay &backDisplay) override {
         backDisplay.clear();
         backDisplay.renderScoreWidget(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
         backDisplay.display();

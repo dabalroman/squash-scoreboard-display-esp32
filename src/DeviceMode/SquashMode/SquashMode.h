@@ -31,7 +31,6 @@ class SquashMode final : public DeviceMode {
 
         switch (state) {
             case SquashModeState::TournamentChoosePlayers:
-                backDisplay.initSmallFont();
                 activeView = std::make_unique<SquashTournamentChoosePlayersView>(
                     tournament,
                     users,
@@ -40,7 +39,6 @@ class SquashMode final : public DeviceMode {
                 );
                 break;
             case SquashModeState::MatchChoosePlayers:
-                backDisplay.initBigFont();
                 activeView = std::make_unique<SquashMatchChoosePlayersView>(
                     tournament,
                     onDeviceModeChange,
@@ -48,15 +46,12 @@ class SquashMode final : public DeviceMode {
                 );
                 break;
             case SquashModeState::MatchPlaying:
-                backDisplay.initBigFont();
                 activeView = std::make_unique<SquashMatchPlayingView>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
             case SquashModeState::MatchOver:
-                backDisplay.initBigFont();
-
                 if (onMatchOver) {
                     onMatchOver();
                 }
@@ -70,6 +65,9 @@ class SquashMode final : public DeviceMode {
                 printLn("TRIED TO CHANGE TO UNSUPPORTED STATE");
                 break;
         }
+
+        activeView->initLedDisplay(ledDisplay);
+        activeView->initBackDisplay(backDisplay);
     }
 
 public:
@@ -97,7 +95,7 @@ public:
         if (activeView) {
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
-            activeView->renderScreen(backDisplay);
+            activeView->renderBackDisplay(backDisplay);
         }
     }
 };

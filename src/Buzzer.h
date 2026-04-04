@@ -8,7 +8,7 @@ class Buzzer {
     ulong offAtMs = 0;
     bool enabled = true;
 
-    uint16_t victoryPattern[8] = {
+    uint16_t celebrationPattern[8] = {
         60, 80,
         120, 160,
         60, 80,
@@ -39,7 +39,7 @@ public:
         offAtMs = millis() + durationMs;
     }
 
-    void playVictory() {
+    void playCelebration() {
         if (!enabled) {
             return;
         }
@@ -53,7 +53,7 @@ public:
         const ulong now = millis();
 
         if (patternPlaying && now >= patternNextAtMs) {
-            if (victoryPattern[patternIndex] == 0) {
+            if (celebrationPattern[patternIndex] == 0) {
                 patternPlaying = false;
                 digitalWrite(gpio, LOW);
                 return;
@@ -61,7 +61,7 @@ public:
 
             const bool isOn = patternIndex % 2 == 0;
             digitalWrite(gpio, isOn ? HIGH : LOW);
-            patternNextAtMs = now + victoryPattern[patternIndex];
+            patternNextAtMs = now + celebrationPattern[patternIndex];
             patternIndex++;
             return;
         }

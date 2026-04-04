@@ -9,7 +9,6 @@ class LedDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
 
-public:
     LedGlyph glyphA = LedGlyph(pixels, GlyphId::A);
     LedGlyph glyphB = LedGlyph(pixels, GlyphId::B);
     LedGlyph glyphC = LedGlyph(pixels, GlyphId::C);
@@ -17,6 +16,8 @@ public:
     LedGlyph glyphColon = LedGlyph(pixels, GlyphId::Colon);
     LedGlyph glyphIndicatorPlayerA = LedGlyph(pixels, GlyphId::IndicatorPlayerA);
     LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
+
+public:
     LedBar bar = LedBar(pixels);
 
     explicit LedDisplay(CRGB *pixels) : pixels(pixels) {
@@ -74,6 +75,7 @@ public:
     }
 
     void resetHistoryBar() {
+        bar.setMode(LedBarMode::state);
         bar.setState({});
     }
 
@@ -111,6 +113,11 @@ public:
     void setIndicatorAppearancePlayerB(const Color color, const bool isBlinking = false) {
         glyphIndicatorPlayerB.setColor(color);
         glyphIndicatorPlayerB.setBlinking(isBlinking);
+    }
+
+    void startCelebration(const Color color) {
+        bar.setCelebrationColor(CRGB(color.r, color.g, color.b));
+        bar.setMode(LedBarMode::celebration);
     }
 
     static Glyph digitToGlyph(const uint8_t digit) {

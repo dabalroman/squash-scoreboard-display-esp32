@@ -1,7 +1,6 @@
 #ifndef MODE_SWITCHING_MODE_H
 #define MODE_SWITCHING_MODE_H
 
-#include "PreferencesManager.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Views/ModeSwitchingView.h"
@@ -21,13 +20,15 @@ public:
         backDisplay.initSmallFont();
 
         activeView = std::make_unique<ModeSwitchingView>(onDeviceModeChange);
+        activeView->initLedDisplay(ledDisplay);
+        activeView->initBackDisplay(backDisplay);
     }
 
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
-            activeView->renderScreen(backDisplay);
+            activeView->renderBackDisplay(backDisplay);
         }
     }
 };

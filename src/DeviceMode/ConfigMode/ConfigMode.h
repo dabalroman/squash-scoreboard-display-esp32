@@ -25,13 +25,15 @@ public:
         backDisplay.initSmallFont();
 
         activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange);
+        activeView->initLedDisplay(ledDisplay);
+        activeView->initBackDisplay(backDisplay);
     }
 
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
-            activeView->renderScreen(backDisplay);
+            activeView->renderBackDisplay(backDisplay);
         }
     }
 };

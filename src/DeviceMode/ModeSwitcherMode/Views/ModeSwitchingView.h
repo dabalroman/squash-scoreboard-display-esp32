@@ -79,6 +79,12 @@ public:
         }
     }
 
+    void initLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.resetHistoryBar();
+        ledDisplay.setColonAppearance();
+        ledDisplay.setPlayersIndicatorsState(true);
+    }
+
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderLedDisplay) {
             return;
@@ -114,7 +120,7 @@ public:
         shouldRenderLedDisplay = false;
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
         }

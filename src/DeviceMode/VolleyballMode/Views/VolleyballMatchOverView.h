@@ -4,7 +4,6 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
 #include "Match/Tournament.h"
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
@@ -33,13 +32,15 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (remoteInputManager.buttonD.takeActionIfPossible() || remoteInputManager.buttonC.takeActionIfPossible()) {
+        if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             onStateChange(VolleyballModeState::MatchChoosePlayers);
+
+            queueRender();
         }
     }
 
-    void renderLedDisplay(LedDisplay &ledDisplay) override {
+    void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.setColonAppearance();
 
         ledDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
@@ -48,23 +49,29 @@ public:
         ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
         ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
 
-        if (shouldUpdateLedBarHistoryState) {
-            ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
-                playerA->getColor(),
-                playerB->getColor(),
-                round->getScoreHistory()
-            ));
+        ledDisplay.startCelebration(round->getWinner() == MatchSide::a ? playerA->getColor() : playerB->getColor());
+    }
 
-            shouldUpdateLedBarHistoryState = false;
-        }
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
+        // celebrations - update every tick
 
         ledDisplay.display();
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void initBackDisplay(BackDisplay &backDisplay) override {
+        backDisplay.initBigFont();
+    }
+
+    void renderBackDisplay(BackDisplay &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
         backDisplay.clear();
         backDisplay.renderScoreWidget(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
         backDisplay.display();
+
+        shouldRenderBack = false;
     }
 };
 

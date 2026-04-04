@@ -15,9 +15,13 @@ public:
 
     virtual void handleInput(RemoteInputManager &remoteInputManager) = 0;
 
+    virtual void initLedDisplay(LedDisplay &ledDisplay) {}
+
     virtual void renderLedDisplay(LedDisplay &ledDisplay) = 0;
 
-    virtual void renderScreen(BackDisplay &backDisplay) = 0;
+    virtual void initBackDisplay(BackDisplay &backDisplay) {}
+
+    virtual void renderBackDisplay(BackDisplay &backDisplay) = 0;
 
     void queueRender() {
         shouldRenderLedDisplay = true;

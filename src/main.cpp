@@ -130,7 +130,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
-                []{ gBuzzer.playVictory(); }
+                []{ gBuzzer.playCelebration(); }
             );
             break;
 
@@ -142,7 +142,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
                 std::make_unique<VolleyballRules>(),
-                []{ gBuzzer.playVictory(); }
+                []{ gBuzzer.playCelebration(); }
             );
             break;
 
@@ -154,7 +154,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
                 std::make_unique<ShortVolleyballRules>(),
-                []{ gBuzzer.playVictory(); }
+                []{ gBuzzer.playCelebration(); }
             );
             break;
     }

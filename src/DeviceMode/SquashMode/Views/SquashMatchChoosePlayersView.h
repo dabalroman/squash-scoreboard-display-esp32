@@ -95,10 +95,17 @@ public:
         }
     }
 
-    // Blinking, so always should render
-    void renderLedDisplay(LedDisplay &ledDisplay) override {
+    void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetHistoryBar();
         ledDisplay.setColonAppearance();
+        ledDisplay.setPlayersIndicatorsState(true);
+    }
+
+    // Blinking, so always should render
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
+        if (!shouldRenderLedDisplay) {
+            return;
+        }
 
         ledDisplay.setGlyphsGlyph(
             Glyph::P,
@@ -106,16 +113,21 @@ public:
             Glyph::P,
             LedDisplay::digitToGlyph(playerB->getId())
         );
-        ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
         ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor());
         ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor());
 
         ledDisplay.display();
+
+        shouldRenderLedDisplay = false;
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void initBackDisplay(BackDisplay &backDisplay) override {
+        backDisplay.initBigFont();
+    }
+
+    void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
         }

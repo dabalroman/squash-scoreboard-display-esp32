@@ -33,6 +33,7 @@ public:
     )
         : tournament(tournament), users(players), onDeviceModeChange(onDeviceModeChange),
           onStateChange(onStateChange) {
+
         menuOptions.reserve(players.size() + 2);
         menuOptions.push_back(F(" [Start] "));
 
@@ -101,6 +102,12 @@ public:
         }
     }
 
+    void initLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.resetHistoryBar();
+        ledDisplay.setColonAppearance();
+        ledDisplay.setPlayersIndicatorsState(true);
+    }
+
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderLedDisplay) {
             return;
@@ -113,10 +120,6 @@ public:
         const Color playerColor = users.at(playerId)->getColor();
         const Color playerStateColor = isPlayerIn ? Colors::Green : Colors::Red;
         const Glyph playerGlyph = isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot;
-
-        ledDisplay.resetHistoryBar();
-        ledDisplay.setColonAppearance();
-        ledDisplay.setPlayersIndicatorsState(true);
 
         if (optionId == startOptionId) {
             const Color color = tournament.getPlayers().size() < 2 ? Colors::Red : Colors::Green;
@@ -139,10 +142,20 @@ public:
         ledDisplay.display();
     }
 
-    void renderScreen(BackDisplay &backDisplay) override {
+    void initBackDisplay(BackDisplay &backDisplay) override {
+        backDisplay.initSmallFont();
+    }
+
+    void renderBackDisplay(BackDisplay &backDisplay) override {
+        if (!shouldRenderBack) {
+            return;
+        }
+
         backDisplay.clear();
         scrollableWidget->render(backDisplay);
         backDisplay.display();
+
+        shouldRenderBack = false;
     }
 };
 
