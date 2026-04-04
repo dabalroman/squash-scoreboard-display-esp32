@@ -86,12 +86,6 @@ public:
             queueRender();
         }
 
-        if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            remoteInputManager.preventTriggerForMs();
-            onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
-            return;
-        }
-
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
 

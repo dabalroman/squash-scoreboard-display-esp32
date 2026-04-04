@@ -42,28 +42,28 @@ public:
         const uint32_t now = millis();
         bool checkExit = false;
 
-        if (remoteInputManager.buttonA.takeActionIfPossible(1000)) {
+        if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
             round->scorePoint(MatchSide::a);
             lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
-        if (remoteInputManager.buttonB.takeActionIfPossible(1000)) {
+        if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
             round->scorePoint(MatchSide::b);
             lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
-        if (remoteInputManager.buttonC.takeActionIfPossible(1000)) {
+        if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
             round->losePoint(MatchSide::a);
             checkExit = true;
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
-        if (remoteInputManager.buttonD.takeActionIfPossible(1000)) {
+        if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
             round->losePoint(MatchSide::b);
             checkExit = true;
             lastPointScoredAtMs = now;

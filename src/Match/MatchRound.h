@@ -116,7 +116,7 @@ public:
         return winner;
     }
 
-    MatchScoreHistory getScoreHistory() const {
+    const MatchScoreHistory &getScoreHistory() const {
         return history;
     }
 };

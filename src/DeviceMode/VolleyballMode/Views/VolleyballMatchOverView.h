@@ -33,7 +33,7 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (remoteInputManager.buttonD.takeActionIfPossible()) {
+        if (remoteInputManager.buttonD.takeActionIfPossible() || remoteInputManager.buttonC.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             onStateChange(VolleyballModeState::MatchChoosePlayers);
         }
