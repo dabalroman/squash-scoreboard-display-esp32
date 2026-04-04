@@ -8,6 +8,17 @@ class Buzzer {
     ulong offAtMs = 0;
     bool enabled = true;
 
+    uint16_t victoryPattern[8] = {
+        60, 80,
+        120, 160,
+        60, 80,
+        120, 0
+    };
+
+    uint8_t patternIndex = 0;
+    bool patternPlaying = false;
+    ulong patternNextAtMs = 0;
+
 public:
     explicit Buzzer(const uint8_t gpio) : gpio(gpio) {}
 
@@ -19,17 +30,43 @@ public:
         enabled = value;
     }
 
-    void trigger(const ulong durationMs = 50) {
-        if (!enabled) {
+    void trigger(const ulong durationMs = 40) {
+        if (!enabled || patternPlaying) {
             return;
         }
-        
+
         digitalWrite(gpio, HIGH);
         offAtMs = millis() + durationMs;
     }
 
+    void playVictory() {
+        if (!enabled) {
+            return;
+        }
+
+        patternIndex = 0;
+        patternPlaying = true;
+        patternNextAtMs = millis();
+    }
+
     void loop() {
-        if (offAtMs > 0 && millis() >= offAtMs) {
+        const ulong now = millis();
+
+        if (patternPlaying && now >= patternNextAtMs) {
+            if (victoryPattern[patternIndex] == 0) {
+                patternPlaying = false;
+                digitalWrite(gpio, LOW);
+                return;
+            }
+
+            const bool isOn = patternIndex % 2 == 0;
+            digitalWrite(gpio, isOn ? HIGH : LOW);
+            patternNextAtMs = now + victoryPattern[patternIndex];
+            patternIndex++;
+            return;
+        }
+
+        if (!patternPlaying && offAtMs > 0 && now >= offAtMs) {
             digitalWrite(gpio, LOW);
             offAtMs = 0;
         }

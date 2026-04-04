@@ -20,6 +20,7 @@ class VolleyballMode final : public DeviceMode {
     Tournament tournament;
     std::vector<UserProfile *> &users;
     std::unique_ptr<View> activeView;
+    std::function<void()> onMatchOver;
 
     void setState(const VolleyballModeState newState) {
         state = newState;
@@ -55,6 +56,11 @@ class VolleyballMode final : public DeviceMode {
                 break;
             case VolleyballModeState::MatchOver:
                 backDisplay.initBigFont();
+
+                if (onMatchOver) {
+                    onMatchOver();
+                }
+
                 activeView = std::make_unique<VolleyballMatchOverView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
@@ -73,10 +79,11 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        std::unique_ptr<Rules> rules
+        std::unique_ptr<Rules> rules,
+        std::function<void()> onMatchOver
     )
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
-          tournament(std::move(rules)), users(users) {
+          tournament(std::move(rules)), users(users), onMatchOver(std::move(onMatchOver)) {
         ledDisplay.initForSquashMode();
 
         setState(VolleyballModeState::TournamentChoosePlayers);
