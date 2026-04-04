@@ -7,18 +7,16 @@ class RemoteInput {
     uint8_t gpio;
 
     bool canTakeAction = false;
-
-    ulong triggeredAtMs = 0;
     ulong canBeTriggerAtMs = 0;
 
-    void (*onActionTaken)() = nullptr;
+    void (*onActionTakenHook)() = nullptr;
 
     void takeAction(const ulong preventTriggerForMs = 500) {
         canTakeAction = false;
         canBeTriggerAtMs = millis() + preventTriggerForMs;
 
-        if (onActionTaken) {
-            onActionTaken();
+        if (onActionTakenHook) {
+            onActionTakenHook();
         }
     }
 
@@ -36,11 +34,10 @@ public:
         }
 
         canTakeAction = true;
-        triggeredAtMs = millis();
     }
 
     bool takeActionIfPossible(const ulong preventTriggerForMs = 500) {
-        if (canTakeAction && canBeTriggerAtMs <= millis()) {
+        if (canTakeAction) {
             takeAction(preventTriggerForMs);
             return true;
         }
@@ -49,7 +46,7 @@ public:
     }
 
     void setOnActionTaken(void (*callback)()) {
-        onActionTaken = callback;
+        onActionTakenHook = callback;
     }
 
     void preventTriggerForMs(const ulong delayMs = 500) {
