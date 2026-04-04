@@ -6,6 +6,7 @@
 class Buzzer {
     uint8_t gpio;
     ulong offAtMs = 0;
+    bool enabled = true;
 
 public:
     explicit Buzzer(const uint8_t gpio) : gpio(gpio) {}
@@ -14,7 +15,15 @@ public:
         pinMode(gpio, OUTPUT);
     }
 
+    void setEnabled(const bool value) {
+        enabled = value;
+    }
+
     void trigger(const ulong durationMs = 50) {
+        if (!enabled) {
+            return;
+        }
+        
         digitalWrite(gpio, HIGH);
         offAtMs = millis() + durationMs;
     }

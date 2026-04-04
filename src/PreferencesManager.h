@@ -7,8 +7,9 @@
 #include <Preferences.h>
 
 struct PrefsData {
-    bool enableWifi = true;
     uint8_t brightness = 127;
+    bool enableBuzzer = true;
+    bool enableWifi = true;
     char wifiSSID[64] = "";
     char wifiPassword[64] = "";
 } __attribute__((packed));

@@ -9,10 +9,11 @@
 
 enum Settings {
     brightness = 0,
-    enableWifi = 1,
-    ipAddress = 2,
-    reboot = 3,
-    goBack = 4,
+    enableBuzzer = 1,
+    enableWifi = 2,
+    ipAddress = 3,
+    reboot = 4,
+    goBack = 5,
 };
 
 class ConfigView final : public View {
@@ -21,6 +22,7 @@ class ConfigView final : public View {
 
     const std::vector<String> optionsList = {
         "Brightness",
+        "Buzzer",
         "WiFi",
         preferencesManager.wifiIpAddress,
         " [Reboot]",
@@ -80,6 +82,9 @@ public:
                 case Settings::enableWifi:
                     preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
                     break;
+                case Settings::enableBuzzer:
+                    preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
+                    break;
                 default:
                     break;
             }
@@ -95,6 +100,9 @@ public:
                     break;
                 case Settings::enableWifi:
                     preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
+                    break;
+                case Settings::enableBuzzer:
+                    preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
                     break;
                 case Settings::reboot:
                     quitConfig(true);
@@ -124,6 +132,10 @@ public:
                 break;
             case Settings::enableWifi:
                 value = preferencesManager.settings.enableWifi;
+                color = value ? Colors::Green : Colors::Red;
+                break;
+            case Settings::enableBuzzer:
+                value = preferencesManager.settings.enableBuzzer;
                 color = value ? Colors::Green : Colors::Red;
                 break;
             case Settings::reboot:

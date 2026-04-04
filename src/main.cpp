@@ -165,11 +165,13 @@ void setup() {
     remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
+    gBuzzer.setEnabled(preferencesManager.settings.enableBuzzer);
     remoteInputManager.setOnActionTaken([] { gBuzzer.trigger(); });
 
     printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");
     printLn("  enableWifi: %d", preferencesManager.settings.enableWifi);
+    printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
     printLn("  wifiPassword: %s", preferencesManager.settings.wifiPassword);
