@@ -57,21 +57,26 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
+            if (round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+                checkExit = true;
+            }
+
             round->losePoint(MatchSide::a);
-            checkExit = true;
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
+            if (round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+                checkExit = true;
+            }
+
             round->losePoint(MatchSide::b);
-            checkExit = true;
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
-        // If both players are at 0, return to previous screen
-        if (checkExit && round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+        if (checkExit) {
             onStateChange(SquashModeState::MatchChoosePlayers);
             return;
         }
