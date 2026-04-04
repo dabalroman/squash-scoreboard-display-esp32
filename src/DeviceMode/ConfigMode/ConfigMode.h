@@ -13,15 +13,15 @@ class ConfigMode final : public DeviceMode {
 
 public:
     ConfigMode(
-        GlyphDisplay &glyphDisplay,
+        LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         PreferencesManager &preferencesManager
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
-        glyphDisplay.initForConfigMode();
+        ledDisplay.initForConfigMode();
         backDisplay.initSmallFont();
 
         activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange);
@@ -30,7 +30,7 @@ public:
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);
-            activeView->renderGlyphs(glyphDisplay);
+            activeView->renderLedDisplay(ledDisplay);
             activeView->renderScreen(backDisplay);
         }
     }

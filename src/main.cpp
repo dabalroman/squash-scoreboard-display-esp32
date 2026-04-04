@@ -7,7 +7,7 @@
 
 #include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
-#include "Display/GlyphDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/ConfigMode/ConfigMode.h"
 #include "DeviceMode/ModeSwitcherMode/ModeSwitchingMode.h"
@@ -17,6 +17,7 @@
 #include "Match/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
 #include "Buzzer.h"
+#include "Display/LedDisplay/LedBar.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
@@ -41,7 +42,8 @@ RemoteInputManager remoteInputManager(
 constexpr uint8_t LED_WS2812B_GPIO = 18;
 constexpr uint8_t LED_WS2812B_AMOUNT = 112;
 CRGB pixels[LED_WS2812B_AMOUNT];
-GlyphDisplay ledDisplay(pixels);
+LedDisplay ledDisplay(pixels);
+LedBar barDisplay(pixels);
 
 // Need to wait for I2C init
 std::unique_ptr<BackDisplay> backDisplay;

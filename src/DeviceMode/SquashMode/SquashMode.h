@@ -68,16 +68,16 @@ class SquashMode final : public DeviceMode {
 
 public:
     SquashMode(
-        GlyphDisplay &glyphDisplay,
+        LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::make_unique<SquashRules>()),
           users(users) {
-        glyphDisplay.initForSquashMode();
+        ledDisplay.initForSquashMode();
 
         setState(SquashModeState::TournamentChoosePlayers);
     }
@@ -89,7 +89,7 @@ public:
 
         if (activeView) {
             activeView->handleInput(remoteInputManager);
-            activeView->renderGlyphs(glyphDisplay);
+            activeView->renderLedDisplay(ledDisplay);
             activeView->renderScreen(backDisplay);
         }
     }

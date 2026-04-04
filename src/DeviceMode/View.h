@@ -2,7 +2,7 @@
 #define VIEW_H
 
 #include "Display/BackDisplay.h"
-#include "Display/GlyphDisplay.h"
+#include "../Display/LedDisplay/LedDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
 class View {
@@ -15,7 +15,7 @@ public:
 
     virtual void handleInput(RemoteInputManager &remoteInputManager) = 0;
 
-    virtual void renderGlyphs(GlyphDisplay &glyphDisplay) = 0;
+    virtual void renderLedDisplay(LedDisplay &ledDisplay) = 0;
 
     virtual void renderScreen(BackDisplay &backDisplay) = 0;
 

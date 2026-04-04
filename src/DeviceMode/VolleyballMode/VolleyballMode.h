@@ -68,16 +68,16 @@ class VolleyballMode final : public DeviceMode {
 
 public:
     VolleyballMode(
-        GlyphDisplay &glyphDisplay,
+        LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
         std::unique_ptr<Rules> rules
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::move(rules)), users(users) {
-        glyphDisplay.initForSquashMode();
+        ledDisplay.initForSquashMode();
 
         setState(VolleyballModeState::TournamentChoosePlayers);
     }
@@ -89,7 +89,7 @@ public:
 
         if (activeView) {
             activeView->handleInput(remoteInputManager);
-            activeView->renderGlyphs(glyphDisplay);
+            activeView->renderLedDisplay(ledDisplay);
             activeView->renderScreen(backDisplay);
         }
     }

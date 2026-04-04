@@ -102,7 +102,7 @@ public:
         }
     }
 
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderGlyphs) {
             return;
         }
@@ -115,28 +115,28 @@ public:
         const Color playerStateColor = isPlayerIn ? Colors::Green : Colors::Red;
         const Glyph playerGlyph = isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot;
 
-        glyphDisplay.setColonAppearance();
-        glyphDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setColonAppearance();
+        ledDisplay.setPlayersIndicatorsState(true);
 
         if (optionId == startOptionId) {
             const Color color = tournament.getPlayers().size() < 2 ? Colors::Red : Colors::Green;
-            glyphDisplay.setGlyphsColor(color, color);
-            glyphDisplay.setGlyphsGlyph(Glyph::P, Glyph::L, Glyph::A, Glyph::Y);
-            glyphDisplay.setIndicatorAppearancePlayerA(color);
-            glyphDisplay.setIndicatorAppearancePlayerB(color);
+            ledDisplay.setGlyphsColor(color, color);
+            ledDisplay.setGlyphsGlyph(Glyph::P, Glyph::L, Glyph::A, Glyph::Y);
+            ledDisplay.setIndicatorAppearancePlayerA(color);
+            ledDisplay.setIndicatorAppearancePlayerB(color);
         } else if (optionId == exitOptionId) {
-            glyphDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
-            glyphDisplay.setGlyphsColor(Colors::White, Colors::White);
-            glyphDisplay.setIndicatorAppearancePlayerA(Colors::White);
-            glyphDisplay.setIndicatorAppearancePlayerB(Colors::White);
+            ledDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
+            ledDisplay.setGlyphsColor(Colors::White, Colors::White);
+            ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
+            ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
         } else {
-            glyphDisplay.setGlyphsGlyph(Glyph::P, GlyphDisplay::digitToGlyph(playerId), Glyph::Empty, playerGlyph);
-            glyphDisplay.setGlyphsColor(playerColor, playerStateColor);
-            glyphDisplay.setIndicatorAppearancePlayerA(playerColor);
-            glyphDisplay.setIndicatorAppearancePlayerB(playerStateColor);
+            ledDisplay.setGlyphsGlyph(Glyph::P, LedDisplay::digitToGlyph(playerId), Glyph::Empty, playerGlyph);
+            ledDisplay.setGlyphsColor(playerColor, playerStateColor);
+            ledDisplay.setIndicatorAppearancePlayerA(playerColor);
+            ledDisplay.setIndicatorAppearancePlayerB(playerStateColor);
         }
 
-        glyphDisplay.display();
+        ledDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {

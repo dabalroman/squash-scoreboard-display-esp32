@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "Display/GlyphDisplay.h"
+#include "../../../Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 
 #define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
@@ -82,25 +82,25 @@ public:
         }
     }
 
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (lastPointScoredBy == nullptr) {
-            glyphDisplay.setColonAppearance(Colors::White, true);
+            ledDisplay.setColonAppearance(Colors::White, true);
         } else {
-            glyphDisplay.setColonAppearance(lastPointScoredBy->getColor(), true);
+            ledDisplay.setColonAppearance(lastPointScoredBy->getColor(), true);
         }
 
-        glyphDisplay.setNumericValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
-        glyphDisplay.setGlyphsAppearance(
+        ledDisplay.setNumericValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
+        ledDisplay.setGlyphsAppearance(
             playerA->getColor(),
             playerB->getColor(),
             round->hasUncommitedPoints(MatchSide::a),
             round->hasUncommitedPoints(MatchSide::b)
         );
 
-        glyphDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
-        glyphDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
+        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
+        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
 
-        glyphDisplay.display();
+        ledDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {

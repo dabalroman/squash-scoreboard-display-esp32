@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "Display/GlyphDisplay.h"
+#include "../../../Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
@@ -36,16 +36,16 @@ public:
         }
     }
 
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        glyphDisplay.setColonAppearance();
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.setColonAppearance();
 
-        glyphDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
-        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
+        ledDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
+        ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        glyphDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
-        glyphDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
+        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
+        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
 
-        glyphDisplay.display();
+        ledDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {

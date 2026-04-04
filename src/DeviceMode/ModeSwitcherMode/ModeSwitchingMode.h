@@ -11,13 +11,13 @@ class ModeSwitchingMode final : public DeviceMode {
 
 public:
     ModeSwitchingMode(
-        GlyphDisplay &glyphDisplay,
+        LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
     )
-        : DeviceMode(glyphDisplay, backDisplay, remoteInputManager, onDeviceModeChange) {
-        glyphDisplay.initForConfigMode();
+        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange) {
+        ledDisplay.initForConfigMode();
         backDisplay.initSmallFont();
 
         activeView = std::make_unique<ModeSwitchingView>(onDeviceModeChange);
@@ -26,7 +26,7 @@ public:
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);
-            activeView->renderGlyphs(glyphDisplay);
+            activeView->renderLedDisplay(ledDisplay);
             activeView->renderScreen(backDisplay);
         }
     }

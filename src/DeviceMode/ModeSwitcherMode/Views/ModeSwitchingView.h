@@ -3,7 +3,7 @@
 
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
-#include "Display/GlyphDisplay.h"
+#include "../../../Display/LedDisplay/LedDisplay.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
@@ -79,7 +79,7 @@ public:
         }
     }
 
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderGlyphs) {
             return;
         }
@@ -90,26 +90,26 @@ public:
             default:
             case Options::Squash:
                 color = Colors::Green;
-                glyphDisplay.setGlyphsGlyph(Glyph::D5, Glyph::D0, Glyph::U, Glyph::A);
+                ledDisplay.setGlyphsGlyph(Glyph::D5, Glyph::D0, Glyph::U, Glyph::A);
                 break;
             case Options::Volleyball:
                 color = Colors::Yellow;
-                glyphDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::L, Glyph::L);
+                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::L, Glyph::L);
                 break;
             case Options::ShortVolleyball:
                 color = Colors::Yellow;
-                glyphDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::D1, Glyph::D5);
+                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::D1, Glyph::D5);
                 break;
             case Options::Config:
                 color = Colors::White;
-                glyphDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
+                ledDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
                 break;
         }
 
-        glyphDisplay.setGlyphsColor(color, color);
-        glyphDisplay.setIndicatorAppearancePlayerA(color);
-        glyphDisplay.setIndicatorAppearancePlayerB(color);
-        glyphDisplay.display();
+        ledDisplay.setGlyphsColor(color, color);
+        ledDisplay.setIndicatorAppearancePlayerA(color);
+        ledDisplay.setIndicatorAppearancePlayerB(color);
+        ledDisplay.display();
 
         shouldRenderGlyphs = false;
     }

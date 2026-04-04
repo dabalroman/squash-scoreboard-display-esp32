@@ -2,24 +2,24 @@
 #define BASEDEVICEMODE_H
 
 #include "DeviceModeState.h"
-#include "Display/GlyphDisplay.h"
+#include "../Display/LedDisplay/LedDisplay.h"
 #include "Display/BackDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
 class DeviceMode {
 protected:
-    GlyphDisplay &glyphDisplay;
+    LedDisplay &ledDisplay;
     BackDisplay &backDisplay;
     RemoteInputManager &remoteInputManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
 
 public:
     DeviceMode(
-        GlyphDisplay &glyphDisplay,
+        LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
-    ) : glyphDisplay(glyphDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager), onDeviceModeChange(onDeviceModeChange) {
+    ) : ledDisplay(ledDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager), onDeviceModeChange(onDeviceModeChange) {
     }
 
     virtual ~DeviceMode() = default;

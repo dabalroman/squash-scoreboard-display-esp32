@@ -1,26 +1,26 @@
-#ifndef DISPLAY_H
-#define DISPLAY_H
+#ifndef LED_DISPLAY_H
+#define LED_DISPLAY_H
 
 #include "Color.h"
-#include "GlyphDisplayUnit.h"
+#include "LedBar.h"
+#include "LedGlyph.h"
 
 
-class GlyphDisplay {
+class LedDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
-    uint32_t lastAnimProgressTickMs = 0;
-    uint8_t animProgress = 0;
 
 public:
-    GlyphDisplayUnit glyphA = GlyphDisplayUnit(pixels, GlyphId::A);
-    GlyphDisplayUnit glyphB = GlyphDisplayUnit(pixels, GlyphId::B);
-    GlyphDisplayUnit glyphC = GlyphDisplayUnit(pixels, GlyphId::C);
-    GlyphDisplayUnit glyphD = GlyphDisplayUnit(pixels, GlyphId::D);
-    GlyphDisplayUnit glyphColon = GlyphDisplayUnit(pixels, GlyphId::Colon);
-    GlyphDisplayUnit glyphIndicatorPlayerA = GlyphDisplayUnit(pixels, GlyphId::IndicatorPlayerA);
-    GlyphDisplayUnit glyphIndicatorPlayerB = GlyphDisplayUnit(pixels, GlyphId::IndicatorPlayerB);
+    LedGlyph glyphA = LedGlyph(pixels, GlyphId::A);
+    LedGlyph glyphB = LedGlyph(pixels, GlyphId::B);
+    LedGlyph glyphC = LedGlyph(pixels, GlyphId::C);
+    LedGlyph glyphD = LedGlyph(pixels, GlyphId::D);
+    LedGlyph glyphColon = LedGlyph(pixels, GlyphId::Colon);
+    LedGlyph glyphIndicatorPlayerA = LedGlyph(pixels, GlyphId::IndicatorPlayerA);
+    LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
+    LedBar bar = LedBar(pixels);
 
-    explicit GlyphDisplay(CRGB *pixels) : pixels(pixels) {
+    explicit LedDisplay(CRGB *pixels) : pixels(pixels) {
         setColonAppearance();
         setPlayersIndicatorsState(false);
     }
@@ -146,27 +146,7 @@ public:
         glyphColon.render(tickMs);
         glyphIndicatorPlayerA.render(tickMs);
         glyphIndicatorPlayerB.render(tickMs);
-
-        if (lastAnimProgressTickMs + 1000 <= tickMs) {
-            animProgress++;
-            if (animProgress >= 24) {
-                animProgress = 0;
-            }
-
-            lastAnimProgressTickMs = tickMs;
-        }
-
-        for (uint8_t i = 0; i < 24; i++) {
-            const Color color = getColor(i);
-            pixels[88 + i] = (i < animProgress)
-                ? CRGB(color.r, color.g, color.b)
-                : CRGB::Black;
-        }
-
-        // 88, 89, 90, 91, 92, 93,
-        // 94, 95, 96, 97, 98, 99,
-        // 100, 101, 102, 103, 104, 105,
-        // 106, 107, 108, 109, 110, 111
+        bar.render(tickMs);
     }
 
     static void setBrightness(const uint8_t brightness) {
@@ -175,4 +155,4 @@ public:
 };
 
 
-#endif //DISPLAY_H
+#endif //LED_DISPLAY_H

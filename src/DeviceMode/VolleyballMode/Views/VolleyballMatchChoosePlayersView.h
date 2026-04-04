@@ -3,12 +3,12 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "Display/GlyphDisplay.h"
+#include "../../../Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
 class Adafruit_SSD1306;
-class GlyphDisplay;
+class LedDisplay;
 class RemoteInputManager;
 
 class VolleyballMatchChoosePlayersView final : public View {
@@ -105,22 +105,22 @@ public:
     }
 
     // Blinking, so always should render
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
-        glyphDisplay.setColonAppearance();
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
+        ledDisplay.setColonAppearance();
 
-        glyphDisplay.setGlyphsGlyph(
+        ledDisplay.setGlyphsGlyph(
             Glyph::P,
-            GlyphDisplay::digitToGlyph(playerA->getId()),
+            LedDisplay::digitToGlyph(playerA->getId()),
             Glyph::P,
-            GlyphDisplay::digitToGlyph(playerB->getId())
+            LedDisplay::digitToGlyph(playerB->getId())
         );
-        glyphDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
+        ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        glyphDisplay.setPlayersIndicatorsState(true);
-        glyphDisplay.setIndicatorAppearancePlayerA(playerA->getColor());
-        glyphDisplay.setIndicatorAppearancePlayerB(playerB->getColor());
+        ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor());
+        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor());
 
-        glyphDisplay.display();
+        ledDisplay.display();
     }
 
     void renderScreen(BackDisplay &backDisplay) override {

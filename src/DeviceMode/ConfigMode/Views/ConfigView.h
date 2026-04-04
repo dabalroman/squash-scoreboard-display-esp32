@@ -2,7 +2,7 @@
 #define CONFIGVIEW_H
 
 #include "DeviceMode/View.h"
-#include "Display/GlyphDisplay.h"
+#include "../../../Display/LedDisplay/LedDisplay.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
@@ -110,7 +110,7 @@ public:
         }
     }
 
-    void renderGlyphs(GlyphDisplay &glyphDisplay) override {
+    void renderLedDisplay(LedDisplay &ledDisplay) override {
         if (!shouldRenderGlyphs) {
             return;
         }
@@ -135,11 +135,11 @@ public:
                 break;
         }
 
-        glyphDisplay.setBrightness(preferencesManager.settings.brightness);
-        glyphDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
-        glyphDisplay.setIndicatorAppearancePlayerA(color);
-        glyphDisplay.setIndicatorAppearancePlayerB(color);
-        glyphDisplay.display();
+        ledDisplay.setBrightness(preferencesManager.settings.brightness);
+        ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
+        ledDisplay.setIndicatorAppearancePlayerA(color);
+        ledDisplay.setIndicatorAppearancePlayerB(color);
+        ledDisplay.display();
 
         shouldRenderGlyphs = false;
     }

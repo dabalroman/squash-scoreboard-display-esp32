@@ -1,5 +1,5 @@
-#ifndef DISPLAY_DIGIT_H
-#define DISPLAY_DIGIT_H
+#ifndef LED_GLYPH
+#define LED_GLYPH
 
 #include <Arduino.h>
 #include <FastLED.h>
@@ -150,7 +150,7 @@ constexpr PixelsToSegmentMap glyphPlayerBIndicator = {
     {{2, 2, 2}}
 };
 
-class GlyphDisplayUnit {
+class LedGlyph {
 protected:
     GlyphId glyphId;
     CRGB *pixels;
@@ -160,7 +160,7 @@ protected:
     bool isBlinking = false;
 
 public:
-    GlyphDisplayUnit(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
+    LedGlyph(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
     }
 
     static const PixelsToSegmentMap *getGlyphPixels(const GlyphId glyph) {
@@ -235,4 +235,4 @@ public:
 };
 
 
-#endif //DISPLAY_DIGIT_H
+#endif //LED_GLYPH
