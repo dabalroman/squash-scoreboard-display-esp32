@@ -1,8 +1,6 @@
 #ifndef RULES_H
 #define RULES_H
 
-#include "../MatchSideEnum.h"
-
 class Rules {
 public:
     virtual ~Rules() {

@@ -5,7 +5,6 @@
 #include "LedBar.h"
 #include "LedGlyph.h"
 
-
 class LedDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
@@ -70,6 +69,10 @@ public:
         setGlyphBlinking(isBlinkingA, isBlinkingB);
     }
 
+    void setHistoryBarState(const std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> &state) {
+        bar.setState(state);
+    }
+
     void setGlyphBlinking(
         const bool isBlinkingA,
         const bool isBlinkingB,
@@ -118,22 +121,6 @@ public:
         FastLED.clear();
         render();
         FastLED.show();
-    }
-
-    static Color getColor(uint8_t i) {
-        i = i % 8;
-
-        switch (i) {
-            default:
-            case 0: return Colors::White;
-            case 1: return Colors::Green;
-            case 2: return Colors::Red;
-            case 3: return Colors::Black;
-            case 4: return Colors::Blue;
-            case 5: return Colors::Yellow;
-            case 6: return Colors::Pink;
-            case 7: return Colors::Aqua;
-        }
     }
 
     void render() {

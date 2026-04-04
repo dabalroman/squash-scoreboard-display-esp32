@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 #include "Rules.h"
-#include "../MatchSideEnum.h"
+#include "Match/Enum/MatchSide.h"
 
 class SquashRules final : public Rules {
     MatchSide checkWinner(const int8_t scoreA, const int8_t scoreB) const override {

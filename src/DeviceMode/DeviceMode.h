@@ -2,7 +2,7 @@
 #define BASEDEVICEMODE_H
 
 #include "DeviceModeState.h"
-#include "../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Display/BackDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 

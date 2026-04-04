@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 
 #define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000

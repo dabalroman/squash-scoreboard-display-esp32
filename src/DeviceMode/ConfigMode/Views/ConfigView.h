@@ -2,7 +2,7 @@
 #define CONFIGVIEW_H
 
 #include "DeviceMode/View.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"

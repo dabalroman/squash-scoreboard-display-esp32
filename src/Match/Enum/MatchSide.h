@@ -1,5 +1,5 @@
-#ifndef MATCHSIDEENUM_H
-#define MATCHSIDEENUM_H
+#ifndef MATCH_SIDE_ENUM
+#define MATCH_SIDE_ENUM
 
 #include <Arduino.h>
 
@@ -9,4 +9,4 @@ enum class MatchSide: uint8_t {
     b = 2,
 };
 
-#endif //MATCHSIDEENUM_H
+#endif //MATCH_SIDE_ENUM

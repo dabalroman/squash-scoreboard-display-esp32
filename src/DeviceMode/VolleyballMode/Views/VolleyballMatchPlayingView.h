@@ -3,7 +3,8 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
 #include "Match/Tournament.h"
 
 #define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
@@ -17,6 +18,8 @@ class VolleyballMatchPlayingView final : public View {
 
     uint32_t lastPointScoredAtMs = 0;
     MatchSide commitResultWinner = MatchSide::none;
+
+    bool shouldUpdateLedBarHistoryState = false;
 
 public:
     VolleyballMatchPlayingView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
@@ -45,27 +48,31 @@ public:
             round->scorePoint(MatchSide::a);
             lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
+            shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(1000)) {
             round->scorePoint(MatchSide::b);
             lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
+            shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(1000)) {
             round->losePoint(MatchSide::a);
             checkExit = true;
             lastPointScoredAtMs = now;
+            shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(1000)) {
             round->losePoint(MatchSide::b);
             checkExit = true;
             lastPointScoredAtMs = now;
+            shouldUpdateLedBarHistoryState = true;
         }
 
-        // If both players are at 0, return to previous screen
+        // If both players are at 0, return to the previous screen
         if (checkExit && round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
             onStateChange(VolleyballModeState::MatchChoosePlayers);
             return;
@@ -74,6 +81,7 @@ public:
         // Handle score commits
         if (round->hasUncommitedPoints() && lastPointScoredAtMs + MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
             commitResultWinner = round->commit();
+            shouldUpdateLedBarHistoryState = true;
 
             if (commitResultWinner != MatchSide::none) {
                 remoteInputManager.preventTriggerForMs();
@@ -99,6 +107,16 @@ public:
 
         ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
         ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
+
+        if (shouldUpdateLedBarHistoryState) {
+            ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
+                playerA->getColor(),
+                playerB->getColor(),
+                round->getScoreHistory()
+            ));
+
+            shouldUpdateLedBarHistoryState = false;
+        }
 
         ledDisplay.display();
     }

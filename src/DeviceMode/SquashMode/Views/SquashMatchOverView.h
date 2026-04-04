@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 
 #define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500

@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Match/Tournament.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 

@@ -3,8 +3,8 @@
 
 #include <Arduino.h>
 
-#include <algorithm>
-
+#include "MatchScoreHistory.h"
+#include "Enum/MatchSide.h"
 #include "Rules/Rules.h"
 
 class MatchRound {
@@ -14,6 +14,7 @@ class MatchRound {
     int8_t deltaA = 0, deltaB = 0;
     MatchSide winner = MatchSide::none;
     Rules *rules;
+    MatchScoreHistory history = MatchScoreHistory();
 
 public:
     explicit MatchRound(const uint8_t id, Rules *rules) : id(id), rules(rules) {
@@ -58,8 +59,10 @@ public:
 
         if (side == MatchSide::a) {
             deltaA++;
+            history.scorePoint(side);
         } else if (side == MatchSide::b) {
             deltaB++;
+            history.scorePoint(side);
         }
     }
 
@@ -70,8 +73,10 @@ public:
 
         if (side == MatchSide::a && scoreA + deltaA > 0) {
             deltaA--;
+            history.losePoint(side);
         } else if (side == MatchSide::b && scoreB + deltaB > 0) {
             deltaB--;
+            history.losePoint(side);
         }
     }
 
@@ -91,15 +96,12 @@ public:
         return hasUncommitedPoints(MatchSide::a) || hasUncommitedPoints(MatchSide::b);
     }
 
-    void rollback() {
-        deltaA = 0;
-        deltaB = 0;
-    }
-
     MatchSide commit() {
         if (winner != MatchSide::none) {
             return winner;
         }
+
+        history.commit();
 
         scoreA += deltaA;
         scoreB += deltaB;
@@ -112,6 +114,10 @@ public:
 
         winner = rules->checkWinner(scoreA, scoreB);
         return winner;
+    }
+
+    MatchScoreHistory getScoreHistory() const {
+        return history;
     }
 };
 

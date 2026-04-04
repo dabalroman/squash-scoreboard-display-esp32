@@ -3,58 +3,37 @@
 
 #include <FastLED.h>
 
-#include "Color.h"
+#define BAR_DISPLAY_BLINK_INTERVAL 500
+#define BAR_DISPLAY_FIRST_PIXEL_INDEX 88
+#define BAR_DISPLAY_AMOUNT_OF_PIXELS 24
+
+struct LedBarPixel {
+    CRGB color;
+    bool isBlinking = false;
+};
 
 class LedBar {
     CRGB *pixels;
-    uint32_t lastAnimProgressTickMs = 0;
-    uint8_t animProgress = 0;
+    std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> state;
 
 public:
-    explicit LedBar(CRGB *pixels) : pixels(pixels) {
+    explicit LedBar(CRGB *pixels) : pixels(pixels), state() {
     }
 
-    static Color getColor(uint8_t i) {
-        i = i % 8;
-
-        switch (i) {
-            default:
-            case 0: return Colors::White;
-            case 1: return Colors::Green;
-            case 2: return Colors::Red;
-            case 3: return Colors::Black;
-            case 4: return Colors::Blue;
-            case 5: return Colors::Yellow;
-            case 6: return Colors::Pink;
-            case 7: return Colors::Aqua;
-        }
+    void setState(std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> newState) {
+        state = std::move(newState);
     }
 
-    void render(const uint32_t &tickMs) {
-        if (lastAnimProgressTickMs + 1000 <= tickMs) {
-            animProgress++;
-            if (animProgress >= 24) {
-                animProgress = 0;
+    void render(
+        const uint32_t &tickMs
+    ) const {
+        for (uint8_t i = 0; i < BAR_DISPLAY_AMOUNT_OF_PIXELS; i++) {
+            if (state[i].isBlinking && tickMs % BAR_DISPLAY_BLINK_INTERVAL < BAR_DISPLAY_BLINK_INTERVAL / 2) {
+                continue;
             }
 
-            lastAnimProgressTickMs = tickMs;
+            pixels[BAR_DISPLAY_FIRST_PIXEL_INDEX + i] = state[i].color;
         }
-
-        for (uint8_t i = 0; i < 24; i++) {
-            const Color color = getColor(i);
-            pixels[88 + i] = (i < animProgress)
-                ? CRGB(color.r, color.g, color.b)
-                : CRGB::Black;
-        }
-
-        // 88, 89, 90, 91, 92, 93,
-        // 94, 95, 96, 97, 98, 99,
-        // 100, 101, 102, 103, 104, 105,
-        // 106, 107, 108, 109, 110, 111
-    }
-
-    static void setBrightness(const uint8_t brightness) {
-        FastLED.setBrightness(brightness);
     }
 };
 

@@ -2,7 +2,7 @@
 #define VIEW_H
 
 #include "Display/BackDisplay.h"
-#include "../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
 class View {

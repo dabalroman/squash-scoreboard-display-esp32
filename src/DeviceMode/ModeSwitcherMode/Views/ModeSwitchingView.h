@@ -3,7 +3,7 @@
 
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
-#include "../../../Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedDisplay.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
