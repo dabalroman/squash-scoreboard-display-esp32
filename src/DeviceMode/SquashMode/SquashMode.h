@@ -6,12 +6,12 @@
 #include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
-#include "Match/Tournament.h"
-#include "Match/Rules/SquashRules.h"
+#include "Tournament/Tournament.h"
+#include "Tournament/Rules/SquashRules.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
-#include "Views/SquashMatchChoosePlayersView.h"
-#include "Views/SquashMatchOverView.h"
-#include "Views/SquashMatchPlayingView.h"
+#include "Views/SquashMatchStartGameView.h"
+#include "Views/SquashGameOverView.h"
+#include "Views/SquashGamePlayingView.h"
 #include "Views/SquashTournamentChoosePlayersView.h"
 
 class SquashMode final : public DeviceMode {
@@ -38,25 +38,25 @@ class SquashMode final : public DeviceMode {
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
-            case SquashModeState::MatchChoosePlayers:
-                activeView = std::make_unique<SquashMatchChoosePlayersView>(
+            case SquashModeState::MatchStartGame:
+                activeView = std::make_unique<SquashMatchStartGameView>(
                     tournament,
                     onDeviceModeChange,
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
-            case SquashModeState::MatchPlaying:
-                activeView = std::make_unique<SquashMatchPlayingView>(
+            case SquashModeState::GamePlaying:
+                activeView = std::make_unique<SquashGamePlayingView>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
-            case SquashModeState::MatchOver:
+            case SquashModeState::GameOver:
                 if (onMatchOver) {
                     onMatchOver();
                 }
 
-                activeView = std::make_unique<SquashMatchOverView>(
+                activeView = std::make_unique<SquashGameOverView>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); }
                 );

@@ -1,25 +1,25 @@
-#ifndef SQUASH_MODE__MATCH_OVER_VIEW_H
-#define SQUASH_MODE__MATCH_OVER_VIEW_H
+#ifndef VOLLEYBALL_MODE__GAME_OVER_VIEW_H
+#define VOLLEYBALL_MODE__GAME_OVER_VIEW_H
 
 #include "DeviceMode/View.h"
-#include "DeviceMode/SquashMode/SquashModeState.h"
+#include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 
-#define MATCH_OVER_VIEW_BACK_DISPLAY_PLAYER_CHANGE_MS 2500
-
-class SquashMatchOverView final : public View {
+class VolleyballGameOverView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
-    MatchRound *round = nullptr;
+    Game *round = nullptr;
     UserProfile *playerA = nullptr, *playerB = nullptr;
-    std::function<void(SquashModeState)> onStateChange;
+    std::function<void(VolleyballModeState)> onStateChange;
+
+    bool shouldUpdateLedBarHistoryState = true;
 
 public:
-    SquashMatchOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
+    VolleyballGameOverView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = tournament.getActiveMatch();
+
         if (!match) {
             return;
         }
@@ -30,9 +30,9 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (remoteInputManager.buttonD.takeActionIfPossible() || remoteInputManager.buttonC.takeActionIfPossible()) {
+        if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            onStateChange(SquashModeState::MatchChoosePlayers);
+            onStateChange(VolleyballModeState::MatchStartGame);
 
             queueRender();
         }
@@ -41,13 +41,13 @@ public:
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.setColonAppearance();
 
-        ledDisplay.setNumericValue(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
+        ledDisplay.setNumericValue(round->getRealScore(GameSide::a), round->getRealScore(GameSide::b));
         ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
 
-        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == MatchSide::a);
-        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == MatchSide::b);
+        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == GameSide::a);
+        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == GameSide::b);
 
-        ledDisplay.startCelebration(round->getWinner() == MatchSide::a ? playerA->getColor() : playerB->getColor());
+        ledDisplay.startCelebration(round->getWinner() == GameSide::a ? playerA->getColor() : playerB->getColor());
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
@@ -66,11 +66,11 @@ public:
         }
 
         backDisplay.clear();
-        backDisplay.renderScoreWidget(round->getRealScore(MatchSide::a), round->getRealScore(MatchSide::b));
+        backDisplay.renderScoreWidget(round->getRealScore(GameSide::a), round->getRealScore(GameSide::b));
         backDisplay.display();
 
         shouldRenderBack = false;
     }
 };
 
-#endif //SQUASH_MODE__MATCH_OVER_VIEW_H
+#endif //VOLLEYBALL_MODE__GAME_OVER_VIEW_H

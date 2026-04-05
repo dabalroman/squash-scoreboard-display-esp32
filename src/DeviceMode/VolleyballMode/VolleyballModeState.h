@@ -6,9 +6,9 @@
 enum class VolleyballModeState : uint8_t {
     Init = 0,
     TournamentChoosePlayers = 1,
-    MatchChoosePlayers = 2,
-    MatchPlaying = 3,
-    MatchOver = 4,
+    MatchStartGame = 2,
+    GamePlaying = 3,
+    GameOver = 4,
     TournamentSummary = 5
 };
 

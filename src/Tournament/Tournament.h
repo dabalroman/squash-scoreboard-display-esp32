@@ -2,9 +2,13 @@
 #define TOURNAMENT_H
 #include <vector>
 
-#include "Match.h"
-#include "MatchOrderKeeper.h"
+#include "Match/Match.h"
+#include "Match/MatchOrderKeeper.h"
 
+/**
+ * Multiple players play against each other in many rounds.
+ * Lives as long as the selected device mode.
+ */
 class Tournament {
     std::deque<Match> matches;
     std::vector<UserProfile *> players;

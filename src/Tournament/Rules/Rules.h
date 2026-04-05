@@ -6,7 +6,7 @@ public:
     virtual ~Rules() {
     }
 
-    virtual MatchSide checkWinner(int8_t scoreA, int8_t scoreB) const = 0;
+    virtual GameSide checkWinner(int8_t scoreA, int8_t scoreB) const = 0;
 };
 
 #endif //RULES_H

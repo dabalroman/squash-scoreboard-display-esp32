@@ -1,28 +1,28 @@
-#ifndef SQUASH_MODE__MATCH_PLAYING_VIEW_H
-#define SQUASH_MODE__MATCH_PLAYING_VIEW_H
+#ifndef VOLLEYBALL_MODE__GAME_PLAYING_VIEW_H
+#define VOLLEYBALL_MODE__GAME_PLAYING_VIEW_H
 
 #include "DeviceMode/View.h"
-#include "DeviceMode/SquashMode/SquashModeState.h"
+#include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 
-#define MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
+#define GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
 
-class SquashMatchPlayingView final : public View {
+class VolleyballGamePlayingView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
-    MatchRound *round = nullptr;
+    Game *round = nullptr;
     UserProfile *playerA = nullptr, *playerB = nullptr, *lastPointScoredBy = nullptr;
-    std::function<void(SquashModeState)> onStateChange;
+    std::function<void(VolleyballModeState)> onStateChange;
 
     uint32_t lastPointScoredAtMs = 0;
-    MatchSide commitResultWinner = MatchSide::none;
+    GameSide commitResultWinner = GameSide::none;
 
     bool shouldUpdateLedBarHistoryState = true;
 
 public:
-    SquashMatchPlayingView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
+    VolleyballGamePlayingView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = tournament.getActiveMatch();
 
@@ -30,6 +30,8 @@ public:
             printLn("MATCH IS MISSING!");
             return;
         }
+
+        printLn("Active match id: %u", match->getId());
 
         round = &match->createMatchRound();
         match->setActiveRound(*round);
@@ -43,52 +45,52 @@ public:
         bool checkExit = false;
 
         if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
-            round->scorePoint(MatchSide::a);
+            round->scorePoint(GameSide::a);
             lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
-            round->scorePoint(MatchSide::b);
+            round->scorePoint(GameSide::b);
             lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
-            if (round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+            if (round->getTemporaryScore(GameSide::a) == 0 && round->getTemporaryScore(GameSide::b) == 0) {
                 checkExit = true;
             }
 
-            round->losePoint(MatchSide::a);
+            round->losePoint(GameSide::a);
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
-            if (round->getTemporaryScore(MatchSide::a) == 0 && round->getTemporaryScore(MatchSide::b) == 0) {
+            if (round->getTemporaryScore(GameSide::a) == 0 && round->getTemporaryScore(GameSide::b) == 0) {
                 checkExit = true;
             }
 
-            round->losePoint(MatchSide::b);
+            round->losePoint(GameSide::b);
             lastPointScoredAtMs = now;
             shouldUpdateLedBarHistoryState = true;
         }
 
         if (checkExit) {
-            onStateChange(SquashModeState::MatchChoosePlayers);
+            onStateChange(VolleyballModeState::MatchStartGame);
             return;
         }
 
         // Handle score commits
-        if (round->hasUncommitedPoints() && lastPointScoredAtMs + MATCH_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
+        if (round->hasUncommitedPoints() && lastPointScoredAtMs + GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
             commitResultWinner = round->commit();
             shouldUpdateLedBarHistoryState = true;
 
-            if (commitResultWinner != MatchSide::none) {
+            if (commitResultWinner != GameSide::none) {
                 remoteInputManager.preventTriggerForMs();
-                onStateChange(SquashModeState::MatchOver);
+                onStateChange(VolleyballModeState::GameOver);
             }
         }
     }
@@ -107,16 +109,16 @@ public:
             ledDisplay.setColonAppearance(lastPointScoredBy->getColor(), true);
         }
 
-        ledDisplay.setNumericValue(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
+        ledDisplay.setNumericValue(round->getTemporaryScore(GameSide::a), round->getTemporaryScore(GameSide::b));
         ledDisplay.setGlyphsAppearance(
             playerA->getColor(),
             playerB->getColor(),
-            round->hasUncommitedPoints(MatchSide::a),
-            round->hasUncommitedPoints(MatchSide::b)
+            round->hasUncommitedPoints(GameSide::a),
+            round->hasUncommitedPoints(GameSide::b)
         );
 
-        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(MatchSide::a));
-        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(MatchSide::b));
+        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(GameSide::a));
+        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(GameSide::b));
 
         if (shouldUpdateLedBarHistoryState) {
             ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
@@ -137,9 +139,11 @@ public:
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
         backDisplay.clear();
-        backDisplay.renderScoreWidget(round->getTemporaryScore(MatchSide::a), round->getTemporaryScore(MatchSide::b));
+        backDisplay.renderScoreWidget(round->getTemporaryScore(GameSide::a), round->getTemporaryScore(GameSide::b));
         backDisplay.display();
+
+        shouldRenderBack = false;
     }
 };
 
-#endif //SQUASH_MODE__MATCH_PLAYING_VIEW_H
+#endif //VOLLEYBALL_MODE__GAME_PLAYING_VIEW_H

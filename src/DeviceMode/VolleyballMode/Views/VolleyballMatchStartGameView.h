@@ -1,17 +1,17 @@
-#ifndef VOLLEYBALL_MODE__MATCHCHOOSEPLAYERSVIEW_H
-#define VOLLEYBALL_MODE__MATCHCHOOSEPLAYERSVIEW_H
+#ifndef VOLLEYBALL_MODE__MATCH_START_VIEW_H
+#define VOLLEYBALL_MODE__MATCH_START_GAME_VIEW_H
 
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
 class Adafruit_SSD1306;
 class LedDisplay;
 class RemoteInputManager;
 
-class VolleyballMatchChoosePlayersView final : public View {
+class VolleyballMatchStartGameView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &players;
     std::function<void(DeviceModeState)> onDeviceModeChange;
@@ -24,7 +24,7 @@ class VolleyballMatchChoosePlayersView final : public View {
     size_t playerBIndex = 1;
 
 public:
-    VolleyballMatchChoosePlayersView(
+    VolleyballMatchStartGameView(
         Tournament &tournament,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         const std::function<void(VolleyballModeState)> &onStateChange
@@ -93,7 +93,7 @@ public:
             tournament.setActiveMatch(match);
             tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});
 
-            onStateChange(VolleyballModeState::MatchPlaying);
+            onStateChange(VolleyballModeState::GamePlaying);
             queueRender();
         }
     }
@@ -144,4 +144,4 @@ public:
     }
 };
 
-#endif //VOLLEYBALL_MODE__MATCHCHOOSEPLAYERSVIEW_H
+#endif //VOLLEYBALL_MODE__MATCH_START_GAME_VIEW_H

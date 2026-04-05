@@ -5,7 +5,7 @@
 
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/Scrollable.h"
@@ -81,7 +81,7 @@ public:
                 }
 
                 remoteInputManager.preventTriggerForMs();
-                onStateChange(SquashModeState::MatchChoosePlayers);
+                onStateChange(SquashModeState::MatchStartGame);
                 return;
             }
 

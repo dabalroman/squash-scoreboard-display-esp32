@@ -6,7 +6,7 @@
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
@@ -81,7 +81,7 @@ public:
                 }
 
                 remoteInputManager.preventTriggerForMs();
-                onStateChange(VolleyballModeState::MatchChoosePlayers);
+                onStateChange(VolleyballModeState::MatchStartGame);
                 return;
             }
 

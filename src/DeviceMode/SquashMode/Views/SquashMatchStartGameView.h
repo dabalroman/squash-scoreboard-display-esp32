@@ -1,16 +1,17 @@
-#ifndef SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H
-#define SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H
+#ifndef SQUASH_MODE__MATCH_START_GAME_VIEW_H
+#define SQUASH_MODE__MATCH_START_GAME_VIEW_H
 
+#include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Match/Tournament.h"
+#include "Tournament/Tournament.h"
 
 class Adafruit_SSD1306;
 class LedDisplay;
 class RemoteInputManager;
 
-class SquashMatchChoosePlayersView final : public View {
+class SquashMatchStartGameView final : public View {
     Tournament &tournament;
     std::vector<UserProfile *> &players;
     std::function<void(DeviceModeState)> onDeviceModeChange;
@@ -23,7 +24,7 @@ class SquashMatchChoosePlayersView final : public View {
     size_t playerBIndex = 1;
 
 public:
-    SquashMatchChoosePlayersView(
+    SquashMatchStartGameView(
         Tournament &tournament,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         const std::function<void(SquashModeState)> &onStateChange
@@ -90,7 +91,7 @@ public:
             remoteInputManager.preventTriggerForMs();
             tournament.setActiveMatch(tournament.getMatchBetween(*playerA, *playerB));
             tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});
-            onStateChange(SquashModeState::MatchPlaying);
+            onStateChange(SquashModeState::GamePlaying);
             queueRender();
         }
     }
@@ -140,4 +141,4 @@ public:
     }
 };
 
-#endif //SQUASH_MODE__MATCHCHOOSEPLAYERSVIEW_H
+#endif //SQUASH_MODE__MATCH_START_GAME_VIEW_H

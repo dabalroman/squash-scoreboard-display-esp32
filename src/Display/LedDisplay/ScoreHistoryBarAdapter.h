@@ -3,14 +3,14 @@
 
 #include <Color.h>
 #include "LedBar.h"
-#include "Match/MatchScoreHistory.h"
+#include "../../Tournament/Game/GameScoreHistory.h"
 
 class ScoreHistoryBarAdapter {
 public:
     static std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> toLedBarPixels(
         const Color &sideAColor,
         const Color &sideBColor,
-        const MatchScoreHistory &history
+        const GameScoreHistory &history
     ) {
         std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> pixels = {};
         const auto &entries = history.getHistory();
@@ -20,10 +20,10 @@ public:
 
         for (uint8_t i = 0; i < count; i++) {
             const auto &entry = entries[offset + i];
-            const Color &color = entry.side == MatchSide::a ? sideAColor : sideBColor;
+            const Color &color = entry.side == GameSide::a ? sideAColor : sideBColor;
 
             pixels[i].color = CRGB(color.r, color.g, color.b);
-            pixels[i].isBlinking = entry.status != MatchScoreHistoryStatus::committed;
+            pixels[i].isBlinking = entry.status != GameScoreHistoryStatus::committed;
         }
 
         return pixels;

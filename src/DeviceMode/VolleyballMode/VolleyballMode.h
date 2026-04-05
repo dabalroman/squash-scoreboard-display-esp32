@@ -4,12 +4,12 @@
 #include "VolleyballModeState.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
-#include "Match/Tournament.h"
-#include "Match/Rules/Rules.h"
+#include "Tournament/Tournament.h"
+#include "Tournament/Rules/Rules.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
-#include "Views/VolleyballMatchChoosePlayersView.h"
-#include "Views/VolleyballMatchOverView.h"
-#include "Views/VolleyballMatchPlayingView.h"
+#include "Views/VolleyballMatchStartGameView.h"
+#include "Views/VolleyballGameOverView.h"
+#include "Views/VolleyballGamePlayingView.h"
 #include "Views/VolleyballTournamentChoosePlayersView.h"
 
 enum class VolleyballModeState : uint8_t;
@@ -38,25 +38,25 @@ class VolleyballMode final : public DeviceMode {
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
-            case VolleyballModeState::MatchChoosePlayers:
-                activeView = std::make_unique<VolleyballMatchChoosePlayersView>(
+            case VolleyballModeState::MatchStartGame:
+                activeView = std::make_unique<VolleyballMatchStartGameView>(
                     tournament,
                     onDeviceModeChange,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
-            case VolleyballModeState::MatchPlaying:
-                activeView = std::make_unique<VolleyballMatchPlayingView>(
+            case VolleyballModeState::GamePlaying:
+                activeView = std::make_unique<VolleyballGamePlayingView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
-            case VolleyballModeState::MatchOver:
+            case VolleyballModeState::GameOver:
                 if (onMatchOver) {
                     onMatchOver();
                 }
 
-                activeView = std::make_unique<VolleyballMatchOverView>(
+                activeView = std::make_unique<VolleyballGameOverView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );

@@ -2,18 +2,26 @@
 #define MATCH_H
 
 #include "UserProfile.h"
-#include "MatchRound.h"
-#include "Rules/Rules.h"
+#include "Tournament/Game/Game.h"
+#include "Tournament/Rules/Rules.h"
+#include "Tournament/Game/GameResult.h"
 
+/**
+ * Two preselected players play against each other in many rounds.
+ * Lives as long as the tournament does.
+ */
 class Match {
     uint8_t id;
 
     UserProfile &playerA;
     UserProfile &playerB;
 
-    std::deque<MatchRound> rounds;
+    // TODO: Only one active game
+    std::deque<Game> games;
+    // TODO: Remember Game results
+    // std::vector<GameResult> matchResults;
     size_t activeRoundId = 0;
-    MatchRound *activeRound = nullptr;
+    Game *activeRound = nullptr;
     Rules *rules;
 
 public:
@@ -25,20 +33,20 @@ public:
         return id;
     }
 
-    MatchRound &createMatchRound() {
-        const auto newRoundId = rounds.size();
-        rounds.emplace_back(newRoundId, rules);
+    Game &createMatchRound() {
+        const auto newRoundId = games.size();
+        games.emplace_back(newRoundId, rules);
 
         printLn("Creating new round %u:%u", id, newRoundId);
 
-        return rounds.back();
+        return games.back();
     }
 
-    void setActiveRound(const MatchRound &round) {
-        for (size_t i = 0; i < rounds.size(); i++) {
-            if (rounds.at(i).getId() == round.getId()) {
+    void setActiveRound(const Game &round) {
+        for (size_t i = 0; i < games.size(); i++) {
+            if (games.at(i).getId() == round.getId()) {
                 activeRoundId = i;
-                activeRound = &rounds.at(i);
+                activeRound = &games.at(i);
 
                 printLn("Active round is %u:%u", id, round.getId());
                 return;
@@ -48,7 +56,7 @@ public:
         printLn("Could not find round %u:%u", id, round.getId());
     }
 
-    MatchRound &getActiveRound() {
+    Game &getActiveRound() {
         if (activeRound == nullptr) {
             setActiveRound(createMatchRound());
         }
@@ -56,12 +64,12 @@ public:
         return *activeRound;
     }
 
-    MatchRound &getRound(const size_t id) {
-        return rounds.at(id);
+    Game &getRound(const size_t gameId) {
+        return games.at(gameId);
     }
 
     size_t getRoundCount() const {
-        return rounds.size();
+        return games.size();
     }
 
     UserProfile &getPlayerA() const {
