@@ -27,21 +27,18 @@ public:
     }
 
     void handleInput(volatile uint8_t &triggeredGpio) {
-        if (triggeredGpio == 0) {
-            return;
-        }
+        const uint8_t gpio = triggeredGpio;  // single read
+        triggeredGpio = 0;                   // clear before dispatch; new ISR writes are safe from here
 
-        if (triggeredGpio == buttonA.getGPIO()) {
+        if (gpio == buttonA.getGPIO()) {
             buttonA.trigger();
-        } else if (triggeredGpio == buttonB.getGPIO()) {
+        } else if (gpio == buttonB.getGPIO()) {
             buttonB.trigger();
-        } else if (triggeredGpio == buttonC.getGPIO()) {
+        } else if (gpio == buttonC.getGPIO()) {
             buttonC.trigger();
-        } else if (triggeredGpio == buttonD.getGPIO()) {
+        } else if (gpio == buttonD.getGPIO()) {
             buttonD.trigger();
         }
-
-        triggeredGpio = 0;
     }
 
     void setOnActionTaken(void (*callback)()) {

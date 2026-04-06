@@ -1,7 +1,6 @@
 #ifndef REMOTE_DEVELOPMENT_SERVICE_H
 #define REMOTE_DEVELOPMENT_SERVICE_H
 
-#include <deque>
 #include <memory>
 #include <WebServer.h>
 #include "PreferencesManager.h"
@@ -20,8 +19,12 @@ class RemoteDevelopmentService {
     bool isOTAActive = false;
     bool isNTPActive = false;
 
-    std::deque<String> logBuffer;
-    const size_t MAX_LOGS = 10;
+    static constexpr uint8_t MAX_LOGS = 10;
+    static constexpr uint8_t LOG_ENTRY_SIZE = 128;
+
+    char logBuffer[MAX_LOGS][LOG_ENTRY_SIZE];
+    uint8_t logHead = 0;
+    uint8_t logCount = 0;
 
     void setupOTA();
 

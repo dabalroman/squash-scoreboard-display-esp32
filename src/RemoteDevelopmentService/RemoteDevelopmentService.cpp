@@ -100,10 +100,7 @@ void RemoteDevelopmentService::setupNTP() {
         return;
     }
 
-    configTime(3600, 3600, "pool.ntp.org");
-    tm timeInfo;
-    getLocalTime(&timeInfo);
-
+    configTime(3600, 3600, "pool.ntp.org");  // async
     isNTPActive = true;
 }
 
@@ -111,17 +108,19 @@ void RemoteDevelopmentService::printLn(const char *message) {
     if (isWifiActive && telnetClient && telnetClient.connected()) {
         telnetClient.println(message);
     } else {
-        if (logBuffer.size() >= MAX_LOGS) {
-            logBuffer.pop_front();
-        }
-        logBuffer.emplace_back(message);
+        strncpy(logBuffer[logHead], message, LOG_ENTRY_SIZE - 1);
+        logBuffer[logHead][LOG_ENTRY_SIZE - 1] = '\0';
+        logHead = (logHead + 1) % MAX_LOGS;
+        if (logCount < MAX_LOGS) logCount++;
     }
 }
 
 void RemoteDevelopmentService::telnetFlushLogBuffer() {
-    while (!logBuffer.empty()) {
-        telnetClient.println(logBuffer.front());
-        logBuffer.pop_front();
+    uint8_t idx = (logHead + MAX_LOGS - logCount) % MAX_LOGS;
+    while (logCount > 0) {
+        telnetClient.println(logBuffer[idx]);
+        idx = (idx + 1) % MAX_LOGS;
+        logCount--;
     }
 }
 

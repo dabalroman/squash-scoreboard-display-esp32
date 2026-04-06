@@ -1,5 +1,6 @@
 #ifndef TOURNAMENT_H
 #define TOURNAMENT_H
+#include <deque>
 #include <vector>
 
 #include "Match/Match.h"
@@ -17,6 +18,9 @@ class Tournament {
     Match *activeMatch = nullptr;
 
 public:
+    Tournament(const Tournament &) = delete;
+    Tournament &operator=(const Tournament &) = delete;
+
     std::unique_ptr<MatchOrderKeeper> matchOrderKeeper;
 
     explicit Tournament(std::unique_ptr<Rules> r) : rules(std::move(r)),

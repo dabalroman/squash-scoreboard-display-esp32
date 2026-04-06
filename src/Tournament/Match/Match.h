@@ -29,6 +29,9 @@ public:
         : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
     }
 
+    Match(const Match &) = delete;
+    Match &operator=(const Match &) = delete;
+
     uint8_t getId() const {
         return id;
     }

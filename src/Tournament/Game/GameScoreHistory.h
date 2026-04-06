@@ -46,6 +46,10 @@ public:
             }
         }
 
+        if (history.size() >= 64) {
+            history.erase(history.begin());
+        }
+
         history.push_back({side, GameScoreHistoryStatus::scored});
     }
 

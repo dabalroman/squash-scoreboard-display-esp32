@@ -80,7 +80,7 @@ public:
         }
 
         // Handle score commits
-        if (game->hasUncommitedPoints() && lastPointScoredAtMs + COMMIT_TIMEOUT_MS <= now) {
+        if (game->hasUncommitedPoints() && (now - lastPointScoredAtMs) >= COMMIT_TIMEOUT_MS) {
             commitResultWinner = game->commit();
             shouldUpdateLedBarState = true;
 
@@ -88,6 +88,7 @@ public:
                 remoteInputManager.preventTriggerForMs();
                 match->finishGame();
                 onStateChange(SquashModeState::GameOver);
+                return;
             }
         }
     }

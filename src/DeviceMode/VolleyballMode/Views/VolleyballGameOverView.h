@@ -46,6 +46,8 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
+        if (gameResult == nullptr) return;
+
         const bool leftWon  = gameResult->winnerPlayerId == playerLeft->getId();
         const bool rightWon = gameResult->winnerPlayerId == playerRight->getId();
 
@@ -59,18 +61,19 @@ public:
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         // celebrations - update every tick
+        if (gameResult == nullptr) return;
 
         ledDisplay.display();
     }
 
     void initBackDisplay(BackDisplay &backDisplay) override {
+        if (gameResult == nullptr) return;
+
         backDisplay.initBigFont();
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        if (!shouldRenderBack) {
-            return;
-        }
+        if (gameResult == nullptr || !shouldRenderBack) return;
 
         backDisplay.clear();
         backDisplay.renderScoreWidget(leftScore, rightScore);

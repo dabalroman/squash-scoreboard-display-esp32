@@ -5,8 +5,8 @@
 
 struct PrefsData {
     uint8_t brightness = 127;
-    bool enableBuzzer = true;
-    bool enableWifi = true;
+    uint8_t enableBuzzer = 1;
+    uint8_t enableWifi = 1;
     char wifiSSID[64] = "";
     char wifiPassword[64] = "";
 } __attribute__((packed));

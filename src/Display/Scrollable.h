@@ -69,7 +69,9 @@ protected:
         }
 
         // Do not allow scrolling past the last option
-        if (optionsListOffset > amountOfOptions - amountOfOptionsOnScreen) {
+        if (amountOfOptions <= amountOfOptionsOnScreen) {
+            optionsListOffset = 0;
+        } else if (optionsListOffset > amountOfOptions - amountOfOptionsOnScreen) {
             optionsListOffset = amountOfOptions - amountOfOptionsOnScreen;
         }
     }
