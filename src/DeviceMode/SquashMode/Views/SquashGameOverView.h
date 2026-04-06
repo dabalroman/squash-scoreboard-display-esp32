@@ -43,15 +43,18 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
+        const bool swapped = match->getPlayersSwappedCourtSides();
+        const uint8_t leftScore  = swapped ? gameResult->playerBScore : gameResult->playerAScore;
+        const uint8_t rightScore = swapped ? gameResult->playerAScore : gameResult->playerBScore;
+        const bool leftWon  = swapped ? (gameResult->winner == GameSide::b) : (gameResult->winner == GameSide::a);
+        const bool rightWon = swapped ? (gameResult->winner == GameSide::a) : (gameResult->winner == GameSide::b);
+
         ledDisplay.setColonAppearance();
-
-        ledDisplay.setNumericValue(gameResult->playerAScore, gameResult->playerBScore);
+        ledDisplay.setNumericValue(leftScore, rightScore);
         ledDisplay.setGlyphsAppearance(playerLeft->getColor(), playerRight->getColor());
-
-        ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), gameResult->winner == GameSide::a);
-        ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), gameResult->winner == GameSide::b);
-
-        ledDisplay.startCelebration(gameResult->winner == GameSide::a ? playerLeft->getColor() : playerRight->getColor());
+        ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), leftWon);
+        ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), rightWon);
+        ledDisplay.startCelebration(leftWon ? playerLeft->getColor() : playerRight->getColor());
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
@@ -70,7 +73,11 @@ public:
         }
 
         backDisplay.clear();
-        backDisplay.renderScoreWidget(gameResult->playerAScore, gameResult->playerBScore);
+        const bool swapped = match->getPlayersSwappedCourtSides();
+        backDisplay.renderScoreWidget(
+            swapped ? gameResult->playerBScore : gameResult->playerAScore,
+            swapped ? gameResult->playerAScore : gameResult->playerBScore
+        );
         backDisplay.display();
 
         shouldRenderBack = false;

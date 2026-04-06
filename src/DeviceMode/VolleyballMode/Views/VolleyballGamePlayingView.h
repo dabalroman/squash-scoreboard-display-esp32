@@ -42,14 +42,14 @@ public:
 
         if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
             game->scorePoint(GameSide::a);
-            lastPointScoredBy = &match->getPlayerA();
+            lastPointScoredBy = &match->getLeftCourtSidePlayer();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
             game->scorePoint(GameSide::b);
-            lastPointScoredBy = &match->getPlayerB();
+            lastPointScoredBy = &match->getRightCourtSidePlayer();
             lastPointScoredAtMs = now;
             shouldUpdateLedBarState = true;
         }
