@@ -70,9 +70,9 @@ UserProfile userC(2, "Basia", Colors::Pink);
 UserProfile userD(3, "Krystian", Colors::Blue);
 UserProfile userE(4, "Jola", Colors::Red);
 UserProfile userF(5, "Cegiel", Colors::White);
-UserProfile userG(6, "Szymon", Colors::Pink);
-UserProfile userH(7, "Igor", Colors::Green);
-UserProfile userI(8, "Damian", Colors::White);
+UserProfile userG(6, "Szymon", Colors::Aqua);
+UserProfile userH(7, "Igor", Colors::Orange);
+UserProfile userI(8, "Damian", Colors::Violet);
 
 std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF, &userG, &userH, &userI};
 

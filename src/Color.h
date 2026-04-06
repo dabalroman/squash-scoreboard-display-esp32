@@ -36,6 +36,8 @@ namespace Colors {
     static constexpr auto Yellow = Color(0xffe600);
     static constexpr auto Pink = Color(0xE020DD);
     static constexpr auto Aqua = Color(0x50FFFF);
+    static constexpr auto Orange = Color(0xFF6000);
+    static constexpr auto Violet = Color(0x5500FF);
 }
 
 #endif //COLOR_H
