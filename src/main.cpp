@@ -188,7 +188,7 @@ void loop() {
     gBuzzer.loop();
 
     // At most 20 fps, for now
-    if (lastUpdate + 50 > millis()) {
+    if (millis() - lastUpdate < 50) {
         return;
     }
 

@@ -2,6 +2,7 @@
 
 #include <Update.h>
 
+#include "Utils.h"
 #include "Display/BackDisplay.h"
 
 void RemoteDevelopmentService::setupOTA() {
@@ -9,7 +10,7 @@ void RemoteDevelopmentService::setupOTA() {
         return;
     }
 
-    OTAServer = new WebServer(80);
+    OTAServer = std::make_unique<WebServer>(80);
 
     OTAServer->on("/", HTTP_GET, [this] {
         const String html = "<html><body><h1>Squash Scoreboard Display</h1><form action=\"/connect\" method=\"POST\">"
@@ -86,7 +87,7 @@ void RemoteDevelopmentService::setupTelnet() {
         return;
     }
 
-    telnetServer = new WiFiServer(23);
+    telnetServer = std::make_unique<WiFiServer>(23);
 
     telnetServer->begin();
     telnetServer->setNoDelay(true);
@@ -205,10 +206,9 @@ void RemoteDevelopmentService::handleTelnet() {
 }
 
 void RemoteDevelopmentService::loop() {
-    if (!isAnyNetworkingActive()) {
-        return;
+    if (isOTAActive) {
+        OTAServer->handleClient();
     }
 
-    this->OTAServer->handleClient();
     handleTelnet();
 }

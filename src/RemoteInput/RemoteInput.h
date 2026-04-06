@@ -29,7 +29,7 @@ public:
     }
 
     void trigger() {
-        if (canBeTriggerAtMs > millis()) {
+        if (static_cast<long>(canBeTriggerAtMs - millis()) > 0) {
             return;
         }
 

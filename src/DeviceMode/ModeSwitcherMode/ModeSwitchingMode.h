@@ -16,8 +16,6 @@ public:
         const std::function<void(DeviceModeState)> &onDeviceModeChange
     )
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange) {
-        ledDisplay.initForConfigMode();
-        backDisplay.initSmallFont();
 
         activeView = std::make_unique<ModeSwitchingView>(onDeviceModeChange);
         activeView->initLedDisplay(ledDisplay);

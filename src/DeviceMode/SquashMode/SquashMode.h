@@ -82,7 +82,6 @@ public:
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::make_unique<SquashRules>()),
           users(users), onMatchOver(std::move(onMatchOver)) {
-        ledDisplay.initForSquashMode();
 
         setState(SquashModeState::TournamentChoosePlayers);
     }

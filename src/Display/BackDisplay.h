@@ -56,8 +56,8 @@ public:
         screen->display();
     }
 
-    void setBlinking(const bool isBlinking) {
-        this->isBlinking = isBlinking;
+    void setBlinking(const bool newIsBlinking) {
+        this->isBlinking = newIsBlinking;
     }
 
     void printCentered(const String &text) const {
@@ -100,25 +100,6 @@ public:
         print(text);
 
         drawThiccTopToBottomLine(77, 128 - 83, 3);
-    }
-
-    void renderBigScrollingText(const String &text, const uint32_t scrollOffsetMs = 0) const {
-        const uint16_t textWidth = text.length() * ONE_CHAR_WIDTH_2x_24pt7b;
-        const uint16_t segmentWidth = textWidth + SCROLL_SEPARATOR_WIDTH_2x_24pt7b;
-        const uint16_t totalWidth = (textWidth + SCROLL_SEPARATOR_WIDTH_2x_24pt7b) * 2;
-
-        const int scrollX =
-                ((millis() - scrollOffsetMs) / 25 % segmentWidth) * -1 + ONE_CHAR_WIDTH_2x_24pt7b / 2;
-
-        GFXcanvas1 canvas(totalWidth, 64);
-        canvas.setFont(&FreeMonoBold24pt7b);
-        canvas.setTextSize(2);
-        canvas.setCursor(0, VERTICAL_CURSOR_OFFSET_2x_24pt7b);
-        canvas.print(text);
-        canvas.setCursor(segmentWidth, VERTICAL_CURSOR_OFFSET_2x_24pt7b);
-        canvas.print(text);
-
-        screen->drawBitmap(scrollX, 0, canvas.getBuffer(), totalWidth, 64, WHITE);
     }
 
     void initBigFont() {

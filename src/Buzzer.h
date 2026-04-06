@@ -52,7 +52,7 @@ public:
     void loop() {
         const ulong now = millis();
 
-        if (patternPlaying && now >= patternNextAtMs) {
+        if (patternPlaying && static_cast<long>(now - patternNextAtMs) >= 0) {
             if (celebrationPattern[patternIndex] == 0) {
                 patternPlaying = false;
                 digitalWrite(gpio, LOW);
@@ -66,7 +66,7 @@ public:
             return;
         }
 
-        if (!patternPlaying && offAtMs > 0 && now >= offAtMs) {
+        if (!patternPlaying && offAtMs > 0 && static_cast<long>(now - offAtMs) >= 0) {
             digitalWrite(gpio, LOW);
             offAtMs = 0;
         }

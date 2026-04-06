@@ -82,7 +82,6 @@ public:
     )
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::move(rules)), users(users), onMatchOver(std::move(onMatchOver)) {
-        ledDisplay.initForSquashMode();
 
         setState(VolleyballModeState::TournamentChoosePlayers);
     }

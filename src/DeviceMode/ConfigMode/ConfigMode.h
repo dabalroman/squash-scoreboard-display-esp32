@@ -21,8 +21,6 @@ public:
     )
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
-        ledDisplay.initForConfigMode();
-        backDisplay.initSmallFont();
 
         activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange);
         activeView->initLedDisplay(ledDisplay);

@@ -2,13 +2,14 @@
 #define REMOTE_DEVELOPMENT_SERVICE_H
 
 #include <deque>
+#include <memory>
 #include <WebServer.h>
 #include "PreferencesManager.h"
 #include "Display/BackDisplay.h"
 
 class RemoteDevelopmentService {
-    WebServer *OTAServer = nullptr;
-    WiFiServer *telnetServer = nullptr;
+    std::unique_ptr<WebServer> OTAServer;
+    std::unique_ptr<WiFiServer> telnetServer;
     WiFiClient telnetClient;
     PreferencesManager *preferencesManager = nullptr;
     BackDisplay *backDisplay = nullptr;

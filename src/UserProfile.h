@@ -6,9 +6,8 @@
 
 class UserProfile {
     uint8_t id = 0;
-    char name[8] = {};
+    char name[10] = {};
     Color color = Colors::White;
-    uint8_t score = 0;
 
 public:
     UserProfile(const uint8_t id, const char *_name, const Color color) : id(id), color(color) {
@@ -26,14 +25,6 @@ public:
 
     Color getColor() const {
         return color;
-    }
-
-    void scorePoint() {
-        score++;
-    }
-
-    uint8_t getScore() const {
-        return score;
     }
 };
 
