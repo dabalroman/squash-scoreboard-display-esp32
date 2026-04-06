@@ -16,6 +16,7 @@ class BackDisplay {
 
     uint32_t tickMs = 0;
     bool isBlinking = false;
+    bool sameSideMode = false;
     Dimensions currentFontDimensions = {0, 0};
 
 public:
@@ -37,6 +38,10 @@ public:
         screen->setCursor(0, VERTICAL_CURSOR_OFFSET_9pt7b);
         screen->println("Initializing...");
         screen->display();
+    }
+
+    void setSameSideMode(const bool sameSide) {
+        sameSideMode = sameSide;
     }
 
     void clear() const {
@@ -80,10 +85,13 @@ public:
     }
 
     void renderScoreWidget(const uint8_t scoreA, const uint8_t scoreB) const {
-        setCursorToLine(0, 0);
-        print(String(scoreA));
+        const uint8_t left  = sameSideMode ? scoreB : scoreA;
+        const uint8_t right = sameSideMode ? scoreA : scoreB;
 
-        const String text = String(scoreB);
+        setCursorToLine(0, 0);
+        print(String(left));
+
+        const String text = String(right);
         setCursorToLineRightForNumbers(text, 1);
         print(text);
 
@@ -91,10 +99,13 @@ public:
     }
 
     void renderPlayerWidget(const String &playerNameA, const String &playerNameB) const {
-        setCursorToLine(0, 0);
-        print(playerNameA.substring(0, 2));
+        const String &left  = sameSideMode ? playerNameB : playerNameA;
+        const String &right = sameSideMode ? playerNameA : playerNameB;
 
-        const String text = playerNameB.substring(0, 2);
+        setCursorToLine(0, 0);
+        print(left.substring(0, 2));
+
+        const String text = right.substring(0, 2);
         setCursorToLineRight(text, 1, 3);
         print(text);
 

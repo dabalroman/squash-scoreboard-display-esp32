@@ -83,6 +83,8 @@ public:
           tournament(std::make_unique<SquashRules>()),
           users(users), onMatchOver(std::move(onMatchOver)) {
 
+        ledDisplay.setSameSideMode(false);
+        backDisplay.setSameSideMode(false);
         setState(SquashModeState::TournamentChoosePlayers);
     }
 

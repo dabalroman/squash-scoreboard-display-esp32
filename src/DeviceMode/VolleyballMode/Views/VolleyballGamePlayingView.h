@@ -32,8 +32,8 @@ public:
         }
 
         game = match->createGame();
-        playerLeft = &match->getPlayerA();
-        playerRight = &match->getPlayerB();
+        playerLeft = &match->getLeftCourtSidePlayer();
+        playerRight = &match->getRightCourtSidePlayer();
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {

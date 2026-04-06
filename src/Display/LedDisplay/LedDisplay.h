@@ -8,6 +8,7 @@
 class LedDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
+    bool sameSideMode = false;
 
     LedGlyph glyphA = LedGlyph(pixels, GlyphId::A);
     LedGlyph glyphB = LedGlyph(pixels, GlyphId::B);
@@ -85,19 +86,25 @@ public:
         glyphColon.setBlinking(isBlinking);
     }
 
+    void setSameSideMode(const bool sameSide) {
+        sameSideMode = sameSide;
+    }
+
     void setPlayersIndicatorsState(const bool enabled) {
         glyphIndicatorPlayerA.setGlyph(enabled ? Glyph::All : Glyph::Empty);
         glyphIndicatorPlayerB.setGlyph(enabled ? Glyph::All : Glyph::Empty);
     }
 
     void setIndicatorAppearancePlayerA(const Color color, const bool isBlinking = false) {
-        glyphIndicatorPlayerA.setColor(color);
-        glyphIndicatorPlayerA.setBlinking(isBlinking);
+        LedGlyph &target = sameSideMode ? glyphIndicatorPlayerB : glyphIndicatorPlayerA;
+        target.setColor(color);
+        target.setBlinking(isBlinking);
     }
 
     void setIndicatorAppearancePlayerB(const Color color, const bool isBlinking = false) {
-        glyphIndicatorPlayerB.setColor(color);
-        glyphIndicatorPlayerB.setBlinking(isBlinking);
+        LedGlyph &target = sameSideMode ? glyphIndicatorPlayerA : glyphIndicatorPlayerB;
+        target.setColor(color);
+        target.setBlinking(isBlinking);
     }
 
     void startCelebration(const Color color) {
