@@ -1,9 +1,6 @@
 #ifndef PREFERENCES_MANAGER_H
 #define PREFERENCES_MANAGER_H
 
-#define PREFERENCES_NAMESPACE "ns"
-#define PREFERENCES_KEY_SETTINGS "set"
-
 #include <Preferences.h>
 
 struct PrefsData {
@@ -17,6 +14,9 @@ struct PrefsData {
 class PreferencesManager {
     Preferences preferences;
 
+    static constexpr const char *NAMESPACE = "ns";
+    static constexpr const char *KEY_SETTINGS = "set";
+
 public:
     PrefsData settings;
     String wifiIpAddress = "[ip unknown]";
@@ -25,17 +25,17 @@ public:
     }
 
     void read() {
-        if (preferences.begin(PREFERENCES_NAMESPACE, true)
-            && preferences.getBytesLength(PREFERENCES_KEY_SETTINGS) == sizeof(PrefsData)
+        if (preferences.begin(NAMESPACE, true)
+            && preferences.getBytesLength(KEY_SETTINGS) == sizeof(PrefsData)
         ) {
-            preferences.getBytes(PREFERENCES_KEY_SETTINGS, &settings, sizeof(PrefsData));
+            preferences.getBytes(KEY_SETTINGS, &settings, sizeof(PrefsData));
         }
         preferences.end();
     }
 
     void save() {
-        if (!preferences.begin(PREFERENCES_NAMESPACE, false)) return;
-        preferences.putBytes(PREFERENCES_KEY_SETTINGS, &settings, sizeof(PrefsData));
+        if (!preferences.begin(NAMESPACE, false)) return;
+        preferences.putBytes(KEY_SETTINGS, &settings, sizeof(PrefsData));
         preferences.end();
     }
 };

@@ -7,9 +7,9 @@
 #include "../../../Display/LedDisplay/Adapter/GameScoreHistoryBarAdapter.h"
 #include "Tournament/Tournament.h"
 
-#define GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
-
 class SquashGamePlayingView final : public View {
+    constexpr static uint32_t COMMIT_TIMEOUT_MS = 4000;
+
     Tournament &tournament;
     Match *match = nullptr;
     Game *game = nullptr;
@@ -80,7 +80,7 @@ public:
         }
 
         // Handle score commits
-        if (game->hasUncommitedPoints() && lastPointScoredAtMs + GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
+        if (game->hasUncommitedPoints() && lastPointScoredAtMs + COMMIT_TIMEOUT_MS <= now) {
             commitResultWinner = game->commit();
             shouldUpdateLedBarState = true;
 

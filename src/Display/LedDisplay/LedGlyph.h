@@ -6,7 +6,6 @@
 
 #include "Color.h"
 
-#define LED_GLYPH_BLINK_INTERVAL_MS 500
 
 /**
  * LEDs and segment ids (masks)
@@ -151,6 +150,8 @@ constexpr PixelsToSegmentMap glyphPlayerBIndicator = {
 };
 
 class LedGlyph {
+    constexpr static uint16_t BLINK_INTERVAL_MS = 500;
+
 protected:
     GlyphId glyphId;
     CRGB *pixels;
@@ -212,7 +213,7 @@ public:
     }
 
     void render(const uint32_t &tickMs) const {
-        if (isBlinking && tickMs % LED_GLYPH_BLINK_INTERVAL_MS < LED_GLYPH_BLINK_INTERVAL_MS / 2) {
+        if (isBlinking && tickMs % BLINK_INTERVAL_MS < BLINK_INTERVAL_MS / 2) {
             return;
         }
 

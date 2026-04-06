@@ -7,16 +7,16 @@
 
 class GameScoreHistoryBarAdapter {
 public:
-    static std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> toLedBarPixels(
+    static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const Color &sideAColor,
         const Color &sideBColor,
         const GameScoreHistory &history
     ) {
-        std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> pixels = {};
+        std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
         const auto &entries = history.getHistory();
         const uint8_t total = entries.size();
-        const uint8_t count = std::min<uint8_t>(total, BAR_DISPLAY_AMOUNT_OF_PIXELS);
-        const uint8_t offset = total > BAR_DISPLAY_AMOUNT_OF_PIXELS ? total - BAR_DISPLAY_AMOUNT_OF_PIXELS : 0;
+        const uint8_t count = std::min<uint8_t>(total, LedBar::PIXEL_COUNT);
+        const uint8_t offset = total > LedBar::PIXEL_COUNT ? total - LedBar::PIXEL_COUNT : 0;
 
         for (uint8_t i = 0; i < count; i++) {
             const auto &entry = entries[offset + i];

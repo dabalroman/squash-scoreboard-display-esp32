@@ -5,30 +5,33 @@
 
 #include "LedBarMode.h"
 
-#define BAR_DISPLAY_BLINK_INTERVAL 500
-#define BAR_DISPLAY_FIRST_PIXEL_INDEX 88
-#define BAR_DISPLAY_AMOUNT_OF_PIXELS 24
-
 struct LedBarPixel {
     CRGB color = CRGB::Black;
     bool isBlinking = false;
 };
 
 class LedBar {
+    constexpr static uint16_t BLINK_INTERVAL_MS = 500;
+    constexpr static uint8_t FIRST_PIXEL_INDEX = 88;
+
+public:
+    constexpr static uint8_t PIXEL_COUNT = 24;
+
+private:
     LedBarMode mode = LedBarMode::state;
 
     CRGB *pixels;
     CRGB celebrationColor = CRGB::RoyalBlue;
 
-    std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> state;
+    std::array<LedBarPixel, PIXEL_COUNT> state;
 
     void renderState(const uint32_t &tickMs) const {
-        for (uint8_t i = 0; i < BAR_DISPLAY_AMOUNT_OF_PIXELS; i++) {
-            if (state[i].isBlinking && tickMs % BAR_DISPLAY_BLINK_INTERVAL < BAR_DISPLAY_BLINK_INTERVAL / 2) {
+        for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
+            if (state[i].isBlinking && tickMs % BLINK_INTERVAL_MS < BLINK_INTERVAL_MS / 2) {
                 continue;
             }
 
-            pixels[BAR_DISPLAY_FIRST_PIXEL_INDEX + i] = state[i].color;
+            pixels[FIRST_PIXEL_INDEX + i] = state[i].color;
         }
     }
 
@@ -36,7 +39,7 @@ public:
     explicit LedBar(CRGB *pixels) : pixels(pixels), state() {
     }
 
-    void setState(std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> newState) {
+    void setState(std::array<LedBarPixel, PIXEL_COUNT> newState) {
         state = std::move(newState);
     }
 
@@ -60,9 +63,9 @@ public:
     }
 
     void renderCelebration(const uint32_t &tickMs) const {
-        for (uint8_t i = 0; i < BAR_DISPLAY_AMOUNT_OF_PIXELS; i++) {
+        for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
             const uint8_t brightness = sin8((tickMs / 4 + i * 20) % 255);
-            pixels[BAR_DISPLAY_FIRST_PIXEL_INDEX + i] = celebrationColor.scale8(brightness);
+            pixels[FIRST_PIXEL_INDEX + i] = celebrationColor.scale8(brightness);
         }
     }
 };

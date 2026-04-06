@@ -5,14 +5,13 @@
 #include "Fonts/FreeMono9pt7b.h"
 #include "Fonts/FreeMonoBold24pt7b.h"
 
-#define BACK_DISPLAY_BLINK_INTERVAL_MS 1000
-
 struct Dimensions {
     uint8_t width;
     uint8_t height;
 };
 
 class BackDisplay {
+    constexpr static uint16_t BLINK_INTERVAL_MS = 1000;
     constexpr static uint8_t SCROLL_SEPARATOR_WIDTH_2x_24pt7b = 104;
 
     uint32_t tickMs = 0;
@@ -47,7 +46,7 @@ public:
     void display() {
         tickMs = millis();
 
-        if (isBlinking && tickMs % BACK_DISPLAY_BLINK_INTERVAL_MS < BACK_DISPLAY_BLINK_INTERVAL_MS / 4) {
+        if (isBlinking && tickMs % BLINK_INTERVAL_MS < BLINK_INTERVAL_MS / 4) {
             screen->clearDisplay();
             screen->display();
             return;

@@ -6,7 +6,7 @@
 #include "Tournament/Match/MatchResult.h"
 
 class MatchResultBarAdapter {
-    static constexpr uint8_t SIDE_PIXELS = BAR_DISPLAY_AMOUNT_OF_PIXELS / 2;
+    static constexpr uint8_t SIDE_PIXELS = LedBar::PIXEL_COUNT / 2;
 
     static std::array<LedBarPixel, SIDE_PIXELS> getPixelsForSide(const Color fillColor, const uint8_t score,
                                                                  const uint8_t maxScore) {
@@ -40,13 +40,13 @@ class MatchResultBarAdapter {
     }
 
 public:
-    static std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> toLedBarPixels(
+    static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const Color &sideAColor,
         const Color &sideBColor,
         const MatchResult &matchResult,
         const bool arePlayersSwapped = false
     ) {
-        std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> pixels = {};
+        std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
         const uint8_t maxScore = std::max(matchResult.playerAScore, matchResult.playerBScore);
 
@@ -61,15 +61,15 @@ public:
             arePlayersSwapped ? sideAColor : sideBColor, matchResult.playerBScore, maxScore
         );
 
-        for (uint8_t i = 0; i < BAR_DISPLAY_AMOUNT_OF_PIXELS; i++) {
+        for (uint8_t i = 0; i < LedBar::PIXEL_COUNT; i++) {
             if (!arePlayersSwapped) {
                 pixels[i] = i < SIDE_PIXELS
                                 ? left[i]
-                                : right[BAR_DISPLAY_AMOUNT_OF_PIXELS - 1 - i];
+                                : right[LedBar::PIXEL_COUNT - 1 - i];
             } else {
                 pixels[i] = i < SIDE_PIXELS
                                 ? right[i]
-                                : left[BAR_DISPLAY_AMOUNT_OF_PIXELS - 1 - i];
+                                : left[LedBar::PIXEL_COUNT - 1 - i];
             }
         }
 
