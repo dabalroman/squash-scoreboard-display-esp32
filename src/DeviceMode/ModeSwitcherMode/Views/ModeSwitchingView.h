@@ -4,7 +4,7 @@
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/Adapter/ModeSwitchingBarAdapter.h"
+#include "Display/LedDisplay/Renderer/ModeSwitchingBarRenderer.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
@@ -85,7 +85,7 @@ public:
             default:
             case Options::Squash:
                 color = Colors::Green;
-                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::D5, Glyph::H);
+                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::S, Glyph::h);
                 break;
             case Options::Volleyball:
                 color = Colors::Yellow;
@@ -93,7 +93,7 @@ public:
                 break;
             case Options::ShortVolleyball:
                 color = Colors::Orange;
-                ledDisplay.setGlyphsGlyph(Glyph::F, Glyph::A, Glyph::D5, Glyph::t);
+                ledDisplay.setGlyphsGlyph(Glyph::S, Glyph::h, Glyph::o, Glyph::r);
                 break;
             case Options::Config:
                 color = Colors::White;
@@ -104,7 +104,7 @@ public:
         ledDisplay.setGlyphsColor(color, color);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
-        ledDisplay.setLedBarState(ModeSwitchingBarAdapter::toLedBarPixels(scrollable.getSelectedOptionId()));
+        ledDisplay.setLedBarState(ModeSwitchingBarRenderer::toLedBarPixels(scrollable.getSelectedOptionId()));
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;

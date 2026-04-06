@@ -5,7 +5,7 @@
 #include "../LedBar.h"
 #include "../../../Tournament/Game/GameScoreHistory.h"
 
-class GameScoreHistoryBarAdapter {
+class GameScoreHistoryBarRenderer {
 public:
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const Color &sideAColor,

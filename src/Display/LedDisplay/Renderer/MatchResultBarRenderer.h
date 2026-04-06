@@ -5,7 +5,7 @@
 #include "../LedBar.h"
 #include "Tournament/Match/MatchResult.h"
 
-class MatchResultBarAdapter {
+class MatchResultBarRenderer {
     static constexpr uint8_t SIDE_PIXELS = LedBar::PIXEL_COUNT / 2;
 
     static std::array<LedBarPixel, SIDE_PIXELS> getPixelsForSide(const Color fillColor, const uint8_t score,

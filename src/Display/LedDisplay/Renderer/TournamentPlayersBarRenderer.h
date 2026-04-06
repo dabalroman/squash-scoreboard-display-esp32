@@ -6,7 +6,7 @@
 #include "../LedBar.h"
 #include "UserProfile.h"
 
-class TournamentPlayersBarAdapter {
+class TournamentPlayersBarRenderer {
     static bool isActive(const UserProfile *user, const std::vector<UserProfile *> &activePlayers) {
         return std::find(activePlayers.begin(), activePlayers.end(), user) != activePlayers.end();
     }

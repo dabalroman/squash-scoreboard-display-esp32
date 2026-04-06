@@ -4,7 +4,7 @@
 #include <Color.h>
 #include "../LedBar.h"
 
-class ModeSwitchingBarAdapter {
+class ModeSwitchingBarRenderer {
     struct Segment {
         uint8_t start;
         uint8_t length;

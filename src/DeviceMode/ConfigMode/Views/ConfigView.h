@@ -3,7 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/Adapter/ConfigBarAdapter.h"
+#include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
@@ -139,25 +139,25 @@ public:
             case Settings::enableBuzzer:
                 value = preferencesManager.settings.enableBuzzer;
                 color = value ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::U, Glyph::D2, Glyph::D2);
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::u, Glyph::Z, Glyph::Z);
                 break;
             case Settings::enableWifi:
                 value = preferencesManager.settings.enableWifi;
                 color = value ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsGlyph(Glyph::n, Glyph::E, Glyph::t, Glyph::Empty);
+                ledDisplay.setGlyphsGlyph(Glyph::c, Glyph::o, Glyph::n, Glyph::n);
                 break;
             case Settings::ipAddress:
                 color = Colors::White;
-                ledDisplay.setGlyphsGlyph(Glyph::D1, Glyph::P, Glyph::Empty, Glyph::Empty);
+                ledDisplay.setGlyphsGlyph(Glyph::I, Glyph::P, Glyph::Empty, Glyph::Empty);
                 break;
             case Settings::reboot:
-                color = Colors::Red;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::D0, Glyph::D0, Glyph::t);
+                color = Colors::Pink;
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::o, Glyph::o, Glyph::t);
                 break;
             default:
             case Settings::goBack:
-                color = Colors::Blue;
-                ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::U);
+                color = Colors::Aqua;
+                ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::u);
                 break;
         }
 
@@ -165,7 +165,7 @@ public:
         ledDisplay.setBrightness(preferencesManager.settings.brightness);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
-        ledDisplay.setLedBarState(ConfigBarAdapter::toLedBarPixels(
+        ledDisplay.setLedBarState(ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
             preferencesManager.settings.enableBuzzer,
             preferencesManager.settings.enableWifi

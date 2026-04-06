@@ -10,7 +10,7 @@
 #include "DeviceMode/DeviceModeState.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
-#include "Display/LedDisplay/Adapter/TournamentPlayersBarAdapter.h"
+#include "Display/LedDisplay/Renderer/TournamentPlayersBarRenderer.h"
 
 class VolleyballTournamentChoosePlayersView final : public View {
     Tournament &tournament;
@@ -129,7 +129,7 @@ public:
             ledDisplay.setIndicatorAppearancePlayerA(color);
             ledDisplay.setIndicatorAppearancePlayerB(color);
         } else if (optionId == exitOptionId) {
-            ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::U);
+            ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::u);
             ledDisplay.setGlyphsColor(Colors::White, Colors::White);
             ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
             ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
@@ -140,7 +140,7 @@ public:
             ledDisplay.setIndicatorAppearancePlayerB(playerStateColor);
         }
 
-        ledDisplay.setLedBarState(TournamentPlayersBarAdapter::toLedBarPixels(users, tournament.getPlayers()));
+        ledDisplay.setLedBarState(TournamentPlayersBarRenderer::toLedBarPixels(users, tournament.getPlayers()));
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;

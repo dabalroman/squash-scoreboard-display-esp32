@@ -4,7 +4,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "../../../Display/LedDisplay/Adapter/GameScoreHistoryBarAdapter.h"
+#include "../../../Display/LedDisplay/Renderer/GameScoreHistoryBarRenderer.h"
 #include "Tournament/Tournament.h"
 
 class SquashGamePlayingView final : public View {
@@ -118,7 +118,7 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), game->hasUncommitedPoints(GameSide::b));
 
         if (shouldUpdateLedBarState) {
-            ledDisplay.setLedBarState(GameScoreHistoryBarAdapter::toLedBarPixels(
+            ledDisplay.setLedBarState(GameScoreHistoryBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
                 game->getScoreHistory()

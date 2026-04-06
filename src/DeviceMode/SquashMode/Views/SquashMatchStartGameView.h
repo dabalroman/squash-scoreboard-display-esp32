@@ -5,7 +5,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/Adapter/MatchResultBarAdapter.h"
+#include "Display/LedDisplay/Renderer/MatchResultBarRenderer.h"
 #include "Tournament/Tournament.h"
 
 class Adafruit_SSD1306;
@@ -147,7 +147,7 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor());
 
         if (shouldUpdateLedBarState) {
-            ledDisplay.setLedBarState(MatchResultBarAdapter::toLedBarPixels(
+            ledDisplay.setLedBarState(MatchResultBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
                 matchResult,

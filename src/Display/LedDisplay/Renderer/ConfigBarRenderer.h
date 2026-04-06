@@ -4,7 +4,7 @@
 #include <Color.h>
 #include "../LedBar.h"
 
-class ConfigBarAdapter {
+class ConfigBarRenderer {
 public:
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const uint8_t selectedOption,
