@@ -64,7 +64,7 @@ public:
 
     void renderCelebration(const uint32_t &tickMs) const {
         for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
-            const uint8_t brightness = sin8((tickMs / 4 + i * 20) % 255);
+            const uint8_t brightness = sin8((tickMs / 4 + i * 20) % 256);
             pixels[FIRST_PIXEL_INDEX + i] = celebrationColor.scale8(brightness);
         }
     }

@@ -24,8 +24,7 @@ public:
 
     virtual ~DeviceMode() = default;
 
-    virtual void loop() {
-    }
+    virtual void loop() = 0;
 };
 
 #endif //BASEDEVICEMODE_H

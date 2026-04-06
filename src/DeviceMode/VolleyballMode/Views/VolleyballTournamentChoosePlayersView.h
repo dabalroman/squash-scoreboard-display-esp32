@@ -140,6 +140,8 @@ public:
         }
 
         ledDisplay.display();
+
+        shouldRenderLedDisplay = false;
     }
 
     void initBackDisplay(BackDisplay &backDisplay) override {

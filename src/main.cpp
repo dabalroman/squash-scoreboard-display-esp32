@@ -43,7 +43,6 @@ constexpr uint8_t LED_WS2812B_GPIO = 18;
 constexpr uint8_t LED_WS2812B_AMOUNT = 112;
 CRGB pixels[LED_WS2812B_AMOUNT];
 LedDisplay ledDisplay(pixels);
-LedBar barDisplay(pixels);
 
 // Need to wait for I2C init
 std::unique_ptr<BackDisplay> backDisplay;
