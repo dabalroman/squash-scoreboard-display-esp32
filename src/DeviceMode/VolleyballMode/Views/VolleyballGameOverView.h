@@ -11,6 +11,7 @@ class VolleyballGameOverView final : public View {
     const Match *match = nullptr;
     const GameResult *gameResult = nullptr;
     UserProfile *playerLeft = nullptr, *playerRight = nullptr;
+    uint8_t leftScore = 0, rightScore = 0;
     std::function<void(VolleyballModeState)> onStateChange;
 
 public:
@@ -29,8 +30,10 @@ public:
             return;
         }
 
-        playerLeft = &match->getLeftCourtSidePlayer();
+        playerLeft  = &match->getLeftCourtSidePlayer();
         playerRight = &match->getRightCourtSidePlayer();
+        leftScore   = playerLeft->getId()  == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
+        rightScore  = playerRight->getId() == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -43,11 +46,8 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
-        const bool swapped = match->getPlayersSwappedCourtSides();
-        const uint8_t leftScore  = swapped ? gameResult->playerBScore : gameResult->playerAScore;
-        const uint8_t rightScore = swapped ? gameResult->playerAScore : gameResult->playerBScore;
-        const bool leftWon  = swapped ? (gameResult->winner == GameSide::b) : (gameResult->winner == GameSide::a);
-        const bool rightWon = swapped ? (gameResult->winner == GameSide::a) : (gameResult->winner == GameSide::b);
+        const bool leftWon  = gameResult->winnerPlayerId == playerLeft->getId();
+        const bool rightWon = gameResult->winnerPlayerId == playerRight->getId();
 
         ledDisplay.setColonAppearance();
         ledDisplay.setNumericValue(leftScore, rightScore);
@@ -73,11 +73,7 @@ public:
         }
 
         backDisplay.clear();
-        const bool swapped = match->getPlayersSwappedCourtSides();
-        backDisplay.renderScoreWidget(
-            swapped ? gameResult->playerBScore : gameResult->playerAScore,
-            swapped ? gameResult->playerAScore : gameResult->playerBScore
-        );
+        backDisplay.renderScoreWidget(leftScore, rightScore);
         backDisplay.display();
 
         shouldRenderBack = false;

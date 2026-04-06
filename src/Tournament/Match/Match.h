@@ -54,12 +54,16 @@ public:
             sideB = GameSide::a;
         }
 
+        const uint8_t winnerPlayerId = game->getWinner() == GameSide::a
+            ? (playersSwappedCourtSides ? playerB.getId() : playerA.getId())
+            : (playersSwappedCourtSides ? playerA.getId() : playerB.getId());
+
         gameResults.push_back({
             playerA.getId(),
             game->getRealScore(sideA),
             playerB.getId(),
             game->getRealScore(sideB),
-            game->getWinner() == GameSide::a ? sideA : sideB,
+            winnerPlayerId,
         });
 
         game.reset();
@@ -73,9 +77,9 @@ public:
         uint8_t aWins = 0;
         uint8_t bWins = 0;
 
-        for (const auto result: gameResults) {
-            if (result.winner == GameSide::a) aWins++;
-            else if (result.winner == GameSide::b) bWins++;
+        for (const auto &result: gameResults) {
+            if (result.winnerPlayerId == playerA.getId()) aWins++;
+            else if (result.winnerPlayerId == playerB.getId()) bWins++;
         }
 
         return {
@@ -83,7 +87,7 @@ public:
             aWins,
             playerB.getId(),
             bWins,
-            aWins > bWins ? GameSide::a : GameSide::b,
+            aWins > bWins ? playerA.getId() : playerB.getId(),
         };
     }
 
