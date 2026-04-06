@@ -108,6 +108,11 @@ public:
             queueRender();
         }
 
+        if (remoteInputManager.buttonC.takeActionIfPossible()) {
+            setMatchByPlayers(playerRight, playerLeft);
+            queueRender();
+        }
+
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             // tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});

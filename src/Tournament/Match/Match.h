@@ -27,13 +27,6 @@ class Match {
 public:
     Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules)
         : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
-
-        // TODO: Remove, debug statement
-        gameResults.push_back({
-            userAProfile.getId(), 2,
-            userBProfile.getId(), 1,
-            GameSide::a
-        });
     }
 
     uint8_t getId() const {
