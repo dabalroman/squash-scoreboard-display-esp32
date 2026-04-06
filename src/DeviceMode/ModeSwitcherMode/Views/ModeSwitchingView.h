@@ -85,15 +85,15 @@ public:
             default:
             case Options::Squash:
                 color = Colors::Green;
-                ledDisplay.setGlyphsGlyph(Glyph::D5, Glyph::D0, Glyph::U, Glyph::A);
+                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::D5, Glyph::H);
                 break;
             case Options::Volleyball:
                 color = Colors::Yellow;
-                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::L, Glyph::L);
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::A, Glyph::L, Glyph::L);
                 break;
             case Options::ShortVolleyball:
                 color = Colors::Orange;
-                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::D1, Glyph::D5);
+                ledDisplay.setGlyphsGlyph(Glyph::F, Glyph::A, Glyph::D5, Glyph::t);
                 break;
             case Options::Config:
                 color = Colors::White;

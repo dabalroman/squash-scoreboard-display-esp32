@@ -3,6 +3,7 @@
 
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/Adapter/ConfigBarAdapter.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
@@ -126,40 +127,50 @@ public:
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
-        if (!shouldRenderLedDisplay) {
-            return;
-        }
-
         uint8_t value = 0;
         Color color;
 
         switch (scrollable.getSelectedOptionId()) {
             case Settings::brightness:
                 color = Colors::White;
-                break;
-            case Settings::enableWifi:
-                value = preferencesManager.settings.enableWifi;
-                color = value ? Colors::Green : Colors::Red;
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::r, Glyph::Empty,
+                    LedDisplay::digitToGlyph(preferencesManager.settings.brightness / 32 + 1));
                 break;
             case Settings::enableBuzzer:
                 value = preferencesManager.settings.enableBuzzer;
                 color = value ? Colors::Green : Colors::Red;
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::U, Glyph::D2, Glyph::D2);
+                break;
+            case Settings::enableWifi:
+                value = preferencesManager.settings.enableWifi;
+                color = value ? Colors::Green : Colors::Red;
+                ledDisplay.setGlyphsGlyph(Glyph::n, Glyph::E, Glyph::t, Glyph::Empty);
+                break;
+            case Settings::ipAddress:
+                color = Colors::White;
+                ledDisplay.setGlyphsGlyph(Glyph::D1, Glyph::P, Glyph::Empty, Glyph::Empty);
                 break;
             case Settings::reboot:
                 color = Colors::Red;
+                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::D0, Glyph::D0, Glyph::t);
                 break;
             default:
             case Settings::goBack:
-                color = Colors::Black;
+                color = Colors::Blue;
+                ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::U);
                 break;
         }
 
+        ledDisplay.setGlyphsColor(color, color);
         ledDisplay.setBrightness(preferencesManager.settings.brightness);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
+        ledDisplay.setLedBarState(ConfigBarAdapter::toLedBarPixels(
+            scrollable.getSelectedOptionId(),
+            preferencesManager.settings.enableBuzzer,
+            preferencesManager.settings.enableWifi
+        ));
         ledDisplay.display();
-
-        shouldRenderLedDisplay = false;
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {

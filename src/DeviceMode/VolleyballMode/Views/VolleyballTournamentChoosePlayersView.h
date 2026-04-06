@@ -129,7 +129,7 @@ public:
             ledDisplay.setIndicatorAppearancePlayerA(color);
             ledDisplay.setIndicatorAppearancePlayerB(color);
         } else if (optionId == exitOptionId) {
-            ledDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
+            ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::U);
             ledDisplay.setGlyphsColor(Colors::White, Colors::White);
             ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
             ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
