@@ -34,18 +34,6 @@ public:
         : onDeviceModeChange(onDeviceModeChange), scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
-    static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
-        if (value < min) {
-            return min;
-        }
-
-        if (value > max) {
-            return max;
-        }
-
-        return value;
-    }
-
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
             scrollable.cycleSelectedOption(-1);

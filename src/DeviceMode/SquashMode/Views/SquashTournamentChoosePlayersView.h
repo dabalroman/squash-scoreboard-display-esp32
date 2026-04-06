@@ -5,9 +5,9 @@
 
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Tournament/Tournament.h"
 #include "DeviceMode/DeviceModeState.h"
-#include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
@@ -32,7 +32,7 @@ public:
         const std::function<void(SquashModeState)> &onStateChange
     )
         : tournament(tournament), users(players), onDeviceModeChange(onDeviceModeChange),
-          onStateChange(onStateChange) {
+          onStateChange(std::move(onStateChange)) {
 
         menuOptions.reserve(players.size() + 2);
         menuOptions.push_back(F(" [Start] "));

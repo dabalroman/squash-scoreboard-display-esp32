@@ -13,8 +13,8 @@ class Tournament {
     std::deque<Match> matches;
     std::vector<UserProfile *> players;
     std::unique_ptr<Rules> rules;
+
     Match *activeMatch = nullptr;
-    size_t activeMatchId = 0;
 
 public:
     std::unique_ptr<MatchOrderKeeper> matchOrderKeeper;
@@ -24,7 +24,7 @@ public:
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
-        printLn("Creating new match");
+        printLn("Creating new match between %s and %s", userProfileA.getName(), userProfileB.getName());
         const auto newMatchId = matches.size();
         matches.emplace_back(newMatchId, userProfileA, userProfileB, rules.get());
         return matches.back();
@@ -56,39 +56,31 @@ public:
         return players;
     }
 
-    bool setActiveMatch(const Match &match) {
-        for (size_t i = 0; i < matches.size(); i++) {
-            if (matches.at(i).getId() == match.getId()) {
-                activeMatchId = match.getId();
-                activeMatch = &matches.at(i);
-                return true;
-            }
-        }
-
-        printLn("Could not find match with id %d", match.getId());
-
-        return false;
-    }
-
     Match *getActiveMatch() const {
         return activeMatch;
     }
 
-    Match &getMatchBetween(UserProfile &userProfileA, UserProfile &userProfileB) {
+    Match &chooseMatchBetween(UserProfile &userProfileA, UserProfile &userProfileB) {
         for (auto &match: matches) {
             auto &matchPlayerA = match.getPlayerA();
             auto &matchPlayerB = match.getPlayerB();
 
-            if (
-                (matchPlayerA.getId() == userProfileA.getId() && matchPlayerB.getId() == userProfileB.getId())
-                || (matchPlayerA.getId() == userProfileB.getId() && matchPlayerB.getId() == userProfileA.getId())
-            ) {
-                printLn("Match between %u and %u found as %u", userProfileA.getId(), userProfileB.getId(), match.getId());
+            if (matchPlayerA.getId() == userProfileA.getId() && matchPlayerB.getId() == userProfileB.getId()) {
+                match.setPlayersSwappedCourtSides(false);
+                activeMatch = &match;
+                return match;
+            }
+
+            if (matchPlayerA.getId() == userProfileB.getId() && matchPlayerB.getId() == userProfileA.getId()) {
+                match.setPlayersSwappedCourtSides(true);
+                activeMatch = &match;
                 return match;
             }
         }
 
-        return createMatch(userProfileA, userProfileB);
+        Match &match = createMatch(userProfileA, userProfileB);
+        activeMatch = &match;
+        return match;
     }
 
     size_t getMatchCount() const {

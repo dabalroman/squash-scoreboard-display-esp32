@@ -1,6 +1,7 @@
 #ifndef MATCH_H
 #define MATCH_H
 
+#include "MatchResult.h"
 #include "UserProfile.h"
 #include "Tournament/Game/Game.h"
 #include "Tournament/Rules/Rules.h"
@@ -16,68 +17,98 @@ class Match {
     UserProfile &playerA;
     UserProfile &playerB;
 
-    // TODO: Only one active game
-    std::deque<Game> games;
-    // TODO: Remember Game results
-    // std::vector<GameResult> matchResults;
-    size_t activeRoundId = 0;
-    Game *activeRound = nullptr;
+    std::unique_ptr<Game> game = nullptr;
+    std::vector<GameResult> gameResults;
+
     Rules *rules;
+
+    bool playersSwappedCourtSides = false;
 
 public:
     Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules)
         : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
+
+        // TODO: Remove, debug statement
+        gameResults.push_back({
+            userAProfile.getId(), 2,
+            userBProfile.getId(), 1,
+            GameSide::a
+        });
     }
 
     uint8_t getId() const {
         return id;
     }
 
-    Game &createMatchRound() {
-        const auto newRoundId = games.size();
-        games.emplace_back(newRoundId, rules);
-
-        printLn("Creating new round %u:%u", id, newRoundId);
-
-        return games.back();
+    Game *createGame() {
+        game = std::make_unique<Game>(rules);
+        return game.get();
     }
 
-    void setActiveRound(const Game &round) {
-        for (size_t i = 0; i < games.size(); i++) {
-            if (games.at(i).getId() == round.getId()) {
-                activeRoundId = i;
-                activeRound = &games.at(i);
+    void finishGame() {
+        auto sideA = GameSide::a;
+        auto sideB = GameSide::b;
 
-                printLn("Active round is %u:%u", id, round.getId());
-                return;
-            }
+        if (playersSwappedCourtSides) {
+            sideA = GameSide::b;
+            sideB = GameSide::a;
         }
 
-        printLn("Could not find round %u:%u", id, round.getId());
+        gameResults.push_back({
+            playerA.getId(),
+            game->getRealScore(sideA),
+            playerB.getId(),
+            game->getRealScore(sideB),
+            game->getWinner() == GameSide::a ? sideA : sideB,
+        });
+
+        game.reset();
     }
 
-    Game &getActiveRound() {
-        if (activeRound == nullptr) {
-            setActiveRound(createMatchRound());
+    const GameResult *getLastGameResult() const {
+        return gameResults.empty() ? nullptr : &gameResults.back();
+    }
+
+    MatchResult getMatchResult() const {
+        uint8_t aWins = 0;
+        uint8_t bWins = 0;
+
+        for (const auto result: gameResults) {
+            if (result.winner == GameSide::a) aWins++;
+            else if (result.winner == GameSide::b) bWins++;
         }
 
-        return *activeRound;
-    }
-
-    Game &getRound(const size_t gameId) {
-        return games.at(gameId);
-    }
-
-    size_t getRoundCount() const {
-        return games.size();
+        return {
+            playerA.getId(),
+            aWins,
+            playerB.getId(),
+            bWins,
+            aWins > bWins ? GameSide::a : GameSide::b,
+        };
     }
 
     UserProfile &getPlayerA() const {
         return playerA;
     }
 
+    UserProfile &getLeftCourtSidePlayer() const {
+        return !playersSwappedCourtSides ? playerA : playerB;
+    }
+
     UserProfile &getPlayerB() const {
         return playerB;
+    }
+
+    UserProfile &getRightCourtSidePlayer() const {
+        return !playersSwappedCourtSides ? playerB : playerA;
+    }
+
+    void setPlayersSwappedCourtSides(const bool _playersSwappedCourtSides = false) {
+        this->playersSwappedCourtSides = _playersSwappedCourtSides;
+    }
+
+    bool getPlayersSwappedCourtSides() const {
+        return playersSwappedCourtSides;
     }
 };
 

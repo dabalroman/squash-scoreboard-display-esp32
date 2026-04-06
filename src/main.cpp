@@ -177,7 +177,6 @@ void setup() {
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
-    printLn("  wifiPassword: %s", preferencesManager.settings.wifiPassword);
 
     changeDeviceMode(DeviceModeState::ModeSwitchingMode);
 }

@@ -4,31 +4,37 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
 #include "Tournament/Tournament.h"
 
 class SquashGameOverView final : public View {
     Tournament &tournament;
-    Match *match = nullptr;
-    Game *round = nullptr;
-    UserProfile *playerA = nullptr, *playerB = nullptr;
+    const Match *match = nullptr;
+    const GameResult *gameResult = nullptr;
+    UserProfile *playerLeft = nullptr, *playerRight = nullptr;
     std::function<void(SquashModeState)> onStateChange;
 
 public:
     SquashGameOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
         : tournament(tournament), onStateChange(std::move(onStateChange)) {
         match = tournament.getActiveMatch();
-        if (!match) {
+
+        if (match == nullptr) {
+            onStateChange(SquashModeState::MatchStartGame);
             return;
         }
 
-        round = &match->getActiveRound();
-        playerA = &match->getPlayerA();
-        playerB = &match->getPlayerB();
+        gameResult = match->getLastGameResult();
+        if (gameResult == nullptr) {
+            onStateChange(SquashModeState::MatchStartGame);
+            return;
+        }
+
+        playerLeft = &match->getLeftCourtSidePlayer();
+        playerRight = &match->getRightCourtSidePlayer();
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (remoteInputManager.buttonD.takeActionIfPossible() || remoteInputManager.buttonC.takeActionIfPossible()) {
+        if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             onStateChange(SquashModeState::MatchStartGame);
 
@@ -39,13 +45,13 @@ public:
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.setColonAppearance();
 
-        ledDisplay.setNumericValue(round->getRealScore(GameSide::a), round->getRealScore(GameSide::b));
-        ledDisplay.setGlyphsAppearance(playerA->getColor(), playerB->getColor());
+        ledDisplay.setNumericValue(gameResult->playerAScore, gameResult->playerBScore);
+        ledDisplay.setGlyphsAppearance(playerLeft->getColor(), playerRight->getColor());
 
-        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->getWinner() == GameSide::a);
-        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->getWinner() == GameSide::b);
+        ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), gameResult->winner == GameSide::a);
+        ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), gameResult->winner == GameSide::b);
 
-        ledDisplay.startCelebration(round->getWinner() == GameSide::a ? playerA->getColor() : playerB->getColor());
+        ledDisplay.startCelebration(gameResult->winner == GameSide::a ? playerLeft->getColor() : playerRight->getColor());
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
@@ -64,7 +70,7 @@ public:
         }
 
         backDisplay.clear();
-        backDisplay.renderScoreWidget(round->getRealScore(GameSide::a), round->getRealScore(GameSide::b));
+        backDisplay.renderScoreWidget(gameResult->playerAScore, gameResult->playerBScore);
         backDisplay.display();
 
         shouldRenderBack = false;

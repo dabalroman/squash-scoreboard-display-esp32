@@ -4,7 +4,6 @@
 #include <Arduino.h>
 
 #include "GameScoreHistory.h"
-#include "GameSide.h"
 #include "Tournament/Rules/Rules.h"
 
 /**
@@ -12,8 +11,6 @@
  * Short-lived, only for the duration of the actual game.
  */
 class Game {
-    uint8_t id;
-
     int8_t scoreA = 0, scoreB = 0;
     int8_t deltaA = 0, deltaB = 0;
     GameSide winner = GameSide::none;
@@ -21,20 +18,16 @@ class Game {
     GameScoreHistory history = GameScoreHistory();
 
 public:
-    explicit Game(const uint8_t id, Rules *rules) : id(id), rules(rules) {
-    }
-
-    uint8_t getId() const {
-        return id;
+    explicit Game(Rules *rules) : rules(rules) {
     }
 
     uint8_t getRealScore(const GameSide side) const {
         if (side == GameSide::a) {
-            return static_cast<uint8_t>(scoreA);
+            return scoreA;
         }
 
         if (side == GameSide::b) {
-            return static_cast<uint8_t>(scoreB);
+            return scoreB;
         }
 
         return 0;

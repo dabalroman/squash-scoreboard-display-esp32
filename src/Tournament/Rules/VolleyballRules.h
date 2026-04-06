@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 #include "Rules.h"
-#include "../Game/GameSide.h"
+#include "../GameSide.h"
 
 class VolleyballRules final : public Rules {
     GameSide checkWinner(const int8_t scoreA, const int8_t scoreB) const override {

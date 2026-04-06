@@ -1,11 +1,11 @@
-#ifndef SCORE_HISTORY_BAR_ADAPTER_H
-#define SCORE_HISTORY_BAR_ADAPTER_H
+#ifndef GAME_SCORE_HISTORY_BAR_ADAPTER_H
+#define GAME_SCORE_HISTORY_BAR_ADAPTER_H
 
 #include <Color.h>
-#include "LedBar.h"
-#include "../../Tournament/Game/GameScoreHistory.h"
+#include "../LedBar.h"
+#include "../../../Tournament/Game/GameScoreHistory.h"
 
-class ScoreHistoryBarAdapter {
+class GameScoreHistoryBarAdapter {
 public:
     static std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> toLedBarPixels(
         const Color &sideAColor,
@@ -30,4 +30,4 @@ public:
     }
 };
 
-#endif //SCORE_HISTORY_BAR_ADAPTER_H
+#endif //GAME_SCORE_HISTORY_BAR_ADAPTER_H

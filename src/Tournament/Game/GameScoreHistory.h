@@ -3,7 +3,7 @@
 
 #include <vector>
 #include "GameScoreHistoryStatus.h"
-#include "GameSide.h"
+#include "../GameSide.h"
 
 struct GameScoreHistoryEntry {
     GameSide side;

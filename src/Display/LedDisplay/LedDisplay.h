@@ -55,7 +55,7 @@ public:
         setGlyphBlinking(isBlinkingA, isBlinkingB);
     }
 
-    void setHistoryBarState(const std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> &state) {
+    void setLedBarState(const std::array<LedBarPixel, BAR_DISPLAY_AMOUNT_OF_PIXELS> &state) {
         bar.setState(state);
     }
 

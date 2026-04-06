@@ -10,7 +10,7 @@
 #define BAR_DISPLAY_AMOUNT_OF_PIXELS 24
 
 struct LedBarPixel {
-    CRGB color;
+    CRGB color = CRGB::Black;
     bool isBlinking = false;
 };
 

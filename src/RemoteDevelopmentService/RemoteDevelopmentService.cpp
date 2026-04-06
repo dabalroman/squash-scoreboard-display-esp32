@@ -144,7 +144,6 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
     backDisplay->clear();
     backDisplay->setCursorToLine();
     backDisplay->print("Connecting to " + savedSSID);
-    backDisplay->print("Using " + savedPassword);
     backDisplay->display();
 
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {

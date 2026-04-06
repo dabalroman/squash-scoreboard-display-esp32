@@ -4,7 +4,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
-#include "Display/LedDisplay/ScoreHistoryBarAdapter.h"
+#include "../../../Display/LedDisplay/Adapter/GameScoreHistoryBarAdapter.h"
 #include "Tournament/Tournament.h"
 
 #define GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS 4000
@@ -12,14 +12,14 @@
 class VolleyballGamePlayingView final : public View {
     Tournament &tournament;
     Match *match = nullptr;
-    Game *round = nullptr;
-    UserProfile *playerA = nullptr, *playerB = nullptr, *lastPointScoredBy = nullptr;
+    Game *game = nullptr;
+    UserProfile *playerLeft = nullptr, *playerRight = nullptr, *lastPointScoredBy = nullptr;
     std::function<void(VolleyballModeState)> onStateChange;
 
     uint32_t lastPointScoredAtMs = 0;
     GameSide commitResultWinner = GameSide::none;
 
-    bool shouldUpdateLedBarHistoryState = true;
+    bool shouldUpdateLedBarState = true;
 
 public:
     VolleyballGamePlayingView(Tournament &tournament, std::function<void(VolleyballModeState)> onStateChange)
@@ -27,17 +27,13 @@ public:
         match = tournament.getActiveMatch();
 
         if (match == nullptr) {
-            printLn("MATCH IS MISSING!");
+            onStateChange(VolleyballModeState::MatchStartGame);
             return;
         }
 
-        printLn("Active match id: %u", match->getId());
-
-        round = &match->createMatchRound();
-        match->setActiveRound(*round);
-
-        playerA = &match->getPlayerA();
-        playerB = &match->getPlayerB();
+        game = match->createGame();
+        playerLeft = &match->getPlayerA();
+        playerRight = &match->getPlayerB();
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -45,37 +41,37 @@ public:
         bool checkExit = false;
 
         if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
-            round->scorePoint(GameSide::a);
+            game->scorePoint(GameSide::a);
             lastPointScoredBy = &match->getPlayerA();
             lastPointScoredAtMs = now;
-            shouldUpdateLedBarHistoryState = true;
+            shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
-            round->scorePoint(GameSide::b);
+            game->scorePoint(GameSide::b);
             lastPointScoredBy = &match->getPlayerB();
             lastPointScoredAtMs = now;
-            shouldUpdateLedBarHistoryState = true;
+            shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
-            if (round->getTemporaryScore(GameSide::a) == 0 && round->getTemporaryScore(GameSide::b) == 0) {
+            if (game->getTemporaryScore(GameSide::a) == 0 && game->getTemporaryScore(GameSide::b) == 0) {
                 checkExit = true;
             }
 
-            round->losePoint(GameSide::a);
+            game->losePoint(GameSide::a);
             lastPointScoredAtMs = now;
-            shouldUpdateLedBarHistoryState = true;
+            shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
-            if (round->getTemporaryScore(GameSide::a) == 0 && round->getTemporaryScore(GameSide::b) == 0) {
+            if (game->getTemporaryScore(GameSide::a) == 0 && game->getTemporaryScore(GameSide::b) == 0) {
                 checkExit = true;
             }
 
-            round->losePoint(GameSide::b);
+            game->losePoint(GameSide::b);
             lastPointScoredAtMs = now;
-            shouldUpdateLedBarHistoryState = true;
+            shouldUpdateLedBarState = true;
         }
 
         if (checkExit) {
@@ -84,12 +80,13 @@ public:
         }
 
         // Handle score commits
-        if (round->hasUncommitedPoints() && lastPointScoredAtMs + GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
-            commitResultWinner = round->commit();
-            shouldUpdateLedBarHistoryState = true;
+        if (game->hasUncommitedPoints() && lastPointScoredAtMs + GAME_PLAYING_VIEW_COMMIT_TIMEOUT_MS <= now) {
+            commitResultWinner = game->commit();
+            shouldUpdateLedBarState = true;
 
             if (commitResultWinner != GameSide::none) {
                 remoteInputManager.preventTriggerForMs();
+                match->finishGame();
                 onStateChange(VolleyballModeState::GameOver);
             }
         }
@@ -109,25 +106,25 @@ public:
             ledDisplay.setColonAppearance(lastPointScoredBy->getColor(), true);
         }
 
-        ledDisplay.setNumericValue(round->getTemporaryScore(GameSide::a), round->getTemporaryScore(GameSide::b));
+        ledDisplay.setNumericValue(game->getTemporaryScore(GameSide::a), game->getTemporaryScore(GameSide::b));
         ledDisplay.setGlyphsAppearance(
-            playerA->getColor(),
-            playerB->getColor(),
-            round->hasUncommitedPoints(GameSide::a),
-            round->hasUncommitedPoints(GameSide::b)
+            playerLeft->getColor(),
+            playerRight->getColor(),
+            game->hasUncommitedPoints(GameSide::a),
+            game->hasUncommitedPoints(GameSide::b)
         );
 
-        ledDisplay.setIndicatorAppearancePlayerA(playerA->getColor(), round->hasUncommitedPoints(GameSide::a));
-        ledDisplay.setIndicatorAppearancePlayerB(playerB->getColor(), round->hasUncommitedPoints(GameSide::b));
+        ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), game->hasUncommitedPoints(GameSide::a));
+        ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), game->hasUncommitedPoints(GameSide::b));
 
-        if (shouldUpdateLedBarHistoryState) {
-            ledDisplay.setHistoryBarState(ScoreHistoryBarAdapter::toLedBarPixels(
-                playerA->getColor(),
-                playerB->getColor(),
-                round->getScoreHistory()
+        if (shouldUpdateLedBarState) {
+            ledDisplay.setLedBarState(GameScoreHistoryBarAdapter::toLedBarPixels(
+                playerLeft->getColor(),
+                playerRight->getColor(),
+                game->getScoreHistory()
             ));
 
-            shouldUpdateLedBarHistoryState = false;
+            shouldUpdateLedBarState = false;
         }
 
         ledDisplay.display();
@@ -139,7 +136,7 @@ public:
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
         backDisplay.clear();
-        backDisplay.renderScoreWidget(round->getTemporaryScore(GameSide::a), round->getTemporaryScore(GameSide::b));
+        backDisplay.renderScoreWidget(game->getTemporaryScore(GameSide::a), game->getTemporaryScore(GameSide::b));
         backDisplay.display();
 
         shouldRenderBack = false;

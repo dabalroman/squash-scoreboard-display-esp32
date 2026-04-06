@@ -1,5 +1,5 @@
-#ifndef GAME_SIDE_ENUM
-#define GAME_SIDE_ENUM
+#ifndef MATCH_SIDE_ENUM
+#define MATCH_SIDE_ENUM
 
 #include <Arduino.h>
 
@@ -9,4 +9,4 @@ enum class GameSide: uint8_t {
     b = 2,
 };
 
-#endif //GAME_SIDE_ENUM
+#endif //MATCH_SIDE_ENUM
