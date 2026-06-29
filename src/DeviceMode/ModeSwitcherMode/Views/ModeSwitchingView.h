@@ -12,7 +12,8 @@ enum Options {
     Squash = 0,
     Volleyball = 1,
     ShortVolleyball = 2,
-    Config = 3,
+    Padel = 3,
+    Config = 4,
 };
 
 class ModeSwitchingView final : public View {
@@ -21,7 +22,8 @@ class ModeSwitchingView final : public View {
     const std::vector<String> optionsList = {
         "  Squash  ",
         "Volleyball",
-        "VolleyB 15",
+        "Volleyb 15",
+        "Padel Adv.",
         " [Config] ",
     };
 
@@ -57,6 +59,9 @@ public:
                 case Options::ShortVolleyball:
                     onDeviceModeChange(DeviceModeState::ShortVolleyballMode);
                     break;
+                case Options::Padel:
+                    onDeviceModeChange(DeviceModeState::PadelMode);
+                    break;
                 case Options::Config:
                     onDeviceModeChange(DeviceModeState::ConfigMode);
                     break;
@@ -85,7 +90,7 @@ public:
             default:
             case Options::Squash:
                 color = Colors::Green;
-                ledDisplay.setGlyphsGlyph(Glyph::U, Glyph::A, Glyph::S, Glyph::h);
+                ledDisplay.setGlyphsGlyph(Glyph::S, Glyph::D0, Glyph::U, Glyph::A);
                 break;
             case Options::Volleyball:
                 color = Colors::Yellow;
@@ -94,6 +99,10 @@ public:
             case Options::ShortVolleyball:
                 color = Colors::Orange;
                 ledDisplay.setGlyphsGlyph(Glyph::S, Glyph::h, Glyph::o, Glyph::r);
+                break;
+            case Options::Padel:
+                color = Colors::Blue;
+                ledDisplay.setGlyphsGlyph(Glyph::P, Glyph::A, Glyph::d, Glyph::E);
                 break;
             case Options::Config:
                 color = Colors::White;

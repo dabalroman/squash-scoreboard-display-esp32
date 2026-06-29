@@ -98,6 +98,19 @@ public:
         drawThiccTopToBottomLine(77, 128 - 83, 3);
     }
 
+    void renderScoreWidget(const String &scoreA, const String &scoreB) const {
+        const String &left  = sameSideMode ? scoreB : scoreA;
+        const String &right = sameSideMode ? scoreA : scoreB;
+
+        setCursorToLine(0, 0);
+        print(left);
+
+        setCursorToLineRightForNumbers(right, 1);
+        print(right);
+
+        drawThiccTopToBottomLine(77, 128 - 83, 3);
+    }
+
     void renderPlayerWidget(const String &playerNameA, const String &playerNameB) const {
         const String &left  = sameSideMode ? playerNameB : playerNameA;
         const String &right = sameSideMode ? playerNameA : playerNameB;

@@ -15,13 +15,14 @@ public:
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(const uint8_t selectedOption) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
-        if (selectedOption >= 3) return pixels;
+        if (selectedOption >= 4) return pixels;
 
-        // 3 game-mode segments: [7px] gap [8px] gap [7px] = 24px
-        constexpr Segment segments[3] = {
-            {0,  7, Colors::Green},   // Squash
-            {8,  8, Colors::Yellow},  // Volleyball
-            {17, 7, Colors::Orange},  // ShortVolleyball
+        // 4 game-mode segments across 24px
+        constexpr Segment segments[4] = {
+            {0,  5, Colors::Green},   // Squash
+            {6,  5, Colors::Yellow},  // Volleyball
+            {12, 5, Colors::Orange},  // ShortVolleyball
+            {18, 6, Colors::Blue},    // Padel
         };
 
         const Segment &seg = segments[selectedOption];

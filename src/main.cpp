@@ -13,6 +13,7 @@
 #include "DeviceMode/ModeSwitcherMode/ModeSwitchingMode.h"
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
+#include "DeviceMode/PadelMode/PadelMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "Tournament/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
@@ -153,6 +154,17 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
                 std::make_unique<ShortVolleyballRules>(),
+                []{ gBuzzer.playCelebration(); }
+            );
+            break;
+
+        case DeviceModeState::PadelMode:
+            deviceMode = std::make_unique<PadelMode>(
+                ledDisplay,
+                *backDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                users,
                 []{ gBuzzer.playCelebration(); }
             );
             break;
