@@ -18,6 +18,8 @@ Main features:
 - color-coded player identification
 - OLED display for score preview and setup
 - 4-digit, 86-LED front display visible up to 20 meters  
+- LED history bar showing points scored and previous match results
+- buzzer for interaction feedback and a victory theme
 - built-in scoring logic for squash, volleyball, and padel
 - strong magnets allow attaching the display to any surface  
 - rechargeable internal battery
@@ -64,9 +66,10 @@ LEDs shine through the plastic, creating a smooth, diffused surface. It was my m
 | Component       | Description                                                 |
 |-----------------|-------------------------------------------------------------|
 | MCU             | Wemos S2 Mini (ESP32-S2)                                   |
-| Display (front) | 88× WS2812B RGB LEDs (4×21 + colon + indicators)            |
+| Display (front) | 112× WS2812B RGB LEDs (4×21 digits + colon + indicators + 24-LED history bar) |
 | Display (rear)  | 0.96" OLED (SSD1306, 128×64)                                |
 | Input           | 433 MHz remote with 4 buttons                               |
+| Audio           | Buzzer for interaction tones and victory theme              |
 | Power           | 2× 18650 Li-Ion cells with boost converter and USB charging |
 | Enclosure       | 3D-printed, semi-transparent PLA                            |
 | Battery life    | ~10 hours continuous use                                    |
@@ -104,7 +107,9 @@ Basic actions:
 
 The front display shows the score using player colors.  
 The rear OLED displays configuration, player names, and game info.  
-Player scores blink when a point is scored or when the game ends.
+Player scores blink when a point is scored or when the game ends.  
+A history bar below the digits tracks the points scored during a game and shows the results of previous matches.  
+A buzzer confirms remote presses and plays a short victory theme when a game is won.
 
 
 ## Future Work
