@@ -7,16 +7,18 @@ Portable, remote-controlled way to end all memory-related (or sometimes ego-rela
 
 
 ## Overview
-Squash Scoreboard Display is a two-sided electronic counter for tracking scores during squash matches that supports many players at once.  
+Squash Scoreboard Display is a two-sided electronic counter for tracking scores during matches that supports many players at once.  
+It started as a squash counter and now also handles volleyball and padel, selectable from an on-device mode menu.  
 It uses a large LED display for players and a smaller OLED screen on the back for configuration and audience view.  
 Each player is represented by a color, so constant court side-switching is not an issue.
 
 Main features:
 - remote-controlled point counting
+- multiple sports: squash, volleyball, and padel
 - color-coded player identification
 - OLED display for score preview and setup
 - 4-digit, 86-LED front display visible up to 20 meters  
-- built-in squash scoring logic
+- built-in scoring logic for squash, volleyball, and padel
 - strong magnets allow attaching the display to any surface  
 - rechargeable internal battery
 - OTA updates and wireless debugging
@@ -28,6 +30,16 @@ Main features:
     <td><img src="assets/v_closeup_pink.webp" width="250"/></td>
   </tr>
 </table>
+
+## Supported sports
+Game modes are picked from the on-device mode menu. Every mode shares the same remote controls, color-coded
+identification, and a round-robin tournament that supports many players or teams.
+
+| Sport          | Scoring                                                                                                   |
+|----------------|-----------------------------------------------------------------------------------------------------------|
+| **Squash**     | Games to 11 points, win by 2.                                                                             |
+| **Volleyball** | Sets to 25 points, win by 2. A short variant (VolleyB 15) plays to 15.                                    |
+| **Padel**      | Tennis-style: points run 15/30/40 with advantage at deuce; six games win a set (by 2); sets are tallied across the match. |
 
 ## Motivation
 We often lost track of the score during squash matches.  
@@ -69,9 +81,9 @@ It reuses Wi-Fi, OTA, and UI modules from my
 [Pomodoro Freewire Timer](https://github.com/dabalroman/pomodoro-timer-esp32) project.
 
 Highlights:
-- implements standard squash scoring rules  
+- implements standard scoring rules for squash, volleyball, and padel  
 - state machines for menu and match logic
-- reusable components prepared for other game types
+- shared components reused across game types
 - event-driven architecture
 - OTA updates and Wi-Fi logging
 
@@ -99,7 +111,7 @@ Player scores blink when a point is scored or when the game ends.
 * automatic matchmaking based on tournament match history  
 * display tournament and per-player statistics
 * web interface for match overview and data sync
-* implementation of rules for other games
+* more sports and rule variants (e.g. padel golden point)
 
 
 ![](assets/h_front_closeup.webp)
