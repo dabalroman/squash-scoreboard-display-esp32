@@ -20,6 +20,10 @@ class PadelRules final : public Rules {
         if (gemsB >= 6 && (gemsB - gemsA) >= 2) return GameSide::b;
         return GameSide::none;
     }
+
+    size_t historyReserve() const override {
+        return 16;
+    }
 };
 
 #endif //PADELRULES_H

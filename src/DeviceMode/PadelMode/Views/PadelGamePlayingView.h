@@ -1,11 +1,14 @@
 #ifndef PADEL_MODE__GAME_PLAYING_VIEW_H
 #define PADEL_MODE__GAME_PLAYING_VIEW_H
 
+#include <vector>
+
 #include "DeviceMode/View.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/GameScoreHistoryBarRenderer.h"
 #include "Tournament/Tournament.h"
+#include "Tournament/Game/GameScoreHistory.h"
 #include "Tournament/Game/PadelGemScorer.h"
 
 /**
@@ -37,6 +40,13 @@ class PadelGamePlayingView final : public View {
 
     bool shouldUpdateLedBarState = true;
 
+    struct CompletedGem {
+        GameScoreHistory history;
+        GameSide winner;
+    };
+
+    std::vector<CompletedGem> completedGems;
+
     struct GlyphPair {
         Glyph high;
         Glyph low;
@@ -61,6 +71,28 @@ class PadelGamePlayingView final : public View {
             case PadelPoint::Thirty:    return "30";
             case PadelPoint::Forty:     return "40";
             case PadelPoint::Advantage: return "Ad";
+        }
+    }
+
+    void stepBackToPreviousGem() {
+        const CompletedGem last = completedGems.back();
+        completedGems.pop_back();
+
+        game->losePoint(last.winner);
+        game->commit();
+
+        scorer.restore(last.history);
+        scorer.undoRally(last.winner);
+        scorer.commit();
+    }
+
+    void undoOrStepBack(const GameSide side, bool &checkExit) {
+        if (!scorer.isEmpty()) {
+            scorer.undoRally(side);
+        } else if (!completedGems.empty()) {
+            stepBackToPreviousGem();
+        } else {
+            checkExit = true;
         }
     }
 
@@ -98,25 +130,13 @@ public:
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
-            if (scorer.isEmpty()
-                && game->getTemporaryScore(GameSide::a) == 0
-                && game->getTemporaryScore(GameSide::b) == 0) {
-                checkExit = true;
-            }
-
-            scorer.undoRally(GameSide::a);
+            undoOrStepBack(GameSide::a, checkExit);
             lastPointScoredAtMs = now;
             shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
-            if (scorer.isEmpty()
-                && game->getTemporaryScore(GameSide::a) == 0
-                && game->getTemporaryScore(GameSide::b) == 0) {
-                checkExit = true;
-            }
-
-            scorer.undoRally(GameSide::b);
+            undoOrStepBack(GameSide::b, checkExit);
             lastPointScoredAtMs = now;
             shouldUpdateLedBarState = true;
         }
@@ -126,7 +146,6 @@ public:
             return;
         }
 
-        // Commit the tentative rally after the inactivity window.
         if (scorer.hasUncommittedRallies() && (now - lastPointScoredAtMs) >= COMMIT_TIMEOUT_MS) {
             const GameSide gemWinner = scorer.commit();
             shouldUpdateLedBarState = true;
@@ -141,6 +160,9 @@ public:
                     onStateChange(PadelModeState::GameOver);
                     return;
                 }
+
+                completedGems.push_back({scorer.scoreHistory(), gemWinner});
+                scorer.reset();
             }
         }
     }
@@ -198,7 +220,9 @@ public:
             ledDisplay.setLedBarState(GameScoreHistoryBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
-                game->getScoreHistory()
+                game->getScoreHistory(),
+                1,
+                2
             ));
 
             shouldUpdateLedBarState = false;

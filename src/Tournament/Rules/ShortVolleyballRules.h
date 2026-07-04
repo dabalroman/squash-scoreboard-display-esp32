@@ -12,6 +12,10 @@ class ShortVolleyballRules final : public Rules {
         if (scoreB >= 15 && (scoreB - scoreA) >= 2) return GameSide::b;
         return GameSide::none;
     }
+
+    size_t historyReserve() const override {
+        return 64;
+    }
 };
 
 #endif //SHORTVOLLEYBALLRULES_H

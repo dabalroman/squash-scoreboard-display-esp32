@@ -15,10 +15,10 @@ class Game {
     int8_t deltaA = 0, deltaB = 0;
     GameSide winner = GameSide::none;
     Rules *rules;
-    GameScoreHistory history = GameScoreHistory();
+    GameScoreHistory history;
 
 public:
-    explicit Game(Rules *rules) : rules(rules) {
+    explicit Game(Rules *rules) : rules(rules), history(rules->historyReserve()) {
     }
 
     uint8_t getRealScore(const GameSide side) const {

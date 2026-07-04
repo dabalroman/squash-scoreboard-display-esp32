@@ -14,8 +14,8 @@ class GameScoreHistory {
     std::vector<GameScoreHistoryEntry> history;
 
 public:
-    explicit GameScoreHistory() {
-        history.reserve(30);
+    explicit GameScoreHistory(const size_t reserveCount = 32) {
+        history.reserve(reserveCount);
     }
 
     const std::vector<GameScoreHistoryEntry> &getHistory() const {

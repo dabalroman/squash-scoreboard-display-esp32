@@ -12,6 +12,10 @@ class VolleyballRules final : public Rules {
         if (scoreB >= 25 && (scoreB - scoreA) >= 2) return GameSide::b;
         return GameSide::none;
     }
+
+    size_t historyReserve() const override {
+        return 64;
+    }
 };
 
 #endif //VOLLEYBALLRULES_H
