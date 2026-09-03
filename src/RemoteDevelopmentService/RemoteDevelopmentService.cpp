@@ -149,7 +149,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
         delay(500);
     }
 
-    if (WiFiClass::status() != WL_CONNECTED) {
+    if (WiFi.status() != WL_CONNECTED) {
         enableAP();
     } else {
         backDisplay->clear();

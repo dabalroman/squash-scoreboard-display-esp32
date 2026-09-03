@@ -2,6 +2,7 @@
 #define REMOTE_DEVELOPMENT_SERVICE_H
 
 #include <memory>
+#include <WiFi.h>
 #include <WebServer.h>
 #include "PreferencesManager.h"
 #include "Display/BackDisplay.h"
