@@ -117,7 +117,7 @@ A pre-build script (`helpers/version_increment.py`) auto-increments the firmware
 ## Architecture
 
 ### Top-Level Loop (`src/main.cpp`)
-Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tick). It polls `RemoteInputManager` for input and delegates to the active `DeviceMode`. `einkDisplay.update()` and `batterySensor.loop()` run on **every** pass, before the 50 ms gate (the e-paper polls its BUSY pin). No custom FreeRTOS tasks.
+Hardware is initialized in `setup()`. On V2 `LedStartupAnimation::play()` runs straight after `einkDisplay.begin()` — a blocking ~1 s LED boot sweep, deliberately placed **after** the e-paper's ~3 s init so it plays against the splash rather than a blank panel. `setup()` calls `einkDisplay.flushRefresh()` in between: the splash is only *requested* by `begin()` and would stay queued while the sweep blocks, since `loop()` has not started to pump `update()` yet. The main `loop()` runs at ~20fps (50ms tick). It polls `RemoteInputManager` for input and delegates to the active `DeviceMode`. `einkDisplay.update()` and `batterySensor.loop()` run on **every** pass, before the 50 ms gate (the e-paper polls its BUSY pin). No custom FreeRTOS tasks.
 
 An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active mode: while `overlay.active()` it renders to all three displays and `deviceMode->loop()` is **skipped**, so the mode is *paused*, not changed — no input, no rendering, state and timers intact, and a pending score commit lands on the first frame after (the commit check lives in `handleInput`). On the pass it ends, `main.cpp` calls `RemoteInputManager::clearLatches()` (presses made during the overlay must not act on the view coming back), `Overlay::resetLedState()` and `DeviceMode::restoreView()`. The overlay knows nothing about modes, views or sports — it is content only (title, line, 4 glyphs, colour, duration), so #17's shutdown warning reuses it.
 
@@ -145,7 +145,7 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
 - `PadelGamePlayingView` keeps a stack of finished gems' rally histories so undo can step back across gem boundaries. When a gem completes it hand-couples the levels: `game->scorePoint(gemWinner)` + snapshot the gem; step-back reverses both.
 
 ### Display
-- **`#if BOARD_REV` only in `src/Board.h` and hardware wrapper headers** (`DisplayProfile.h`, `LedDisplay.h`, `LedCentralScreenBorder.h`, `EInk/EInkDisplay.h`, `BatterySensor.h`). Never in views, modes, `Tournament`, `Match`, `Game`, `Rules`. Wrappers keep identical APIs on both boards (empty stubs on V1).
+- **`#if BOARD_REV` only in `src/Board.h` and hardware wrapper headers** (`DisplayProfile.h`, `LedDisplay.h`, `LedCentralScreenBorder.h`, `LedStartupAnimation.h`, `EInk/EInkDisplay.h`, `BatterySensor.h`). Never in views, modes, `Tournament`, `Match`, `Game`, `Rules`. Wrappers keep identical APIs on both boards (empty stubs on V1).
 - `ledDisplay` — wraps the WS2812B chain (`Board::LED_COUNT`: 112 on V1, 74 on V2). Exposes 4 digit glyphs (A–D), a colon (no LEDs on V2), two player indicators, and on V1 a 24-pixel history bar (`LedBar`, from index 88). Call `display()` to clear, render, and show in one step.
 - **V2 has no history bar.** `setLedBarState` takes a **lambda** (`[&] { return XBarRenderer::toLedBarPixels(...); }`), never pixels: an argument is evaluated even into an empty setter. `resetHistoryBar`/`startCelebration` are no-ops on V2. Keep `LedBar::PIXEL_COUNT = 24` on both boards (`MatchResultBarRenderer` breaks at 0).
 - **Border (V2)** — `LedCentralScreenBorder` is its own concept, independent of the back indicators: `LedDisplay::setBorderEnabled(bool)` and `setBorderAppearance(top, bottom, blinkTop, blinkBottom)`. The indicator methods never touch it. Colours are used **as passed**, never `sameSideMode`-redirected (border faces front; indicators face back). It is the legend for the e-paper rows.
@@ -188,7 +188,8 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 
 **V2 LED slots** (verified on the device 2026-09-17; several differ from the schematic-era notes):
 - 0,1 border bottom-left; 2,3 top-left; **4 back indicator B**; 5,6 bottom-right; 7,8 top-right; **9 back indicator A**.
-- Digit modules are chained in **reverse**: A (leftmost) 58-73, B 42-57, C 26-41, D 10-25. Per-module slot 2 is dead: 12, 28, 44, 60 are never written.
+- Digit modules are chained in **reverse**: A (leftmost) 58-73, B 42-57, C 26-41, D 10-25. Per-module slot 2 is dead: 12, 28, 44, 60 are never written — it is a chain position on the right column with no die fitted, not a bottom-row LED.
+- **Physical LED coordinates live in `assets/led-map.svg`** (vector, authoritative; `led-map.png` is a raster preview). `helpers/led_positions.py` flattens it into the slot table used by `LedStartupAnimation.h`; `--check` verifies the committed table still matches. The ASCII drawing in `NineSegmentProfile.h` is schematic and **not to scale** — never derive geometry from it. Each module is 3x6 dies on a uniform 197-unit grid (~16 units/mm), and 5 slots per module drive 2 parallel dies.
 - On the bench, LEDs and buzzer need **battery power**; USB alone does not feed the 5 V rail.
 
 ### Input

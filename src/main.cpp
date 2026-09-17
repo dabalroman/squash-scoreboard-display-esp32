@@ -10,6 +10,7 @@
 #include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedStartupAnimation.h"
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/ConfigMode/ConfigMode.h"
 #include "DeviceMode/ModeSwitcherMode/ModeSwitchingMode.h"
@@ -202,6 +203,9 @@ void setup() {
     preferencesManager.read();
     initHardware();
     einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
+    // begin() only queues the splash; the sweep below blocks before loop() can send it.
+    einkDisplay.flushRefresh();
+    LedStartupAnimation(pixels).play();
     batterySensor.begin();
 
     static RemoteDevelopmentService remoteDev;

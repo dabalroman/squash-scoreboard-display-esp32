@@ -175,6 +175,9 @@ public:
     // True while a refresh is in flight (the panel must not be touched).
     bool inFlight() const { return state != State::Idle; }
 
+    // Queued or in flight. Unlike inFlight(), covers a request that update() has not picked up yet.
+    bool hasWork() const { return pending || state != State::Idle; }
+
     // Blocks ~1.6 s. For boot and for clearing ghosting on the firmware's schedule.
     // Uses GxEPD2's own path, which also performs its lazy init and first clear.
     // Must not be called while inFlight().

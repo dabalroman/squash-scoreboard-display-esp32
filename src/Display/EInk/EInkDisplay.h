@@ -107,6 +107,18 @@ public:
     void update() { eink.update(); }
 
     /**
+     * setup() only: drive a queued refresh out now, for the window before loop()
+     * starts pumping update(). Bounded so a stuck BUSY cannot hang boot.
+     */
+    void flushRefresh() {
+        const uint32_t start = millis();
+
+        while (eink.hasWork() && millis() - start < FLUSH_TIMEOUT_MS) {
+            eink.update();
+        }
+    }
+
+    /**
      * End the splash hold early. main.cpp calls this on any accepted remote press,
      * so a button skips the boot image; the press still does its normal job.
      */
@@ -295,6 +307,9 @@ private:
 
     // How long the boot splash keeps the panel before any view may draw (user, 2026-09-17).
     enum : uint32_t { SPLASH_HOLD_MS = 4000 };
+
+    // Upper bound for flushRefresh(); a partial is ~0.5 s, a full ~1.6 s.
+    enum : uint32_t { FLUSH_TIMEOUT_MS = 5000 };
 
     // Screen types for change detection and the ghosting policy.
     enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE };
@@ -491,6 +506,7 @@ public:
     bool available() const { return false; }
     void begin() {}
     void update() {}
+    void flushRefresh() {}
     void dismissSplash() {}
 
     void showBlank() {}

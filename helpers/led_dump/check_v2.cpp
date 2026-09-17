@@ -5,10 +5,12 @@
 //     and never touch the centre block (border 0-3/5-8, indicators 4/9)
 //   - indicator A writes only slot 9, B only slot 4; the colon writes nothing
 //   - border and back indicators are enabled/coloured independently
+//   - the startup sweep stays on front slots, ends dark, and never blanks a frame
 // Build: ./check_v2.sh
 #include <cstdio>
 
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/LedStartupAnimation.h"
 
 uint32_t g_fakeMillis = 0;
 CFastLED FastLED;
@@ -155,6 +157,61 @@ int main() {
         renderAt(1300);
         for (int i = 0; i < 10; i++) {
             if (!(buffer[i] == off)) { printf("FAIL sameSide=%d disabled slot %d lit\n", sameSide, i); failures++; }
+        }
+    }
+
+    // Startup sweep (LedStartupAnimation): front slots only, no blank frame, ends dark.
+    {
+        const CRGB off(0, 0, 0);
+        const uint32_t duration = LedStartupAnimation::DURATION_MS;
+        bool litBorder = false;
+        bool litDigitA = false;
+        bool litDigitD = false;
+
+        for (uint32_t t = 0; t <= duration + 50; t += 5) {
+            CRGB buffer[GUARD];
+            for (int i = 0; i < GUARD; i++) buffer[i] = sentinel;
+
+            LedStartupAnimation(buffer).renderFrame(t);
+
+            int lit = 0;
+            for (int i = 0; i < GUARD; i++) {
+                if (buffer[i] == sentinel) continue;
+
+                // Back indicators, dead slots and anything past the chain must stay untouched.
+                if (i >= 74 || i == 4 || i == 9 || i == 12 || i == 28 || i == 44 || i == 60) {
+                    printf("FAIL sweep t=%u wrote slot %d\n", t, i);
+                    failures++;
+                    continue;
+                }
+
+                writes++;
+                if (buffer[i] == off) continue;
+
+                lit++;
+                if (i < 10) litBorder = true;
+                if (i >= 58 && i <= 73) litDigitA = true;
+                if (i >= 10 && i <= 25) litDigitD = true;
+
+                if (t >= duration) {
+                    printf("FAIL sweep t=%u slot %d still lit after the sweep\n", t, i);
+                    failures++;
+                }
+            }
+
+            // BAND is sized so the ring always covers at least one LED - the field has
+            // radial gaps (empty centre, gaps between border and digits) that a thinner
+            // band would fall into, leaving the strip visibly blank mid-animation.
+            if (lit == 0 && t < duration) {
+                printf("FAIL sweep t=%u lit nothing\n", t);
+                failures++;
+            }
+        }
+
+        if (!litBorder || !litDigitA || !litDigitD) {
+            printf("FAIL sweep never reached border=%d digitA=%d digitD=%d\n",
+                   litBorder, litDigitA, litDigitD);
+            failures++;
         }
     }
 

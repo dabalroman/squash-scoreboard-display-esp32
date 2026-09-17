@@ -14,4 +14,7 @@ typedef unsigned long ulong;
 extern uint32_t g_fakeMillis;
 inline uint32_t millis() { return g_fakeMillis; }
 
+// No-op: the clock is fake, so host checks step renderFrame() rather than run play().
+inline void delay(uint32_t) {}
+
 #endif
