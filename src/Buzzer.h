@@ -2,6 +2,7 @@
 #define BUZZER_H
 
 #include <Arduino.h>
+#include <driver/gpio.h>
 
 class Buzzer {
     uint8_t gpio;
@@ -23,7 +24,10 @@ public:
     explicit Buzzer(const uint8_t gpio) : gpio(gpio) {}
 
     void init() const {
+        // Drive the pad before releasing the hold safeRestart() applied, so it never floats.
         pinMode(gpio, OUTPUT);
+        digitalWrite(gpio, LOW);
+        gpio_hold_dis(static_cast<gpio_num_t>(gpio));
     }
 
     void setEnabled(const bool value) {

@@ -2,6 +2,7 @@
 
 #include <Update.h>
 
+#include "SafeRestart.h"
 #include "Utils.h"
 #include "Display/BackDisplay.h"
 
@@ -43,7 +44,7 @@ void RemoteDevelopmentService::setupOTA() {
 
             OTAServer->send(200, "text/html", "Credentials saved! Rebooting...");
             delay(1000);
-            ESP.restart();
+            safeRestart();
         } else {
             OTAServer->send(400, "text/html", "Missing SSID or Password");
         }
@@ -56,7 +57,7 @@ void RemoteDevelopmentService::setupOTA() {
             // OTA - onUploadEnd
             OTAServer->sendHeader("Connection", "close");
             OTAServer->send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
-            ESP.restart();
+            safeRestart();
         },
         [this] {
             // OTA - onUpload

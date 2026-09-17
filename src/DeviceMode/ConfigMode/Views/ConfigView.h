@@ -4,6 +4,7 @@
 #include <version.h>
 
 #include "BatterySensor.h"
+#include "SafeRestart.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
@@ -64,7 +65,7 @@ public:
         preferencesManager.save();
 
         if (shouldReboot) {
-            ESP.restart();
+            safeRestart();
         }
 
         onDeviceModeChange(DeviceModeState::ModeSwitchingMode);

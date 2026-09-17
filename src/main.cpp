@@ -96,8 +96,6 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(Board::RF_D1), onRemoteReceiverInterrupt_d1, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D2), onRemoteReceiverInterrupt_d2, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D3), onRemoteReceiverInterrupt_d3, RISING);
-
-    gBuzzer.init();
 }
 
 void changeDeviceMode(const DeviceModeState deviceModeState) {
@@ -180,6 +178,10 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
 }
 
 void setup() {
+    // First thing on boot: drives the buzzer pad LOW and releases the hold safeRestart() set,
+    // so the pin is never left floating while the rest of the hardware comes up.
+    gBuzzer.init();
+
     if (Board::SERIAL_LOG) {
         Serial.begin(115200);
     }
