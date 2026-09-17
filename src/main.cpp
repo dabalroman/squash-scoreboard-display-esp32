@@ -21,6 +21,7 @@
 #include "RemoteInput/RemoteInputManager.h"
 #include "Buzzer.h"
 #include "Display/LedDisplay/LedBar.h"
+#include "Display/EInk/EInkDisplay.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
@@ -44,6 +45,9 @@ std::unique_ptr<BackDisplay> backDisplay;
 
 Buzzer gBuzzer(Board::BUZZER);
 
+// V2 e-paper; an empty stub on V1.
+EInkDisplay einkDisplay;
+
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 PreferencesManager preferencesManager;
 
@@ -54,6 +58,7 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = Board::
 void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = Board::RF_D3; }
 
 unsigned long lastUpdate = 0;
+unsigned long lastEInkStatsLog = 0;
 
 std::unique_ptr<DeviceMode> deviceMode;
 DeviceModeState deviceState = DeviceModeState::Booting;
@@ -167,6 +172,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
 void setup() {
     preferencesManager.read();
     initHardware();
+    einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
 
     static RemoteDevelopmentService remoteDev;
     remoteDev.init(preferencesManager, *backDisplay);
@@ -186,6 +192,17 @@ void setup() {
 }
 
 void loop() {
+    // First, before the frame gate: polls the panel's BUSY pin on every pass.
+    einkDisplay.update();
+
+    if (einkDisplay.available() && millis() - lastEInkStatsLog >= 30000) {
+        lastEInkStatsLog = millis();
+        printLn("EInk: worst start %lu us, worst finish %lu us, refreshes %lu, timeouts %lu, busy never rose %lu",
+                (unsigned long) einkDisplay.worstStartUs(), (unsigned long) einkDisplay.worstFinishUs(),
+                (unsigned long) einkDisplay.refreshes(), (unsigned long) einkDisplay.timeouts(),
+                (unsigned long) einkDisplay.busyNeverRose());
+    }
+
     gRemoteDevelopmentService->loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
     gBuzzer.loop();
