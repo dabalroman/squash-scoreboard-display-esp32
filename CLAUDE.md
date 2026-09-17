@@ -4,7 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Firmware for a squash scoreboard display built on the Wemos S2 Mini (ESP32-S2). Written in C++ using PlatformIO and the Arduino framework. Supports squash, volleyball, and padel scoring with a front-facing 112× WS2812B LED display (4 digits + colon + indicators + a 24-LED history bar) and a rear OLED screen.
+Firmware for a squash scoreboard display. Written in C++ using PlatformIO and the Arduino framework. Supports squash, volleyball, and padel scoring. **One source tree builds two boards**, selected by `-DBOARD_REV`:
+
+| | V1 (`lolin_s2_mini`, `BOARD_REV=1`) | V2 (`esp32s3_devkitc`, `BOARD_REV=2`) |
+|---|---|---|
+| Board | Wemos S2 Mini (ESP32-S2) | ESP32-S3-DevKitC-1 N16R8 |
+| Front | 112 WS2812B: 4 seven-segment digits, colon, player indicators, 24-LED history bar | 74 slots: 4 nine-segment digits + split centre border around a 2.9" e-paper |
+| Back | OLED | OLED + 2 player indicator LEDs |
+| Extra | - | battery voltage sense |
+
+`V2 Guidelines.md` (untracked, user-maintained) holds the V2 design record and hardware facts.
 
 ## READ FIRST: two things that will break this device
 
@@ -42,7 +51,9 @@ fails in `fl/gfx/crgb.h`, 3.10.3 fails on `fl::fl_map`, and installing 3.10.3 fr
 the registry crashes PlatformIO's library manager. The registry is stale at 3.10.3
 anyway; upstream GitHub has 3.10.4.
 
-### 2. OTA is the only practical way to flash. USB needs disassembly.
+### 2. V1: OTA is the only practical way to flash. USB needs disassembly.
+
+(V2 is on the bench and flashes over native USB, COM8. Never flash V1 casually.)
 
 A bad image means taking the unit apart. Before any toolchain, platform, or LED
 library change, run these checks **before** uploading:
@@ -64,7 +75,9 @@ Run from Windows PowerShell; `pio` is on PATH and the working directory is
 already the project root.
 
 ```powershell
-pio run -e lolin_s2_mini                   # build
+pio run -e lolin_s2_mini -e esp32s3_devkitc   # ALWAYS build both after a change
+pio run -t upload -e esp32s3_devkitc       # V2: flash via native USB (COM8)
+pio run -e lolin_s2_mini                   # build V1 only
 pio run -t upload -e lolin_s2_mini         # flash via USB (COM4) - needs disassembly
 pio run -t upload -e lolin_s2_mini_ota     # flash via OTA (192.168.0.129) - normal path
 pio device monitor                         # serial monitor (COM3, 115200)
@@ -74,7 +87,23 @@ Verify an OTA landed: `curl http://192.168.0.129/` should return the config page
 and port 23 is the telnet log. The device reboots after an upload and takes
 ~20-40 s to rejoin, so poll rather than assuming failure.
 
-There is no test suite - this is embedded firmware with no automated testing.
+There is no on-device test suite. Host-side checks for the LED layer run in WSL
+(`helpers/led_dump/README.md`) - run them after touching `src/Display/LedDisplay/`:
+
+```bash
+# from helpers/led_dump inside WSL Ubuntu-24.04
+./run.sh --root ../../src --defines "-DBOARD_REV=1 -DLEDBAR_LAMBDA -DCONFIG_IDF_TARGET_ESP32S2=1"
+./check_v2.sh
+```
+```powershell
+python helpers/preview_glyphs.py check     # glyph table + 7-segment collapse vs V1
+```
+
+`run.sh` proves V1 renders byte-identically to golden dumps taken before the V2
+work; `check_v2.sh` checks V2 slot invariants (bounds, dead slots, border, indicators).
+
+Logs: `printLn` goes to telnet (port 23); on V2 it is also mirrored to USB serial
+(COM8, 115200) whenever a host is attached (`Board::SERIAL_LOG`).
 
 **Toolchain gotcha, only relevant if this repo is ever moved off 6.13.0:** the
 `pio` on PATH runs under Python 3.10, while `~/.platformio/penv` is Python 3.14.
@@ -83,16 +112,17 @@ The pioarduino platform's builder imports `littlefs`, whose compiled extension i
 `& "C:/Users/rd/.platformio/penv/Scripts/pio.exe"` in that case. **This does not
 affect the current 6.13.0 setup** - PATH `pio` is verified working here.
 
-A pre-build script (`helpers/version_increment.py`) auto-increments the firmware version on each build.
+A pre-build script (`helpers/version_increment.py`) auto-increments the firmware version on each build - once **per env**, so a two-env build bumps it twice. It tolerates a UTF-8 BOM in `version.txt` (a BOM once broke every build).
 
 ## Architecture
 
 ### Top-Level Loop (`src/main.cpp`)
-Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tick). It polls `RemoteInputManager` for input and delegates to the active `DeviceMode`.
+Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tick). It polls `RemoteInputManager` for input and delegates to the active `DeviceMode`. `einkDisplay.update()` and `batterySensor.loop()` run on **every** pass, before the 50 ms gate (the e-paper polls its BUSY pin). No custom FreeRTOS tasks.
 
 ### DeviceMode + View pattern
 - `DeviceMode` (abstract) — owns a state machine and an active `View`. Each mode has its own state enum (e.g., `SquashModeState`). When the state changes, a new `View` is instantiated.
 - `View` (abstract) — each frame it calls `handleInput()`, `renderLedDisplay()` (front LEDs), and `renderBackDisplay()` (rear OLED). Flags `shouldRenderLedDisplay`/`shouldRenderBack` control dirty rendering.
+- `renderEInkDisplay(EInkDisplay&)` is the third, non-pure hook (default: blank). It is called every frame, but the e-paper must refresh only on real change: views pass **values** to `EInkDisplay` (`showMatchScore`, `showBlank`), which compares them with what is shown. Never rely on `queueRender()` for it (GamePlaying views never call it). Start each override with `if (!einkDisplay.available()) return;` so V1 computes nothing for its stub.
 - View flow per sport mode: `TournamentChoosePlayers` → `MatchStartGame` → `GamePlaying` → `GameOver` → back to `MatchStartGame`.
 - Modes: `ModeSwitchingMode` (menu), `ConfigMode`, `SquashMode`, `VolleyballMode`, `PadelMode`
 - Mode transitions happen via a callback `onDeviceModeChange` passed down from `main.cpp`.
@@ -113,8 +143,12 @@ Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tic
 - `PadelGamePlayingView` keeps a stack of finished gems' rally histories so undo can step back across gem boundaries. When a gem completes it hand-couples the levels: `game->scorePoint(gemWinner)` + snapshot the gem; step-back reverses both.
 
 ### Display
-- `ledDisplay` — wraps 112 WS2812B LEDs via FastLED. Exposes 4 digit glyphs (A–D), a colon, two player indicator LEDs, and a 24-pixel history bar (`LedBar`, starting at pixel index 88). Call `display()` to clear, render, and show in one step.
-- `BackDisplay` — wraps the rear 0.96" OLED (Adafruit SSD1306 128×64). Provides helper methods like `renderScoreWidget()`.
+- **`#if BOARD_REV` only in `src/Board.h` and hardware wrapper headers** (`DisplayProfile.h`, `LedDisplay.h`, `LedCentralScreenBorder.h`, `EInk/EInkDisplay.h`, `BatterySensor.h`). Never in views, modes, `Tournament`, `Match`, `Game`, `Rules`. Wrappers keep identical APIs on both boards (empty stubs on V1).
+- `ledDisplay` — wraps the WS2812B chain (`Board::LED_COUNT`: 112 on V1, 74 on V2). Exposes 4 digit glyphs (A–D), a colon (no LEDs on V2), two player indicators, and on V1 a 24-pixel history bar (`LedBar`, from index 88). Call `display()` to clear, render, and show in one step.
+- **V2 has no history bar.** `setLedBarState` takes a **lambda** (`[&] { return XBarRenderer::toLedBarPixels(...); }`), never pixels: an argument is evaluated even into an empty setter. `resetHistoryBar`/`startCelebration` are no-ops on V2. Keep `LedBar::PIXEL_COUNT = 24` on both boards (`MatchResultBarRenderer` breaks at 0).
+- **Border (V2)** — `LedCentralScreenBorder` is driven only through the indicator methods: `setIndicatorAppearancePlayerA` → border top, `...PlayerB` → bottom, `setPlayersIndicatorsState` → enable. It gets the colour **as passed**, never the `sameSideMode`-redirected one (border faces front; indicators face back). It is the legend for the e-paper rows.
+- **E-paper (V2)** — `EInkDisplay` wraps `EInkAsync` (ported from the rig): non-blocking refresh state machine, ~10 ms SPI bursts, the ~0.5 s panel wait polled from `loop()`, requests coalesce. Driver class `GxEPD2_290_GDEY029T94` (GxEPD2 pinned 1.6.9); never the blocking `GxEPD2_BW` in the loop. Panel is mounted upside down → canvas rotation 2. Black is `INK`, white `PAPER` (`Adafruit_SSD1306.h` #defines `BLACK`/`WHITE`). Shows match-level score only: games won, or gems + sets in padel; top row = left court player. **`BackDisplay` and the e-ink share nothing** (no base class, helpers or interface).
+- `BackDisplay` — wraps the rear 0.96" OLED (Adafruit SSD1306 128×64). Provides helper methods like `renderScoreWidget()`. Rotation is `Board::OLED_ROTATION` (V1 2, V2 0).
 - Bar renderers live in `src/Display/LedDisplay/Renderer/`. Each exposes a static `toLedBarPixels()` returning `std::array<LedBarPixel, LedBar::PIXEL_COUNT>`.
 - `static constexpr` arrays as class members in header-only adapters cause ODR linker errors with GCC 8.4 (C++14). Declare them as local `constexpr` variables inside the static method instead.
 - **FastLED is a pinned, load-bearing dependency (3.9.16).** See *READ FIRST*.
@@ -125,20 +159,29 @@ Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tic
   repo's CLAUDE.md; the leading candidate is NeoPixelBus with a **DMA (I2S)**
   method, because naming the peripheral explicitly avoids the silent
   driver-swap-by-IDF-version that caused the core 3.x regression. Not yet decided -
-  only forced when the ESP32-S3 display is built.
-- `LedGlyph.h` has two separate tables: `SegmentToGlyphMap` (which segments light up per character) and `PixelsToSegmentMap` (which physical LED indices form each segment per digit position A–D). Adding a new character only requires a new entry in `SegmentToGlyphMap` + `Glyph` enum.
+  only forced if V2's LED output misbehaves (V2 shares the pinned platform, so it
+  also runs RMT4; the S3 fallback is `FASTLED_USES_ESP32S3_I2S`).
+- **Glyph layer:** `GlyphMasks.h` is the one 9-bit mask table for both boards (46 glyphs; indices 0..36 frozen, append only). `LedGlyph` is `LedGlyphT<ActiveGlyphProfile>` (`DisplayProfile.h`): `SevenSegmentProfile` (V1 hand-written zig-zag tables, `mask & 0x7F`) or `NineSegmentProfile` (one per-module table + module offset). To add a character: `Glyph` enum + mask, then `python helpers/preview_glyphs.py`.
+  - The 7-segment collapse keeps bit 3 (`CENTER`) and drops `MID_LEFT`/`MID_RIGHT`; never OR (renders `0` as `8`) or AND them.
+  - Segment loops are bounded by `SegmentTable.count` (0 for V2's colon, 1 for indicators), **never** by a widest segment count.
+  - Blink: `tickMs % 500 < 250` is the dark phase, shared by glyphs and border.
 
 ### Pinout
-| GPIO | Function                          |
-|------|-----------------------------------|
-| 8    | Remote receiver input / interrupt |
-| 10   | Remote receiver input / interrupt |
-| 13   | Remote receiver input / interrupt |
-| 14   | Remote receiver input / interrupt |
-| 18   | WS2812B data                      |
-| 3    | Buzzer (active high)              |
-| 33   | I2C SDA (SSD1306)                 |
-| 34   | I2C SCL (SSD1306)                 |
+All pins live in `src/Board.h` (per `BOARD_REV`).
+
+| Function | V1 GPIO | V2 GPIO |
+|---|---|---|
+| Remote A / B / C / D (prev / next / undo / enter) | 14 / 13 / 10 / 8 | **8 / 10 / 13 / 14** (reversed, verified on the device) |
+| WS2812B data | 18 | 18 |
+| Buzzer (active high) | 3 | 3 (via MOSFET) |
+| OLED I2C SDA / SCL | 33 / 34 | 4 / 5 (33-37 are octal PSRAM on N16R8) |
+| E-paper SCK / MOSI / CS / DC / RST / BUSY | - | 12 / 11 / 9 / 15 / 16 / 17 |
+| Battery ADC (ADC1, 10k/10k divider) | - | 6 |
+
+**V2 LED slots** (verified on the device 2026-09-17; several differ from the schematic-era notes):
+- 0,1 border bottom-left; 2,3 top-left; **4 back indicator B**; 5,6 bottom-right; 7,8 top-right; **9 back indicator A**.
+- Digit modules are chained in **reverse**: A (leftmost) 58-73, B 42-57, C 26-41, D 10-25. Per-module slot 2 is dead: 12, 28, 44, 60 are never written.
+- On the bench, LEDs and buzzer need **battery power**; USB alone does not feed the 5 V rail.
 
 ### Input
 - `RemoteInputManager` — manages 4 `RemoteInput` buttons (A/B/C/D) triggered by GPIO interrupts from the 433 MHz receiver. Use `button.takeActionIfPossible(debounceMs)` in views.
@@ -165,30 +208,8 @@ Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tic
 ### Players
 Player profiles (`UserProfile`) are hardcoded in `main.cpp` with names and assigned colors. To add/change players, edit the `userA`–`userI` declarations and the `users` vector there.
 
-### Related work: the 9-segment display
-
-A second, physically different display is in development — a 3D-printed
-**9-segment** module. Its evaluation rig is a separate repo:
-`../squash-scoreboard-display-testing-playground`, whose CLAUDE.md holds the full
-backport plan. Key points for this repo:
-
-- **Target board is the ESP32-S3 DevKitC-1**, not the S2 Mini. Warning: on S3
-  modules with **octal PSRAM** (`R8` variants) GPIO 33-37 are reserved by the PSRAM
-  interface, so a data pin carried over from the S2 may not exist there.
-- The display is **4 modules + separator dots + extra LEDs**, wired identically in
-  series, so digit N starts at `N * 16`. That means the per-digit pixel tables can
-  be *generated* — the backport **deletes** the four hand-tabulated
-  `glyphA`..`glyphD` tables rather than adding a fifth.
-- **One shared mask table serves both displays.** The 9-segment table keeps bits
-  0..6 identical to this repo's `SegmentToGlyphMap`, and
-  `(nineSegmentMask & 0x7F)` reproduces the 7-segment mask exactly for all 37
-  glyphs. Collapse the mid row by **keeping bit 3 (`CENTER`) and discarding
-  `MID_LEFT`/`MID_RIGHT`** — do not OR the three together, which lights a middle
-  bar on `0 1 7 C G L U I` and renders `0` as `8`.
-- `Glyph` indices 0..36 are **frozen** and identical in both repos. Append only.
-- The adapter seam is `LedGlyph`, below `LedDisplay`. Views, `Tournament`, `Match`,
-  `Game` and `Rules` need no changes — they only ever speak `Glyph`, `Color` and
-  blink flags.
+### Battery (V2)
+`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. Shown on the OLED Config screen and in the log. `FACTOR` is still the core-3.3.11 value until re-derived against a meter.
 
 ### `lib/` directory
 The `lib/` directory contains only backup files (`.h~`) and is not used for active code. All project source is under `src/`.
