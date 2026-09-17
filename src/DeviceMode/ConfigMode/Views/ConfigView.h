@@ -129,6 +129,7 @@ public:
         ledDisplay.setColonAppearance();
         ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
         ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setBorderEnabled(false);
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {

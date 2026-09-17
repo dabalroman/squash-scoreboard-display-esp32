@@ -96,6 +96,7 @@ public:
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetHistoryBar();
         ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setBorderEnabled(true);
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
@@ -117,6 +118,12 @@ public:
 
         ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), game->hasUncommitedPoints(GameSide::a));
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), game->hasUncommitedPoints(GameSide::b));
+        ledDisplay.setBorderAppearance(
+            playerLeft->getColor(),
+            playerRight->getColor(),
+            game->hasUncommitedPoints(GameSide::a),
+            game->hasUncommitedPoints(GameSide::b)
+        );
 
         if (shouldUpdateLedBarState) {
             ledDisplay.setLedBarState([&] { return GameScoreHistoryBarRenderer::toLedBarPixels(

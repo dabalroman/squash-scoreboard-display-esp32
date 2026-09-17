@@ -125,6 +125,7 @@ public:
         ledDisplay.resetHistoryBar();
         ledDisplay.setColonAppearance();
         ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setBorderEnabled(true);
     }
 
     // Blinking, so always should render
@@ -143,6 +144,7 @@ public:
         ledDisplay.setGlyphsAppearance(playerLeft->getColor(), playerRight->getColor());
         ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor());
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor());
+        ledDisplay.setBorderAppearance(playerLeft->getColor(), playerRight->getColor());
 
         if (shouldUpdateLedBarState) {
             ledDisplay.setLedBarState([&] { return MatchResultBarRenderer::toLedBarPixels(

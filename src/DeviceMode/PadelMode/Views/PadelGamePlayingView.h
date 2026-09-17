@@ -170,6 +170,7 @@ public:
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetHistoryBar();
         ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setBorderEnabled(true);
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
@@ -200,6 +201,12 @@ public:
             ledDisplay.setGlyphBlinking(leftWon, !leftWon);
             ledDisplay.setIndicatorAppearancePlayerA(leftWon ? winnerColor : Colors::Black, leftWon);
             ledDisplay.setIndicatorAppearancePlayerB(!leftWon ? winnerColor : Colors::Black, !leftWon);
+            ledDisplay.setBorderAppearance(
+                leftWon ? winnerColor : Colors::Black,
+                !leftWon ? winnerColor : Colors::Black,
+                leftWon,
+                !leftWon
+            );
         } else {
             const GlyphPair left = pointToGlyphs(scorer.getPoint(GameSide::a));
             const GlyphPair right = pointToGlyphs(scorer.getPoint(GameSide::b));
@@ -214,6 +221,12 @@ public:
 
             ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), scorer.hasUncommittedRallies(GameSide::a));
             ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), scorer.hasUncommittedRallies(GameSide::b));
+            ledDisplay.setBorderAppearance(
+                playerLeft->getColor(),
+                playerRight->getColor(),
+                scorer.hasUncommittedRallies(GameSide::a),
+                scorer.hasUncommittedRallies(GameSide::b)
+            );
         }
 
         if (shouldUpdateLedBarState) {

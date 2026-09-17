@@ -34,6 +34,7 @@ public:
     explicit LedDisplay(CRGB *pixels) : pixels(pixels) {
         setColonAppearance();
         setPlayersIndicatorsState(false);
+        setBorderEnabled(false);
     }
 
     void setNumericValue(const uint8_t valueA, const uint8_t valueB) {
@@ -122,23 +123,35 @@ public:
     void setPlayersIndicatorsState(const bool enabled) {
         glyphIndicatorPlayerA.setGlyph(enabled ? Glyph::All : Glyph::Empty);
         glyphIndicatorPlayerB.setGlyph(enabled ? Glyph::All : Glyph::Empty);
-        border.setEnabled(enabled);
     }
 
-    // Indicators face the back and follow sameSideMode; the border faces the front
-    // and always takes the colour as given (top = A, bottom = B).
+    // Back-facing indicators; they follow sameSideMode. They never touch the border.
     void setIndicatorAppearancePlayerA(const Color color, const bool isBlinking = false) {
         LedGlyph &target = sameSideMode ? glyphIndicatorPlayerB : glyphIndicatorPlayerA;
         target.setColor(color);
         target.setBlinking(isBlinking);
-        border.setTop(color, isBlinking);
     }
 
     void setIndicatorAppearancePlayerB(const Color color, const bool isBlinking = false) {
         LedGlyph &target = sameSideMode ? glyphIndicatorPlayerA : glyphIndicatorPlayerB;
         target.setColor(color);
         target.setBlinking(isBlinking);
-        border.setBottom(color, isBlinking);
+    }
+
+    // Front-facing legend for the e-paper rows: top = left court player, bottom = right.
+    // Independent of the back indicators and never sameSideMode-redirected. V1: no-op.
+    void setBorderEnabled(const bool enabled) {
+        border.setEnabled(enabled);
+    }
+
+    void setBorderAppearance(
+        const Color top,
+        const Color bottom,
+        const bool isBlinkingTop = false,
+        const bool isBlinkingBottom = false
+    ) {
+        border.setTop(top, isBlinkingTop);
+        border.setBottom(bottom, isBlinkingBottom);
     }
 
 #if BOARD_REV == 1

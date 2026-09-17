@@ -4,6 +4,7 @@
 //   - digits stay inside their own module (A=58-73, B=42-57, C=26-41, D=10-25)
 //     and never touch the centre block (border 0-3/5-8, indicators 4/9)
 //   - indicator A writes only slot 9, B only slot 4; the colon writes nothing
+//   - border and back indicators are enabled/coloured independently
 // Build: ./check_v2.sh
 #include <cstdio>
 
@@ -71,32 +72,46 @@ int main() {
         }
     }
 
-    // Border via LedDisplay: top {2,3,7,8} = A colour, bottom {0,1,5,6} = B colour,
-    // regardless of sameSideMode; back indicators (A=9, B=4) still swap.
+    // Border and back indicators are independent LedDisplay concepts.
+    // Border: top {2,3,7,8} = top colour, bottom {0,1,5,6} = bottom colour, regardless of
+    // sameSideMode. Indicators (A=9, B=4) swap with sameSideMode.
     for (int sameSide = 0; sameSide < 2; sameSide++) {
         CRGB buffer[GUARD];
         const CRGB off(0, 0, 0);
         const CRGB a(10, 0, 0);
         const CRGB b(0, 20, 0);
-        for (int i = 0; i < GUARD; i++) buffer[i] = off;
+        const CRGB other(0, 0, 30);
+        const int top[] = {2, 3, 7, 8};
+        const int bottom[] = {0, 1, 5, 6};
+        const CRGB expect9 = sameSide ? b : a;   // indicator A's slot shows B when swapped
+        const CRGB expect4 = sameSide ? a : b;
 
         LedDisplay display(buffer);
+        auto renderAt = [&](const uint32_t ms) {
+            for (int i = 0; i < GUARD; i++) buffer[i] = off;
+            g_fakeMillis = ms;
+            display.render();
+        };
         display.setSameSideMode(sameSide == 1);
         display.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
+
+        // Fresh display: border and indicators both off.
+        renderAt(1300);   // visible blink phase
+        for (int i = 0; i < 10; i++) {
+            if (!(buffer[i] == off)) { printf("FAIL sameSide=%d default slot %d lit\n", sameSide, i); failures++; }
+        }
+
+        // Both on.
         display.setPlayersIndicatorsState(true);
         display.setIndicatorAppearancePlayerA(Color(10, 0, 0));
         display.setIndicatorAppearancePlayerB(Color(0, 20, 0));
-        g_fakeMillis = 1300;   // visible blink phase
-        display.render();
-
-        const int top[] = {2, 3, 7, 8};
-        const int bottom[] = {0, 1, 5, 6};
+        display.setBorderEnabled(true);
+        display.setBorderAppearance(Color(10, 0, 0), Color(0, 20, 0));
+        renderAt(1300);
         for (int k = 0; k < 4; k++) {
             if (!(buffer[top[k]] == a)) { printf("FAIL sameSide=%d top slot %d\n", sameSide, top[k]); failures++; }
             if (!(buffer[bottom[k]] == b)) { printf("FAIL sameSide=%d bottom slot %d\n", sameSide, bottom[k]); failures++; }
         }
-        const CRGB expect9 = sameSide ? b : a;   // indicator A's slot shows B when swapped
-        const CRGB expect4 = sameSide ? a : b;
         if (!(buffer[9] == expect9) || !(buffer[4] == expect4)) {
             printf("FAIL sameSide=%d indicators 4/9 wrong\n", sameSide);
             failures++;
@@ -105,17 +120,39 @@ int main() {
             if (!(buffer[i] == off)) { printf("FAIL stray write slot %d\n", i); failures++; }
         }
 
-        // Dark blink phase: A's border half dark, B's still lit.
-        display.setIndicatorAppearancePlayerA(Color(10, 0, 0), true);
-        for (int i = 0; i < GUARD; i++) buffer[i] = off;
-        g_fakeMillis = 1100;
-        display.render();
+        // Indicator calls never repaint the border.
+        display.setIndicatorAppearancePlayerA(Color(0, 0, 30));
+        display.setIndicatorAppearancePlayerB(Color(0, 0, 30));
+        renderAt(1300);
+        if (!(buffer[2] == a) || !(buffer[0] == b)) { printf("FAIL sameSide=%d indicator call repainted border\n", sameSide); failures++; }
+        if (!(buffer[9] == other) || !(buffer[4] == other)) { printf("FAIL sameSide=%d indicators not recoloured\n", sameSide); failures++; }
+
+        // Dark blink phase: top border half dark, bottom still lit.
+        display.setBorderAppearance(Color(10, 0, 0), Color(0, 20, 0), true, false);
+        renderAt(1100);
         if (!(buffer[2] == off) || !(buffer[0] == b)) { printf("FAIL sameSide=%d blink phase\n", sameSide); failures++; }
 
-        // Disabled: whole centre block dark.
+        // Border off, indicators on: only 4/9 lit.
+        display.setBorderEnabled(false);
+        renderAt(1300);
+        for (int k = 0; k < 4; k++) {
+            if (!(buffer[top[k]] == off) || !(buffer[bottom[k]] == off)) {
+                printf("FAIL sameSide=%d border off but slot lit\n", sameSide);
+                failures++;
+            }
+        }
+        if (!(buffer[9] == other) || !(buffer[4] == other)) { printf("FAIL sameSide=%d indicators off with border\n", sameSide); failures++; }
+
+        // Indicators off, border on: 4/9 dark, border lit.
         display.setPlayersIndicatorsState(false);
-        for (int i = 0; i < GUARD; i++) buffer[i] = off;
-        display.render();
+        display.setBorderEnabled(true);
+        renderAt(1300);
+        if (!(buffer[9] == off) || !(buffer[4] == off)) { printf("FAIL sameSide=%d indicators lit while off\n", sameSide); failures++; }
+        if (!(buffer[2] == a) || !(buffer[0] == b)) { printf("FAIL sameSide=%d border off with indicators\n", sameSide); failures++; }
+
+        // Both off: whole centre block dark.
+        display.setBorderEnabled(false);
+        renderAt(1300);
         for (int i = 0; i < 10; i++) {
             if (!(buffer[i] == off)) { printf("FAIL sameSide=%d disabled slot %d lit\n", sameSide, i); failures++; }
         }

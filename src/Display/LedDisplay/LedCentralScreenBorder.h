@@ -9,9 +9,10 @@
 
 /**
  * V2: the two LED bars either side of the e-paper, each split in two.
- * Front-facing, so it is a legend for the e-paper rows: top = player A's colour,
- * bottom = player B's. It is fed the colours LedDisplay's indicator methods
- * receive, NEVER the sameSideMode-redirected ones (the indicators are back-facing).
+ * Front-facing, so it is a legend for the e-paper rows: top = left court player's
+ * colour, bottom = right's. Driven only by LedDisplay::setBorderEnabled /
+ * setBorderAppearance - independent of the back-facing indicators, and never
+ * sameSideMode-redirected.
  *
  * Not the colon, not the history bar, not the indicators: slots 4 and 9 are the
  * back-facing indicator glyphs. Centre block, verified on the device 2026-09-17:
