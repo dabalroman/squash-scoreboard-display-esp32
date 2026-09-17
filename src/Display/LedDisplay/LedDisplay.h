@@ -1,6 +1,9 @@
 #ifndef LED_DISPLAY_H
 #define LED_DISPLAY_H
 
+#include <utility>
+
+#include "Board.h"
 #include "Color.h"
 #include "LedBar.h"
 #include "LedGlyph.h"
@@ -18,8 +21,13 @@ class LedDisplay {
     LedGlyph glyphIndicatorPlayerA = LedGlyph(pixels, GlyphId::IndicatorPlayerA);
     LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
 
-public:
+#if BOARD_REV == 1
     LedBar bar = LedBar(pixels);
+#endif
+    // V2 has no history bar. LedBar, LedBarPixel and the renderers stay compiled
+    // on both boards (PIXEL_COUNT stays 24) so call-site lambdas still type-check.
+
+public:
 
     explicit LedDisplay(CRGB *pixels) : pixels(pixels) {
         setColonAppearance();
@@ -56,14 +64,32 @@ public:
         setGlyphBlinking(isBlinkingA, isBlinkingB);
     }
 
-    void setLedBarState(const std::array<LedBarPixel, LedBar::PIXEL_COUNT> &state) {
-        bar.setState(state);
+    /**
+     * Takes a lambda producing the bar pixels, never the pixels themselves: an
+     * argument is evaluated even into an empty setter, and V2 must not run the
+     * bar renderers at all.
+     */
+#if BOARD_REV == 1
+    template <typename MakePixels>
+    void setLedBarState(MakePixels makePixels) {
+        bar.setState(makePixels());
     }
 
     void resetHistoryBar() {
         bar.setMode(LedBarMode::state);
         bar.setState({});
     }
+#else
+    template <typename MakePixels>
+    void setLedBarState(MakePixels) {
+        // Unevaluated operand: a call site passing a raw array still fails to
+        // compile on V2 as well as V1. Nothing runs.
+        (void) sizeof(decltype(std::declval<MakePixels &>()()));
+    }
+
+    void resetHistoryBar() {
+    }
+#endif
 
     void setGlyphBlinking(
         const bool isBlinkingA,
@@ -81,6 +107,7 @@ public:
         setGlyphBlinking(isBlinkingA, isBlinkingA, isBlinkingB, isBlinkingB);
     }
 
+    /** V2 has no colon LEDs: its GlyphId::Colon table is empty, so this draws nothing there. */
     void setColonAppearance(const Color color = Colors::Black, const bool isBlinking = false) {
         glyphColon.setColor(color);
         glyphColon.setBlinking(isBlinking);
@@ -107,10 +134,16 @@ public:
         target.setBlinking(isBlinking);
     }
 
+#if BOARD_REV == 1
     void startCelebration(const Color color) {
         bar.setCelebrationColor(CRGB(color.r, color.g, color.b));
         bar.setMode(LedBarMode::celebration);
     }
+#else
+    void startCelebration(const Color) {
+        // Undecided on V2 (no history bar) - deliberately a no-op.
+    }
+#endif
 
     static Glyph digitToGlyph(const uint8_t digit) {
         if (digit > 9) {
@@ -136,7 +169,9 @@ public:
         glyphColon.render(tickMs);
         glyphIndicatorPlayerA.render(tickMs);
         glyphIndicatorPlayerB.render(tickMs);
+#if BOARD_REV == 1
         bar.render(tickMs);
+#endif
     }
 
     static void setBrightness(const uint8_t brightness) {

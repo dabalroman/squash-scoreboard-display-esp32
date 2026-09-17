@@ -147,12 +147,12 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor());
 
         if (shouldUpdateLedBarState) {
-            ledDisplay.setLedBarState(MatchResultBarRenderer::toLedBarPixels(
+            ledDisplay.setLedBarState([&] { return MatchResultBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
                 matchResult,
                 match->getPlayersSwappedCourtSides()
-            ));
+            ); });
 
             shouldUpdateLedBarState = false;
         }

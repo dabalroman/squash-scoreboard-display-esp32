@@ -165,11 +165,11 @@ public:
         ledDisplay.setBrightness(preferencesManager.settings.brightness);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
-        ledDisplay.setLedBarState(ConfigBarRenderer::toLedBarPixels(
+        ledDisplay.setLedBarState([&] { return ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
             preferencesManager.settings.enableBuzzer,
             preferencesManager.settings.enableWifi
-        ));
+        ); });
         ledDisplay.display();
     }
 

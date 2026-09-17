@@ -113,7 +113,7 @@ public:
         ledDisplay.setGlyphsColor(color, color);
         ledDisplay.setIndicatorAppearancePlayerA(color);
         ledDisplay.setIndicatorAppearancePlayerB(color);
-        ledDisplay.setLedBarState(ModeSwitchingBarRenderer::toLedBarPixels(scrollable.getSelectedOptionId()));
+        ledDisplay.setLedBarState([&] { return ModeSwitchingBarRenderer::toLedBarPixels(scrollable.getSelectedOptionId()); });
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;

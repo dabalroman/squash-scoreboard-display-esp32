@@ -119,11 +119,11 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), game->hasUncommitedPoints(GameSide::b));
 
         if (shouldUpdateLedBarState) {
-            ledDisplay.setLedBarState(GameScoreHistoryBarRenderer::toLedBarPixels(
+            ledDisplay.setLedBarState([&] { return GameScoreHistoryBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
                 game->getScoreHistory()
-            ));
+            ); });
 
             shouldUpdateLedBarState = false;
         }

@@ -217,13 +217,13 @@ public:
         }
 
         if (shouldUpdateLedBarState) {
-            ledDisplay.setLedBarState(GameScoreHistoryBarRenderer::toLedBarPixels(
+            ledDisplay.setLedBarState([&] { return GameScoreHistoryBarRenderer::toLedBarPixels(
                 playerLeft->getColor(),
                 playerRight->getColor(),
                 game->getScoreHistory(),
                 1,
                 2
-            ));
+            ); });
 
             shouldUpdateLedBarState = false;
         }

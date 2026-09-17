@@ -140,7 +140,7 @@ public:
             ledDisplay.setIndicatorAppearancePlayerB(playerStateColor);
         }
 
-        ledDisplay.setLedBarState(TournamentPlayersBarRenderer::toLedBarPixels(users, tournament.getPlayers()));
+        ledDisplay.setLedBarState([&] { return TournamentPlayersBarRenderer::toLedBarPixels(users, tournament.getPlayers()); });
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;
