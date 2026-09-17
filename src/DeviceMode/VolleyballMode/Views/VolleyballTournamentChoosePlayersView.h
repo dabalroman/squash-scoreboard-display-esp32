@@ -150,6 +150,32 @@ public:
         backDisplay.initSmallFont();
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available() || users.empty()) {
+            return;
+        }
+
+        // Rows follow menuOptions: [Start], one per user, [Exit].
+        constexpr uint8_t MAX_ROWS = 24;
+        EInkMenuRow rows[MAX_ROWS];
+        uint8_t count = 0;
+
+        const size_t playersIn = tournament.getPlayers().size();
+        rows[count++] = {"Start", nullptr, static_cast<int8_t>(playersIn >= 2 ? 1 : 0)};
+        for (const UserProfile *user : users) {
+            if (count >= MAX_ROWS - 1) {
+                break;
+            }
+            rows[count++] = {user->getName(), nullptr, static_cast<int8_t>(tournament.isPlayerIn(*user) ? 1 : 0)};
+        }
+        rows[count++] = {"Exit", nullptr, -1};
+
+        char footer[12];
+        snprintf(footer, sizeof(footer), "%u in", static_cast<unsigned>(playersIn));
+
+        einkDisplay.showMenu("PLAYERS", rows, count, scrollable->getSelectedOptionId(), footer);
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;

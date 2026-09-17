@@ -178,6 +178,37 @@ public:
         ledDisplay.display();
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available()) {
+            return;
+        }
+
+        const PrefsData &settings = preferencesManager.settings;
+
+        char brightnessLevel[4];
+        snprintf(brightnessLevel, sizeof(brightnessLevel), "%u/8", settings.brightness / 32 + 1);
+
+        // Index-aligned with `Settings` / optionsList.
+        const EInkMenuRow rows[] = {
+            {"Bright", brightnessLevel, -1},
+            {"Buzzer", settings.enableBuzzer ? "ON" : "OFF", -1},
+            {"WiFi", settings.enableWifi ? "ON" : "OFF", -1},
+            {preferencesManager.wifiIpAddress.c_str(), nullptr, -1},
+            {"Reboot", nullptr, -1},
+            {"Return", nullptr, -1},
+        };
+
+        char footer[16] = "";
+        if (batterySensor.available()) {
+            const int32_t centivolts = static_cast<int32_t>(lround(batterySensor.volts() * 100.0f));
+            snprintf(footer, sizeof(footer), "BAT %d.%02dV",
+                     static_cast<int>(centivolts / 100), static_cast<int>(centivolts % 100));
+        }
+
+        einkDisplay.showMenu("CONFIG", rows, sizeof(rows) / sizeof(rows[0]),
+                             scrollable.getSelectedOptionId(), footer);
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         const int32_t batteryCentivolts = batterySensor.available()
             ? static_cast<int32_t>(lround(batterySensor.volts() * 100.0f))

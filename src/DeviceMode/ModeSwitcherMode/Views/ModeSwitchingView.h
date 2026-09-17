@@ -119,6 +119,23 @@ public:
         shouldRenderLedDisplay = false;
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available()) {
+            return;
+        }
+
+        // E-paper labels, index-aligned with `Options` / optionsList.
+        static const char *const labels[] = {"Squash", "Volleyball", "Volley 15", "Padel Adv.", "Config"};
+        constexpr uint8_t count = sizeof(labels) / sizeof(labels[0]);
+
+        EInkMenuRow rows[count];
+        for (uint8_t i = 0; i < count; i++) {
+            rows[i] = {labels[i], nullptr, -1};
+        }
+
+        einkDisplay.showMenu("MODE", rows, count, scrollable.getSelectedOptionId());
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
