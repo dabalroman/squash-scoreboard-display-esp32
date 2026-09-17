@@ -19,6 +19,7 @@
 // V1 - Wemos S2 Mini, 112-LED 7-segment scoreboard.
 namespace Board {
     constexpr const char *NAME = "V1 ESP32-S2";
+    constexpr bool SERIAL_LOG = false;   // logs go to telnet only
 
     constexpr uint8_t OLED_SDA = 33;
     constexpr uint8_t OLED_SCL = 34;
@@ -42,6 +43,7 @@ namespace Board {
 // V2 - ESP32-S3-DevKitC-1 N16R8. Source of truth: the V2 KiCad schematic.
 namespace Board {
     constexpr const char *NAME = "V2 ESP32-S3";
+    constexpr bool SERIAL_LOG = true;    // mirror logs to native USB CDC when a host is attached
 
     constexpr uint8_t OLED_SDA = 4;    // V1: 33 (33-37 are octal PSRAM here)
     constexpr uint8_t OLED_SCL = 5;    // V1: 34

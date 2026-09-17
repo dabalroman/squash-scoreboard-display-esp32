@@ -174,6 +174,10 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
 }
 
 void setup() {
+    if (Board::SERIAL_LOG) {
+        Serial.begin(115200);
+    }
+
     preferencesManager.read();
     initHardware();
     einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
