@@ -14,10 +14,9 @@
 #if BOARD_REV == 2
 
 namespace BatterySensorConfig {
-    // Combined divider (measured 1.988) x ADC calibration. 2.010 was measured on
-    // core 3.3.11 - re-derive on 2.0.17 against a meter before trusting it
-    // (V2 Guidelines, Part 2, Battery sense). Never hard-code x2.
-    constexpr float FACTOR = 2.010f;
+    // Combined divider (measured 1.988) x ADC calibration, measured on core 2.0.17
+    // against a meter (V2 Guidelines, Part 2, Battery sense). Never hard-code x2.
+    constexpr float FACTOR = 2.027f;
 
     constexpr uint32_t SAMPLE_INTERVAL_MS = 200;
 }
