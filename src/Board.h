@@ -23,6 +23,7 @@ namespace Board {
 
     constexpr uint8_t OLED_SDA = 33;
     constexpr uint8_t OLED_SCL = 34;
+    constexpr uint8_t OLED_ROTATION = 2;   // mounted upside down
 
     constexpr uint8_t RF_D0 = 14;   // button A
     constexpr uint8_t RF_D1 = 13;   // button B
@@ -47,6 +48,7 @@ namespace Board {
 
     constexpr uint8_t OLED_SDA = 4;    // V1: 33 (33-37 are octal PSRAM here)
     constexpr uint8_t OLED_SCL = 5;    // V1: 34
+    constexpr uint8_t OLED_ROTATION = 0;   // V1 is 2; V2 mounts it upright (device, 2026-09-17)
 
     // Button order is REVERSED vs V1 (verified on the device 2026-09-17): the
     // remote's prev/next/undo/enter arrive on 8/10/13/14.

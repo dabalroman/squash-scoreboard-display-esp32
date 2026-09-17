@@ -13,9 +13,10 @@
  * bottom = player B's. It is fed the colours LedDisplay's indicator methods
  * receive, NEVER the sameSideMode-redirected ones (the indicators are back-facing).
  *
- * Not the colon, not the history bar, not the indicators: slots 4 and 5 sit
- * between its halves and belong to the indicator glyphs. Ascending slot index
- * walks the border clockwise (left side bottom->top, right side top->bottom).
+ * Not the colon, not the history bar, not the indicators: slots 4 and 9 are the
+ * back-facing indicator glyphs. Centre block, verified on the device 2026-09-17:
+ * 0,1 left-bottom; 2,3 left-top; 4 indicator; 5,6 right-bottom; 7,8 right-top;
+ * 9 indicator. Both sides run bottom -> top.
  *
  * V1 has no border: an empty stub with the same API.
  */
@@ -23,11 +24,11 @@
 #if BOARD_REV == 2
 
 namespace BorderSlots {
-    // Border segment -> absolute slots. Indicators (4, 5) are deliberately absent.
+    // Border segment -> absolute slots. Indicators (4, 9) are deliberately absent.
     constexpr uint8_t BOTTOM_LEFT[2] = {0, 1};
     constexpr uint8_t TOP_LEFT[2] = {2, 3};
-    constexpr uint8_t TOP_RIGHT[2] = {6, 7};
-    constexpr uint8_t BOTTOM_RIGHT[2] = {8, 9};
+    constexpr uint8_t BOTTOM_RIGHT[2] = {5, 6};
+    constexpr uint8_t TOP_RIGHT[2] = {7, 8};
 }
 
 class LedCentralScreenBorder {

@@ -18,7 +18,8 @@
  *
  * The modules sit on the chain in REVERSE order (verified on the device
  * 2026-09-17): digit A (leftmost) is slots 58-73, D (rightmost) is 10-25.
- * Slots 0-9 are the centre block: border (its own class) + indicators B=4, A=5.
+ * Slots 0-9 are the centre block: border (its own class) + back indicators
+ * B=4 (back-left), A=9 (back-right).
  * V2 has no colon.
  */
 
@@ -36,7 +37,7 @@ namespace NineSegment {
         {1, {14, 0, 0}},   // 8 mid-right
     };
 
-    constexpr Segment playerAIndicator[1] = {{1, {5, 0, 0}}};
+    constexpr Segment playerAIndicator[1] = {{1, {9, 0, 0}}};
     constexpr Segment playerBIndicator[1] = {{1, {4, 0, 0}}};
 
     /** digitIndex 0 = A (leftmost). Modules are wired right-to-left. */
