@@ -10,13 +10,13 @@ proj = env['PROJECT_DIR']
 vf = os.path.join(proj, 'version.txt')
 
 # read, bump patch
-with open(vf) as f:
+with open(vf, encoding='utf-8-sig') as f:
     major, minor, patch = map(int, f.read().strip().split('.'))
 patch += 1
 new = f"{major}.{minor}.{patch}"
 
 # write back
-with open(vf, 'w') as f:
+with open(vf, 'w', encoding='utf-8') as f:
     f.write(new)
 
 # expose to compiler
