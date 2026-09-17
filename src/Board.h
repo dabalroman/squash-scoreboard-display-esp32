@@ -48,10 +48,12 @@ namespace Board {
     constexpr uint8_t OLED_SDA = 4;    // V1: 33 (33-37 are octal PSRAM here)
     constexpr uint8_t OLED_SCL = 5;    // V1: 34
 
-    constexpr uint8_t RF_D0 = 14;      // button A, same as V1
-    constexpr uint8_t RF_D1 = 13;      // button B
-    constexpr uint8_t RF_D2 = 10;      // button C
-    constexpr uint8_t RF_D3 = 8;       // button D
+    // Button order is REVERSED vs V1 (verified on the device 2026-09-17): the
+    // remote's prev/next/undo/enter arrive on 8/10/13/14.
+    constexpr uint8_t RF_D0 = 8;       // button A - prev
+    constexpr uint8_t RF_D1 = 10;      // button B - next
+    constexpr uint8_t RF_D2 = 13;      // button C - undo
+    constexpr uint8_t RF_D3 = 14;      // button D - enter
 
     constexpr uint8_t LED_DATA = 18;   // same as V1
     constexpr uint8_t BUZZER = 3;      // same as V1, now via MOSFET
