@@ -6,6 +6,7 @@
 #include "Board.h"
 #include "Color.h"
 #include "LedBar.h"
+#include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
 
 class LedDisplay {
@@ -20,6 +21,7 @@ class LedDisplay {
     LedGlyph glyphColon = LedGlyph(pixels, GlyphId::Colon);
     LedGlyph glyphIndicatorPlayerA = LedGlyph(pixels, GlyphId::IndicatorPlayerA);
     LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
+    LedCentralScreenBorder border = LedCentralScreenBorder(pixels);
 
 #if BOARD_REV == 1
     LedBar bar = LedBar(pixels);
@@ -120,18 +122,23 @@ public:
     void setPlayersIndicatorsState(const bool enabled) {
         glyphIndicatorPlayerA.setGlyph(enabled ? Glyph::All : Glyph::Empty);
         glyphIndicatorPlayerB.setGlyph(enabled ? Glyph::All : Glyph::Empty);
+        border.setEnabled(enabled);
     }
 
+    // Indicators face the back and follow sameSideMode; the border faces the front
+    // and always takes the colour as given (top = A, bottom = B).
     void setIndicatorAppearancePlayerA(const Color color, const bool isBlinking = false) {
         LedGlyph &target = sameSideMode ? glyphIndicatorPlayerB : glyphIndicatorPlayerA;
         target.setColor(color);
         target.setBlinking(isBlinking);
+        border.setTop(color, isBlinking);
     }
 
     void setIndicatorAppearancePlayerB(const Color color, const bool isBlinking = false) {
         LedGlyph &target = sameSideMode ? glyphIndicatorPlayerA : glyphIndicatorPlayerB;
         target.setColor(color);
         target.setBlinking(isBlinking);
+        border.setBottom(color, isBlinking);
     }
 
 #if BOARD_REV == 1
@@ -169,6 +176,7 @@ public:
         glyphColon.render(tickMs);
         glyphIndicatorPlayerA.render(tickMs);
         glyphIndicatorPlayerB.render(tickMs);
+        border.render(tickMs);
 #if BOARD_REV == 1
         bar.render(tickMs);
 #endif

@@ -7,7 +7,7 @@
 // Build: ./check_v2.sh
 #include <cstdio>
 
-#include "Display/LedDisplay/LedGlyph.h"
+#include "Display/LedDisplay/LedDisplay.h"
 
 uint32_t g_fakeMillis = 0;
 CFastLED FastLED;
