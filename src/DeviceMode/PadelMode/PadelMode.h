@@ -68,18 +68,20 @@ class PadelMode final : public DeviceMode {
 
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
+        activeView->initEInkDisplay(einkDisplay);
     }
 
 public:
     PadelMode(
         LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
+        EInkDisplay &einkDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
         std::function<void()> onMatchOver
     )
-        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::make_unique<PadelRules>()),
           users(users), onMatchOver(std::move(onMatchOver)) {
 
@@ -97,6 +99,7 @@ public:
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
             activeView->renderBackDisplay(backDisplay);
+            activeView->renderEInkDisplay(einkDisplay);
         }
     }
 };

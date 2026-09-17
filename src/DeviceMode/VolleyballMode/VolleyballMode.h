@@ -68,19 +68,21 @@ class VolleyballMode final : public DeviceMode {
 
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
+        activeView->initEInkDisplay(einkDisplay);
     }
 
 public:
     VolleyballMode(
         LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
+        EInkDisplay &einkDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
         std::unique_ptr<Rules> rules,
         std::function<void()> onMatchOver
     )
-        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::move(rules)), users(users), onMatchOver(std::move(onMatchOver)) {
 
         ledDisplay.setSameSideMode(true);
@@ -97,6 +99,7 @@ public:
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
             activeView->renderBackDisplay(backDisplay);
+            activeView->renderEInkDisplay(einkDisplay);
         }
     }
 };

@@ -16,17 +16,19 @@ public:
     ConfigMode(
         LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
+        EInkDisplay &einkDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         PreferencesManager &preferencesManager,
         const BatterySensor &batterySensor
     )
-        : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
+        : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
 
         activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange, batterySensor);
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
+        activeView->initEInkDisplay(einkDisplay);
     }
 
     void loop() override {
@@ -34,6 +36,7 @@ public:
             activeView->handleInput(remoteInputManager);
             activeView->renderLedDisplay(ledDisplay);
             activeView->renderBackDisplay(backDisplay);
+            activeView->renderEInkDisplay(einkDisplay);
         }
     }
 };

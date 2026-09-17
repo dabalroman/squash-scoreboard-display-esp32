@@ -4,12 +4,14 @@
 #include "DeviceModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/BackDisplay.h"
+#include "Display/EInk/EInkDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
 class DeviceMode {
 protected:
     LedDisplay &ledDisplay;
     BackDisplay &backDisplay;
+    EInkDisplay &einkDisplay;
     RemoteInputManager &remoteInputManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
 
@@ -17,9 +19,10 @@ public:
     DeviceMode(
         LedDisplay &ledDisplay,
         BackDisplay &backDisplay,
+        EInkDisplay &einkDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
-    ) : ledDisplay(ledDisplay), backDisplay(backDisplay), remoteInputManager(remoteInputManager), onDeviceModeChange(onDeviceModeChange) {
+    ) : ledDisplay(ledDisplay), backDisplay(backDisplay), einkDisplay(einkDisplay), remoteInputManager(remoteInputManager), onDeviceModeChange(onDeviceModeChange) {
     }
 
     virtual ~DeviceMode() = default;

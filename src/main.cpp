@@ -109,6 +109,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<ModeSwitchingMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); }
             );
@@ -118,6 +119,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<ConfigMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 preferencesManager,
@@ -129,6 +131,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<SquashMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
@@ -140,6 +143,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<VolleyballMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
@@ -152,6 +156,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<VolleyballMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
@@ -164,6 +169,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
             deviceMode = std::make_unique<PadelMode>(
                 ledDisplay,
                 *backDisplay,
+                einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 users,
