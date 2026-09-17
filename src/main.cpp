@@ -194,7 +194,11 @@ void setup() {
     gRemoteDevelopmentService = &remoteDev;
 
     gBuzzer.setEnabled(preferencesManager.settings.enableBuzzer);
-    remoteInputManager.setOnActionTaken([] { gBuzzer.trigger(); });
+    // Any accepted press also skips the boot splash; it still does its normal job.
+    remoteInputManager.setOnActionTaken([] {
+        gBuzzer.trigger();
+        einkDisplay.dismissSplash();
+    });
 
     printLn("%s ready. FW version: %s, %s %s\n", Board::NAME, FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");

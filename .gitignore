@@ -2,3 +2,5 @@
 /.idea
 /.pio
 /.mcp.json
+# Splash artwork stays local; the header it generates is what gets committed.
+/assets/eink/

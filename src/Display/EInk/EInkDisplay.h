@@ -40,7 +40,6 @@ struct EInkMenuRow {
 
 #if BOARD_REV == 2
 
-#include <version.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
@@ -48,6 +47,10 @@ struct EInkMenuRow {
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include "EInkAsync.h"
+#include "Images/Splash.h"
+
+static_assert(SPLASH_WIDTH == EInkAsync::WIDTH && SPLASH_HEIGHT == EInkAsync::HEIGHT,
+              "The splash image must be a full 128x296 frame");
 
 // Ghosting policy (user, 2026-09-17). A full refresh flashes the panel ~1.6 s but
 // never blocks loop(). Any full refresh resets the partial counter.
@@ -65,7 +68,8 @@ namespace EInkLayout {
     constexpr int16_t ROWS_TOP = 36;
     constexpr int16_t ROW_PITCH = 29;
     constexpr int16_t ROW_BASELINE = 21;     // from the row top, FreeSans12pt
-    constexpr int16_t FOOTER_HEIGHT = 26;
+    constexpr int16_t FOOTER_HEIGHT = 26;        // one 12 pt line
+    constexpr int16_t FOOTER_HEIGHT_TWO = 44;    // two 9 pt lines (e.g. battery + firmware)
     constexpr int16_t CHECKBOX_SIZE = 13;
     constexpr int16_t SELECTION_BORDER = 2;  // outline thickness of the selected row
     constexpr int16_t TEXT_MARGIN = 5;
@@ -102,7 +106,16 @@ public:
     // Call on every loop() pass, before any frame gate.
     void update() { eink.update(); }
 
+    /**
+     * End the splash hold early. main.cpp calls this on any accepted remote press,
+     * so a button skips the boot image; the press still does its normal job.
+     */
+    void dismissSplash() { splashHoldUntilMs = 0; }
+
     void showBlank() {
+        if (splashHoldActive()) {
+            return;
+        }
         if (!commit(hashAdd(HASH_SEED, SCREEN_BLANK))) {
             return;
         }
@@ -118,6 +131,10 @@ public:
     void showMatchScore(const char *topName, const uint8_t topValue,
                         const char *bottomName, const uint8_t bottomValue,
                         const char *label, const int16_t topSets = -1, const int16_t bottomSets = -1) {
+        if (splashHoldActive()) {
+            return;
+        }
+
         uint32_t h = hashAdd(HASH_SEED, SCREEN_MATCH);
         h = hashText(h, topName);
         h = hashText(h, bottomName);
@@ -150,11 +167,24 @@ public:
      * A scrolling menu: title bar, rows with the selected one inverted, optional
      * footer. The visible window is this renderer's own state (the OLED keeps its
      * own); it follows the selection and resets when the title changes.
+     *
+     * A second footer line (only with the first) switches the footer to two 9 pt
+     * lines instead of one 12 pt line - 128 px is too narrow to hold both on one.
+     * Either height leaves 7 rows visible, so no menu re-flows.
      */
     void showMenu(const char *title, const EInkMenuRow *rows, const uint8_t rowCount,
-                  const uint8_t selected, const char *footer = nullptr) {
+                  const uint8_t selected, const char *footer = nullptr,
+                  const char *footerSecondary = nullptr) {
+        if (splashHoldActive()) {
+            return;
+        }
+
         const bool hasFooter = footer != nullptr && footer[0] != '\0';
-        const uint8_t visible = visibleRows(hasFooter);
+        const bool hasSecondary = hasFooter && footerSecondary != nullptr && footerSecondary[0] != '\0';
+        const int16_t footerHeight = !hasFooter
+                                         ? 0
+                                         : (hasSecondary ? EInkLayout::FOOTER_HEIGHT_TWO : EInkLayout::FOOTER_HEIGHT);
+        const uint8_t visible = visibleRows(footerHeight);
 
         if (menuTitleHash != hashText(HASH_SEED, title)) {
             menuTitleHash = hashText(HASH_SEED, title);
@@ -165,6 +195,7 @@ public:
         uint32_t h = hashAdd(HASH_SEED, SCREEN_MENU);
         h = hashText(h, title);
         h = hashText(h, hasFooter ? footer : "");
+        h = hashText(h, hasSecondary ? footerSecondary : "");
         h = hashAdd(h, selected);
         h = hashAdd(h, menuOffset);
         h = hashAdd(h, rowCount);
@@ -203,10 +234,16 @@ public:
         }
 
         if (hasFooter) {
-            const int16_t top = g.height() - EInkLayout::FOOTER_HEIGHT;
+            const int16_t top = g.height() - footerHeight;
             g.fillRect(0, top, g.width(), 2, INK);
             g.setTextColor(INK);
-            printCentered(g, footer, top + 20, &FreeSans12pt7b);
+
+            if (hasSecondary) {
+                printCentered(g, footer, top + 17, &FreeSans9pt7b);
+                printCentered(g, footerSecondary, top + 37, &FreeSans9pt7b);
+            } else {
+                printCentered(g, footer, top + 20, &FreeSans12pt7b);
+            }
         }
 
         present(SCREEN_MENU);
@@ -222,6 +259,9 @@ public:
 
 private:
     enum : uint32_t { HASH_SEED = 2166136261u };   // FNV-1a offset basis
+
+    // How long the boot splash keeps the panel before any view may draw (user, 2026-09-17).
+    enum : uint32_t { SPLASH_HOLD_MS = 4000 };
 
     // Screen types for change detection and the ghosting policy.
     enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU };
@@ -267,9 +307,22 @@ private:
         return hashAdd(hash, 0);
     }
 
-    static uint8_t visibleRows(const bool hasFooter) {
-        const int16_t bottom = 296 - (hasFooter ? EInkLayout::FOOTER_HEIGHT : 0) - 6;   // room for the scroll hint
+    static uint8_t visibleRows(const int16_t footerHeight) {
+        const int16_t bottom = 296 - footerHeight - 6;   // room for the scroll hint
         return static_cast<uint8_t>((bottom - EInkLayout::ROWS_TOP) / EInkLayout::ROW_PITCH);
+    }
+
+    // True while the boot splash still owns the panel; the screens return early so
+    // the canvas keeps the image and no hashing or window state advances.
+    bool splashHoldActive() {
+        if (splashHoldUntilMs == 0) {
+            return false;
+        }
+        if (static_cast<int32_t>(millis() - splashHoldUntilMs) >= 0) {
+            splashHoldUntilMs = 0;
+            return false;
+        }
+        return true;
     }
 
     // Move the window only as far as needed to keep the selection visible.
@@ -361,27 +414,22 @@ private:
         }
     }
 
+    /**
+     * The boot image, a full 128x296 frame from helpers/eink_image.py. The canvas
+     * is at rotation 2, so the bitmap is authored upright as it is seen on the
+     * device. The hold that follows keeps it readable - without it the MODE menu
+     * lands ~0.5 s later, as soon as this refresh finishes.
+     */
     void drawSplash() {
         GFXcanvas1 &g = eink.gfx();
-        const int16_t w = g.width();   // 128
 
         g.fillScreen(PAPER);
-        g.setTextColor(INK);
-        g.setTextWrap(false);
-
-        // Orientation marker: arrow pointing at the top edge.
-        g.fillTriangle(w / 2, 4, w / 2 - 12, 20, w / 2 + 12, 20, INK);
-        g.fillRect(w / 2 - 4, 20, 8, 12, INK);
-        printCentered(g, "TOP", 50, &FreeMonoBold9pt7b);
-
-        printCentered(g, "SQUASH", 125, &FreeMonoBold12pt7b);
-        printCentered(g, "SCORE", 152, &FreeMonoBold12pt7b);
-
-        printCentered(g, "FW", 238, &FreeMonoBold9pt7b);
-        printCentered(g, FW_VERSION, 262, &FreeMonoBold12pt7b);
+        g.drawBitmap(0, 0, SPLASH_BITMAP, SPLASH_WIDTH, SPLASH_HEIGHT, INK);
 
         commit(hashAdd(HASH_SEED, SCREEN_SPLASH));
         present(SCREEN_SPLASH);
+
+        splashHoldUntilMs = millis() + SPLASH_HOLD_MS;
     }
 
     EInkAsync eink;
@@ -390,6 +438,7 @@ private:
     uint8_t shownScreen = SCREEN_NONE;
     uint32_t menuTitleHash = 0;
     uint8_t menuOffset = 0;
+    uint32_t splashHoldUntilMs = 0;
 };
 
 #else
@@ -400,12 +449,13 @@ public:
     bool available() const { return false; }
     void begin() {}
     void update() {}
+    void dismissSplash() {}
 
     void showBlank() {}
     void showMatchScore(const char *, const uint8_t, const char *, const uint8_t,
                         const char *, const int16_t = -1, const int16_t = -1) {}
     void showMenu(const char *, const EInkMenuRow *, const uint8_t, const uint8_t,
-                  const char * = nullptr) {}
+                  const char * = nullptr, const char * = nullptr) {}
 
     uint32_t refreshes() const { return 0; }
     uint32_t fullRefreshes() const { return 0; }

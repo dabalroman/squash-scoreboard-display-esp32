@@ -1,0 +1,4 @@
+# helpers/eink_image.py writes LF. Without this, core.autocrlf=true checks the
+# generated header out as CRLF and every regeneration shows a whole-file diff.
+helpers/eink_image.py text eol=lf
+src/Display/EInk/Images/*.h text eol=lf

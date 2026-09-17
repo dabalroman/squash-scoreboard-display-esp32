@@ -1,6 +1,8 @@
 #ifndef CONFIGVIEW_H
 #define CONFIGVIEW_H
 
+#include <version.h>
+
 #include "BatterySensor.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -206,8 +208,17 @@ public:
                      static_cast<int>(centivolts / 100), static_cast<int>(centivolts % 100));
         }
 
+        // The only place the firmware version is shown on the device - the splash is
+        // an image now. A footer line, not a row, keeps the option indices untouched.
+        char version[24];
+        snprintf(version, sizeof(version), "FW %s", FW_VERSION);
+
+        // Without a battery reading the version takes the single footer line instead.
+        const bool hasBattery = footer[0] != '\0';
+
         einkDisplay.showMenu("CONFIG", rows, sizeof(rows) / sizeof(rows[0]),
-                             scrollable.getSelectedOptionId(), footer);
+                             scrollable.getSelectedOptionId(),
+                             hasBattery ? footer : version, hasBattery ? version : nullptr);
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
