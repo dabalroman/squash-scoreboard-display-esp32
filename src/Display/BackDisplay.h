@@ -2,6 +2,7 @@
 #define BACK_DISPLAY_H
 
 #include "Adafruit_SSD1306.h"
+#include "Board.h"
 #include "Fonts/FreeMono9pt7b.h"
 #include "Fonts/FreeMonoBold24pt7b.h"
 
@@ -30,7 +31,7 @@ public:
     Adafruit_SSD1306 *screen;
 
     explicit BackDisplay(Adafruit_SSD1306 *backDisplay) : screen(backDisplay) {
-        screen->setRotation(2);
+        screen->setRotation(Board::OLED_ROTATION);
         screen->clearDisplay();
         screen->setFont(&FreeMono9pt7b);
         screen->setTextSize(1);
