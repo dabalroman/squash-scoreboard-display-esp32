@@ -20,6 +20,14 @@
 //   WaitBusyHigh --BUSY seen high--> WaitBusyLow
 //   WaitBusyLow  --BUSY low--> [SPI: 0x26] --> Idle
 //
+// A full refresh (clears ghosting, flashes ~1.6 s) uses the same wait states:
+//
+//   Idle --full request--> [SPI: 0x26] --> FullWriteCurrent
+//   FullWriteCurrent --next pass--> [SPI: 0x24 + full update commands] --> WaitBusyHigh
+//
+// The two RAM writes are split across two loop() passes so no pass blocks longer
+// than one ~10 ms burst.
+//
 // Rules it enforces:
 //   * Nothing is sent to the panel while a refresh is in flight.
 //   * Requests during a refresh coalesce: only the latest canvas is sent, once.
@@ -75,6 +83,18 @@ public:
         _endTransfer();
     }
 
+    // refresh(false) -> _Update_Full(), minus _waitWhileBusy(). Fast full waveform:
+    // 100 °C written to the temperature register (useFastFullUpdate in GxEPD2).
+    void startFullUpdate() {
+        _writeCommand(0x1a);   // temperature register
+        _writeData(0x64);      // 100 °C -> fast full-refresh waveform
+        _writeCommand(0x22);   // display update control 2
+        _writeData(0xd7);      // clock + analog on, load LUT, display, power off
+        _writeCommand(0x20);   // master activation - returns immediately
+        _power_is_on = false;
+        _initial_refresh = false;
+    }
+
     // refresh(0, 0, WIDTH, HEIGHT) + _Update_Part(), minus _waitWhileBusy().
     void startFullScreenPartial() {
         setFullRamWindow();
@@ -119,6 +139,7 @@ public:
 
     struct Stats {
         uint32_t refreshes = 0;       // partials actually completed
+        uint32_t fullRefreshes = 0;   // async full refreshes completed (boot one excluded)
         uint32_t worstStartUs = 0;    // blocking SPI at start of a cycle
         uint32_t worstFinishUs = 0;   // blocking SPI at end of a cycle
         uint32_t busyNeverRose = 0;   // BUSY did not go high within the grace window
@@ -141,6 +162,16 @@ public:
     // Cheap and safe to call as often as you like; coalesces while busy.
     void requestRefresh() { pending = true; }
 
+    // Like requestRefresh(), but the next cycle is a full refresh (~1.6 s, flashes).
+    // Takes precedence over a pending partial - it shows the latest canvas anyway.
+    void requestFullRefresh() {
+        pending = true;
+        pendingFull = true;
+    }
+
+    // Partials completed since the last full refresh (boot's blocking one included).
+    uint32_t partialsSinceFull() const { return partialsSinceFullCount; }
+
     // True while a refresh is in flight (the panel must not be touched).
     bool inFlight() const { return state != State::Idle; }
 
@@ -153,6 +184,8 @@ public:
         panel.refresh(false);
         panel.writeImageAgain(sent, 0, 0, WIDTH, HEIGHT);
         pending = false;
+        pendingFull = false;
+        partialsSinceFullCount = 0;
         state = State::Idle;
     }
 
@@ -170,9 +203,33 @@ public:
                 pending = false;
                 memcpy(sent, canvas.getBuffer(), FRAME_BYTES);
 
+                if (pendingFull && useBulk()) {
+                    pendingFull = false;
+                    cycleIsFull = true;
+
+                    const uint32_t t0 = micros();
+                    panel.writeRamBulk(0x26, sent);
+                    recordStart(micros() - t0);
+
+                    state = State::FullWriteCurrent;
+                    return false;
+                }
+
+                cycleIsFull = false;
                 const uint32_t t0 = micros();
                 writeCurrent();
                 panel.startFullScreenPartial();
+                recordStart(micros() - t0);
+
+                cycleStartMs = millis();
+                state = State::WaitBusyHigh;
+                return false;
+            }
+
+            case State::FullWriteCurrent: {
+                const uint32_t t0 = micros();
+                panel.writeRamBulk(0x24, sent);
+                panel.startFullUpdate();
                 recordStart(micros() - t0);
 
                 cycleStartMs = millis();
@@ -204,7 +261,13 @@ public:
                 writePrevious();
                 recordFinish(micros() - t0);
 
-                stats.refreshes++;
+                if (cycleIsFull) {
+                    stats.fullRefreshes++;
+                    partialsSinceFullCount = 0;
+                } else {
+                    stats.refreshes++;
+                    partialsSinceFullCount++;
+                }
                 state = State::Idle;
                 return true;
             }
@@ -215,7 +278,7 @@ public:
     const Stats &getStats() const { return stats; }
 
 private:
-    enum class State : uint8_t { Idle, WaitBusyHigh, WaitBusyLow };
+    enum class State : uint8_t { Idle, FullWriteCurrent, WaitBusyHigh, WaitBusyLow };
 
     enum : uint32_t { BUSY_RISE_GRACE_MS = 50, BUSY_TIMEOUT_MS = 5000 };
 
@@ -254,6 +317,9 @@ private:
     GFXcanvas1 canvas;
     uint8_t sent[FRAME_BYTES];
     bool pending = false;
+    bool pendingFull = false;
+    bool cycleIsFull = false;
+    uint32_t partialsSinceFullCount = 0;
     State state = State::Idle;
     uint32_t cycleStartMs = 0;
     Stats stats;

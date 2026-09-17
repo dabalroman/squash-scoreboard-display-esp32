@@ -216,9 +216,10 @@ void loop() {
 
     if (einkDisplay.available() && millis() - lastEInkStatsLog >= 30000) {
         lastEInkStatsLog = millis();
-        printLn("EInk: worst start %lu us, worst finish %lu us, refreshes %lu, timeouts %lu, busy never rose %lu",
+        printLn("EInk: worst start %lu us, worst finish %lu us, partials %lu (%lu since full), full %lu, timeouts %lu, busy never rose %lu",
                 (unsigned long) einkDisplay.worstStartUs(), (unsigned long) einkDisplay.worstFinishUs(),
-                (unsigned long) einkDisplay.refreshes(), (unsigned long) einkDisplay.timeouts(),
+                (unsigned long) einkDisplay.refreshes(), (unsigned long) einkDisplay.partialsSinceFull(),
+                (unsigned long) einkDisplay.fullRefreshes(), (unsigned long) einkDisplay.timeouts(),
                 (unsigned long) einkDisplay.busyNeverRose());
     }
 
