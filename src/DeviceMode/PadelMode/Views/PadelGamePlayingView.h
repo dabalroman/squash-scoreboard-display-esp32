@@ -235,6 +235,26 @@ public:
         backDisplay.initBigFont();
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available()) {
+            return;   // V1: constant false, the score lookups below fold away
+        }
+
+        if (match == nullptr || game == nullptr || playerLeft == nullptr || playerRight == nullptr) {
+            einkDisplay.showBlank();
+            return;
+        }
+
+        // The engine Game is the set: its score is gems won. Side a = left court.
+        const MatchResult sets = match->getMatchResult();
+        einkDisplay.showMatchScore(
+            playerLeft->getName(), game->getRealScore(GameSide::a),
+            playerRight->getName(), game->getRealScore(GameSide::b),
+            "GEMS",
+            sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
+        );
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         backDisplay.clear();
 

@@ -166,6 +166,24 @@ public:
         backDisplay.initBigFont();
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available()) {
+            return;   // V1: constant false, the score lookups below fold away
+        }
+
+        if (match == nullptr || playerLeft == nullptr || playerRight == nullptr) {
+            einkDisplay.showBlank();
+            return;
+        }
+
+        const MatchResult result = match->getMatchResult();
+        einkDisplay.showMatchScore(
+            playerLeft->getName(), result.scoreOf(playerLeft->getId()),
+            playerRight->getName(), result.scoreOf(playerRight->getId()),
+            "GAMES"
+        );
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;

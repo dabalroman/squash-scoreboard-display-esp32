@@ -165,6 +165,31 @@ public:
         backDisplay.initBigFont();
     }
 
+    void renderEInkDisplay(EInkDisplay &einkDisplay) override {
+        if (!einkDisplay.available()) {
+            return;   // V1: constant false, the score lookups below fold away
+        }
+
+        if (match == nullptr || playerLeft == nullptr || playerRight == nullptr) {
+            einkDisplay.showBlank();
+            return;
+        }
+
+        // Gems of the last finished set (0:0 before the first), plus sets won.
+        const MatchResult sets = match->getMatchResult();
+        const GameResult *last = match->getLastGameResult();
+        const auto gemsOf = [last](const UserProfile *player) -> uint8_t {
+            if (last == nullptr) return 0;
+            return player->getId() == last->playerAId ? last->playerAScore : last->playerBScore;
+        };
+        einkDisplay.showMatchScore(
+            playerLeft->getName(), gemsOf(playerLeft),
+            playerRight->getName(), gemsOf(playerRight),
+            "GEMS",
+            sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
+        );
+    }
+
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
