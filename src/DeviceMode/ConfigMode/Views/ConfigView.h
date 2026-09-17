@@ -128,7 +128,7 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
-        ledDisplay.resetHistoryBar();
+        ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();
         ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
         ledDisplay.setPlayersIndicatorsState(true);

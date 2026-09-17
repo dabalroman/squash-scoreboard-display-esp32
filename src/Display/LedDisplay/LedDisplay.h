@@ -8,6 +8,7 @@
 #include "LedBar.h"
 #include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
+#include "Animation/LedSweepAnimation.h"
 
 class LedDisplay {
     CRGB *pixels;
@@ -25,6 +26,8 @@ class LedDisplay {
 
 #if BOARD_REV == 1
     LedBar bar = LedBar(pixels);
+#else
+    LedSweepAnimation celebration = LedSweepAnimation(pixels, LedSweepAnimation::celebrationParams());
 #endif
     // V2 has no history bar. LedBar, LedBarPixel and the renderers stay compiled
     // on both boards (PIXEL_COUNT stays 24) so call-site lambdas still type-check.
@@ -78,7 +81,7 @@ public:
         bar.setState(makePixels());
     }
 
-    void resetHistoryBar() {
+    void resetAnimations() {
         bar.setMode(LedBarMode::state);
         bar.setState({});
     }
@@ -90,7 +93,8 @@ public:
         (void) sizeof(decltype(std::declval<MakePixels &>()()));
     }
 
-    void resetHistoryBar() {
+    void resetAnimations() {
+        celebration.stop();
     }
 #endif
 
@@ -155,13 +159,16 @@ public:
     }
 
 #if BOARD_REV == 1
-    void startCelebration(const Color color) {
+    void startCelebration(const Color color, const bool) {
         bar.setCelebrationColor(CRGB(color.r, color.g, color.b));
         bar.setMode(LedBarMode::celebration);
     }
 #else
-    void startCelebration(const Color) {
-        // Undecided on V2 (no history bar) - deliberately a no-op.
+    /** `winnerOnLeft` puts the sweep's origin on that player's half of the board. */
+    void startCelebration(const Color color, const bool winnerOnLeft) {
+        celebration.setSolidColor(CRGB(color.r, color.g, color.b));
+        celebration.setOriginToHalf(winnerOnLeft);
+        celebration.start(millis());
     }
 #endif
 
@@ -181,6 +188,18 @@ public:
 
     void render() {
         tickMs = millis();
+
+#if BOARD_REV == 2
+        // Full-screen takeover: the sweep owns the front, so digits, colon and border
+        // sit this out. The indicators face the players and are SKIP slots the sweep
+        // cannot reach, so they keep showing who won.
+        if (celebration.active(tickMs)) {
+            glyphIndicatorPlayerA.render(tickMs);
+            glyphIndicatorPlayerB.render(tickMs);
+            celebration.render(tickMs);
+            return;
+        }
+#endif
 
         glyphA.render(tickMs);
         glyphB.render(tickMs);

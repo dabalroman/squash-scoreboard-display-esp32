@@ -4,7 +4,7 @@
 The SVG is the authoritative record of where the LEDs physically sit. This script
 flattens its nested group transforms, picks out the red LED dies, maps each die to
 its slot on the WS2812 chain and prints the table used by
-src/Display/LedDisplay/LedStartupAnimation.h.
+src/Display/LedDisplay/Animation/LedSlotPositions.h.
 
 Coordinates are raw SVG map units with the origin at the e-paper centre, +x right
 and +y down (~16 units per mm). Slots with no front die - the two back indicators
@@ -25,7 +25,7 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SVG = os.path.join(ROOT, "assets", "led-map.svg")
-HEADER = os.path.join(ROOT, "src", "Display", "LedDisplay", "LedStartupAnimation.h")
+HEADER = os.path.join(ROOT, "src", "Display", "LedDisplay", "Animation", "LedSlotPositions.h")
 
 NS = "{http://www.w3.org/2000/svg}"
 DIE_FILL = "rgb(209,36,36)"      # the LED dies

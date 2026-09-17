@@ -58,7 +58,7 @@ public:
         ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), leftWon);
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), rightWon);
         ledDisplay.setBorderAppearance(playerLeft->getColor(), playerRight->getColor(), leftWon, rightWon);
-        ledDisplay.startCelebration(leftWon ? playerLeft->getColor() : playerRight->getColor());
+        ledDisplay.startCelebration(leftWon ? playerLeft->getColor() : playerRight->getColor(), leftWon);
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {

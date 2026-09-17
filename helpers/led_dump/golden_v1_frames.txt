@@ -1531,7 +1531,7 @@ idx=108 rgb=52,218,26
 idx=109 rgb=59,247,30
 idx=110 rgb=59,250,30
 idx=111 rgb=53,224,27
-step=23 resetHistoryBar tick=1300
+step=23 resetAnimations tick=1300
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255

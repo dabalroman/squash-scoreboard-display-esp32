@@ -85,7 +85,7 @@ public:
     }
 
     void render(LedDisplay &ledDisplay, BackDisplay &backDisplay, EInkDisplay &einkDisplay) {
-        ledDisplay.resetHistoryBar();
+        ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();
         ledDisplay.setGlyphsGlyph(glyphs[0], glyphs[1], glyphs[2], glyphs[3]);
         ledDisplay.setGlyphsColor(color, color);

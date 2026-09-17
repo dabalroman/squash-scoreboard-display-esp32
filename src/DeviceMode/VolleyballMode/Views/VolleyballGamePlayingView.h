@@ -94,7 +94,7 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
-        ledDisplay.resetHistoryBar();
+        ledDisplay.resetAnimations();
         ledDisplay.setPlayersIndicatorsState(true);
         ledDisplay.setBorderEnabled(true);
     }
