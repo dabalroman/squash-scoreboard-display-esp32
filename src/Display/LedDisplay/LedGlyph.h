@@ -5,180 +5,16 @@
 #include <FastLED.h>
 
 #include "Color.h"
-
+#include "GlyphMasks.h"
+#include "DisplayProfile.h"
 
 /**
- * LEDs and segment ids (masks)
- *
- *                0x40
- *             71, 72, 73
- *          53            63
- *    0x10  52            62  0x20
- *          51            61
- *             41, 42, 43
- *          23    0x8     33
- *     0x2  22            32  0x4
- *          21            31
- *             11, 12, 13
- *                0x1
+ * One glyph position (digit, colon or indicator), drawn through a compile-time
+ * layout profile. Views never see segments or pixels - only Glyph, Color, blink.
  */
-
-constexpr uint8_t SegmentToGlyphMap[37] = {
-    0b01110111, // 0
-    0b00100100, // 1
-    0b01101011, // 2
-    0b01101101, // 3
-    0b00111100, // 4
-    0b01011101, // 5
-    0b01011111, // 6
-    0b01100100, // 7
-    0b01111111, // 8
-    0b01111101, // 9
-    0b01111110, // AI
-    0b01010011, // C
-    0b01011010, // F
-    0b01010111, // G
-    0b00010011, // L
-    0b01111010, // P
-    0b00110111, // U
-    0b00111101, // Y
-    0b00001000, // Minus
-    0b00001111, // LowerDot
-    0b01111000, // UpperDot
-    0b11111111, // All
-    0b00000000, // Empty
-    0b00011111, // b (lowercase)
-    0b01011011, // E
-    0b00111110, // H
-    0b00001110, // n (lowercase)
-    0b00001111, // o (lowercase) — same shape as LowerDot
-    0b00001010, // r (lowercase)
-    0b00011011, // t (lowercase)
-    0b00000111, // u (lowercase)
-    0b00001011, // c (lowercase)
-    0b00011110, // h (lowercase)
-    0b01011101, // S — same shape as D5
-    0b01101011, // Z — same shape as D2
-    0b00100100, // I — same shape as D1
-    0b00101111, // d (lowercase)
-};
-
-enum class Glyph: uint8_t {
-    D0 = 0,
-    D1 = 1,
-    D2 = 2,
-    D3 = 3,
-    D4 = 4,
-    D5 = 5,
-    D6 = 6,
-    D7 = 7,
-    D8 = 8,
-    D9 = 9,
-    A = 10,
-    C = 11,
-    F = 12,
-    G = 13,
-    L = 14,
-    P = 15,
-    U = 16,
-    Y = 17,
-    Minus = 18,
-    LowerDot = 19,
-    UpperDot = 20,
-    All = 21,
-    Empty = 22,
-    b = 23,
-    E = 24,
-    H = 25,
-    n = 26,
-    o = 27,
-    r = 28,
-    t = 29,
-    u = 30,
-    c = 31,
-    h = 32,
-    S = 33,
-    Z = 34,
-    I = 35,
-    d = 36
-};
-
-enum class GlyphId: uint8_t {
-    A = 0,
-    B = 1,
-    C = 2,
-    D = 3,
-    Colon = 4,
-    IndicatorPlayerA = 5,
-    IndicatorPlayerB = 6
-};
-
-struct PixelsToSegmentMap {
-    uint8_t segments[7][3];
-};
-
-constexpr PixelsToSegmentMap glyphA = {
-    {
-        {87, 86, 85},
-        {51, 50, 49},
-        {52, 53, 54},
-        {76, 77, 78},
-        {48, 47, 46},
-        {55, 56, 57},
-        {75, 74, 73}
-    },
-};
-
-constexpr PixelsToSegmentMap glyphB = {
-    {
-        {84, 83, 82},
-        {63, 62, 61},
-        {64, 65, 66},
-        {79, 80, 81},
-        {60, 59, 58},
-        {67, 68, 69},
-        {72, 71, 70}
-    },
-};
-
-constexpr PixelsToSegmentMap glyphC = {
-    {
-        {45, 44, 43},
-        {9, 8, 7},
-        {10, 11, 12},
-        {34, 35, 36},
-        {6, 5, 4},
-        {13, 14, 15},
-        {33, 32, 31}
-    },
-};
-
-constexpr PixelsToSegmentMap glyphD = {
-    {
-        {42, 41, 40},
-        {21, 20, 19},
-        {22, 23, 24},
-        {37, 38, 39},
-        {18, 17, 16},
-        {25, 26, 27},
-        {30, 29, 28}
-    },
-};
-
-constexpr PixelsToSegmentMap glyphColon = {
-    {{0, 0, 1}}
-};
-
-constexpr PixelsToSegmentMap glyphPlayerAIndicator = {
-    {{3, 3, 3}}
-};
-
-constexpr PixelsToSegmentMap glyphPlayerBIndicator = {
-    {{2, 2, 2}}
-};
-
-class LedGlyph {
-    constexpr static uint16_t BLINK_INTERVAL_MS = 500;
+template <typename Profile>
+class LedGlyphT {
+    enum : uint16_t { BLINK_INTERVAL_MS = 500 };
 
 protected:
     GlyphId glyphId;
@@ -189,35 +25,16 @@ protected:
     bool isBlinking = false;
 
 public:
-    LedGlyph(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
-    }
-
-    static const PixelsToSegmentMap *getGlyphPixels(const GlyphId glyph) {
-        switch (glyph) {
-            default:
-            case GlyphId::A:
-                return &glyphA;
-            case GlyphId::B:
-                return &glyphB;
-            case GlyphId::C:
-                return &glyphC;
-            case GlyphId::D:
-                return &glyphD;
-            case GlyphId::Colon:
-                return &glyphColon;
-            case GlyphId::IndicatorPlayerA:
-                return &glyphPlayerAIndicator;
-            case GlyphId::IndicatorPlayerB:
-                return &glyphPlayerBIndicator;
-        }
+    LedGlyphT(CRGB *pixels, const GlyphId glyphId) : glyphId(glyphId), pixels(pixels) {
     }
 
     Glyph getGlyph() const {
         return static_cast<Glyph>(value);
     }
 
-    void setGlyph(Glyph glyph) {
-        this->value = static_cast<uint8_t>(glyph);
+    void setGlyph(const Glyph glyph) {
+        const auto index = static_cast<uint8_t>(glyph);
+        this->value = index < GLYPH_COUNT ? index : static_cast<uint8_t>(Glyph::Empty);
     }
 
     void setToDigit(uint8_t digit) {
@@ -245,23 +62,22 @@ public:
             return;
         }
 
-        const uint8_t amountOfSegments =
-                glyphId == GlyphId::Colon
-                || glyphId == GlyphId::IndicatorPlayerA
-                || glyphId == GlyphId::IndicatorPlayerB
-                    ? 1
-                    : 7;
+        const SegmentTable table = Profile::segmentsFor(glyphId);
+        const uint16_t mask = Profile::maskFor(value);
 
-        const auto *glyphSegments = getGlyphPixels(glyphId)->segments;
-        for (uint8_t segment = 0; segment < amountOfSegments; segment++) {
-            if (SegmentToGlyphMap[value] >> segment & 0x1) {
-                for (uint8_t i = 0; i < 3; i++) {
-                    pixels[glyphSegments[segment][i]] = color;
+        // Bound by the table's own count: V2's colon has 0 segments and each
+        // indicator 1, while Glyph::All sets all nine mask bits.
+        for (uint8_t segment = 0; segment < table.count; segment++) {
+            if (mask >> segment & 0x1) {
+                const Segment &pixelsOfSegment = table.segments[segment];
+                for (uint8_t i = 0; i < pixelsOfSegment.count; i++) {
+                    pixels[table.base + pixelsOfSegment.pixels[i]] = color;
                 }
             }
         }
     }
 };
 
+using LedGlyph = LedGlyphT<ActiveGlyphProfile>;
 
 #endif //LED_GLYPH
