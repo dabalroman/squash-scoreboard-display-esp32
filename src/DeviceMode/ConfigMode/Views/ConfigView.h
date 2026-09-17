@@ -1,6 +1,7 @@
 #ifndef CONFIGVIEW_H
 #define CONFIGVIEW_H
 
+#include "BatterySensor.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
@@ -20,6 +21,8 @@ enum Settings {
 class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
+    const BatterySensor &batterySensor;
+    int32_t shownBatteryCentivolts = -1;
 
     const std::vector<String> optionsList = {
         "Brightness",
@@ -36,9 +39,11 @@ class ConfigView final : public View {
 public:
     explicit ConfigView(
         PreferencesManager &preferencesManager,
-        const std::function<void(DeviceModeState)> &onDeviceModeChange
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
+        const BatterySensor &batterySensor
     )
-        : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange), scrollable(optionsList), scrollableWidget(scrollable) {
+        : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange),
+          batterySensor(batterySensor), scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
     static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
@@ -174,15 +179,44 @@ public:
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
+        const int32_t batteryCentivolts = batterySensor.available()
+            ? static_cast<int32_t>(lround(batterySensor.volts() * 100.0f))
+            : -1;
+
+        // Refresh while open whenever the shown battery value changes.
+        if (batteryCentivolts != shownBatteryCentivolts) {
+            shouldRenderBack = true;
+        }
+
         if (!shouldRenderBack) {
             return;
         }
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
+
+        if (batteryCentivolts >= 0) {
+            renderBattery(backDisplay, batteryCentivolts);
+        }
+
+        shownBatteryCentivolts = batteryCentivolts;
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+private:
+    // Built-in 6x8 font in the free strip above the first 9pt line (rows 0-6),
+    // right-aligned, so the menu layout does not move.
+    static void renderBattery(BackDisplay &backDisplay, const int32_t centivolts) {
+        char text[12];
+        snprintf(text, sizeof(text), "BAT %d.%02dV",
+                 static_cast<int>(centivolts / 100), static_cast<int>(centivolts % 100));
+
+        backDisplay.screen->setFont(nullptr);
+        backDisplay.screen->setCursor(128 - static_cast<int16_t>(strlen(text)) * 6, 0);
+        backDisplay.screen->print(text);
+        backDisplay.initSmallFont();
     }
 };
 

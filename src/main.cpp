@@ -20,6 +20,7 @@
 #include "Tournament/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
 #include "Buzzer.h"
+#include "BatterySensor.h"
 #include "Display/LedDisplay/LedBar.h"
 #include "Display/EInk/EInkDisplay.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
@@ -44,6 +45,8 @@ LedDisplay ledDisplay(pixels);
 std::unique_ptr<BackDisplay> backDisplay;
 
 Buzzer gBuzzer(Board::BUZZER);
+BatterySensor batterySensor;
+unsigned long lastBatteryLogMs = 0;
 
 // V2 e-paper; an empty stub on V1.
 EInkDisplay einkDisplay;
@@ -117,7 +120,8 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
-                preferencesManager
+                preferencesManager,
+                batterySensor
             );
             break;
 
@@ -173,6 +177,7 @@ void setup() {
     preferencesManager.read();
     initHardware();
     einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
+    batterySensor.begin();
 
     static RemoteDevelopmentService remoteDev;
     remoteDev.init(preferencesManager, *backDisplay);
@@ -187,6 +192,10 @@ void setup() {
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
+
+    if (batterySensor.available()) {
+        printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
+    }
 
     changeDeviceMode(DeviceModeState::ModeSwitchingMode);
 }
@@ -206,6 +215,12 @@ void loop() {
     gRemoteDevelopmentService->loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
     gBuzzer.loop();
+    batterySensor.loop();
+
+    if (batterySensor.available() && millis() - lastBatteryLogMs >= 10000) {
+        lastBatteryLogMs = millis();
+        printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
+    }
 
     // At most 20 fps, for now
     if (millis() - lastUpdate < 50) {

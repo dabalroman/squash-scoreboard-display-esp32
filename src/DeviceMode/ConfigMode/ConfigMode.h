@@ -1,6 +1,7 @@
 #ifndef CONFIG_MODE_H
 #define CONFIG_MODE_H
 
+#include "BatterySensor.h"
 #include "PreferencesManager.h"
 #include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
@@ -17,12 +18,13 @@ public:
         BackDisplay &backDisplay,
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
-        PreferencesManager &preferencesManager
+        PreferencesManager &preferencesManager,
+        const BatterySensor &batterySensor
     )
         : DeviceMode(ledDisplay, backDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
 
-        activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange);
+        activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange, batterySensor);
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
     }
