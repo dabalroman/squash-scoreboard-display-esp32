@@ -1,6 +1,7 @@
 #ifndef MODE_SWITCHING_VIEW_H
 #define MODE_SWITCHING_VIEW_H
 
+#include "BatteryMonitor.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -18,6 +19,8 @@ enum Options {
 
 class ModeSwitchingView final : public View {
     std::function<void(DeviceModeState)> onDeviceModeChange;
+    const BatteryMonitor &batteryMonitor;
+    int16_t shownBatteryPercent = -1;
 
     const std::vector<String> optionsList = {
         "  Squash  ",
@@ -32,9 +35,11 @@ class ModeSwitchingView final : public View {
 
 public:
     explicit ModeSwitchingView(
-        const std::function<void(DeviceModeState)> &onDeviceModeChange
+        const std::function<void(DeviceModeState)> &onDeviceModeChange,
+        const BatteryMonitor &batteryMonitor
     )
-        : onDeviceModeChange(onDeviceModeChange), scrollable(optionsList), scrollableWidget(scrollable) {
+        : onDeviceModeChange(onDeviceModeChange), batteryMonitor(batteryMonitor),
+          scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -134,16 +139,39 @@ public:
             rows[i] = {labels[i], nullptr, -1};
         }
 
-        einkDisplay.showMenu("MODE", rows, count, scrollable.getSelectedOptionId());
+        // The battery percent rides in the title; without a sensor the title is plain.
+        char title[16] = "MODE";
+        if (batteryMonitor.available()) {
+            snprintf(title, sizeof(title), "MODE  %u%%", batteryMonitor.percent());
+        }
+
+        einkDisplay.showMenu(title, rows, count, scrollable.getSelectedOptionId());
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
+        const int16_t batteryPercent = batteryMonitor.available()
+            ? static_cast<int16_t>(batteryMonitor.percent())
+            : -1;
+
+        // Redraw while the menu is open whenever the shown percent changes.
+        if (batteryPercent != shownBatteryPercent) {
+            shouldRenderBack = true;
+        }
+
         if (!shouldRenderBack) {
             return;
         }
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
+
+        if (batteryPercent >= 0) {
+            char text[10];
+            snprintf(text, sizeof(text), "BAT %d%%", batteryPercent);
+            backDisplay.printStatusRight(text);
+        }
+
+        shownBatteryPercent = batteryPercent;
         backDisplay.display();
 
         shouldRenderBack = false;

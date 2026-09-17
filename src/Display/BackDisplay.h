@@ -126,6 +126,19 @@ public:
         drawThiccTopToBottomLine(77, 128 - 83, 3);
     }
 
+    /**
+     * A short status string in the free strip above the first 9 pt line (rows
+     * 0-6), right-aligned with the built-in 6x8 font, so the menu below does not
+     * move. Restores the small font afterwards.
+     */
+    void printStatusRight(const char *text) {
+        screen->setFont(nullptr);
+        screen->setTextSize(1);
+        screen->setCursor(128 - static_cast<int16_t>(strlen(text)) * 6, 0);
+        screen->print(text);
+        initSmallFont();
+    }
+
     void initBigFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMonoBold24pt7b);

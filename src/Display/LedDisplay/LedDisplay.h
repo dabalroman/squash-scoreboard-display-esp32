@@ -195,9 +195,31 @@ public:
 #endif
     }
 
-    static void setBrightness(const uint8_t brightness) {
-        FastLED.setBrightness(brightness);
+    /**
+     * The brightness a view or the config asks for. What actually reaches FastLED
+     * is `min(requested, cap)`, so a caller never has to know about the cap.
+     */
+    void setBrightness(const uint8_t brightness) {
+        requestedBrightness = brightness;
+        applyBrightness();
     }
+
+    /**
+     * Upper limit applied on top of the requested brightness, e.g. while the pack
+     * is low. Never persisted: clearing it restores the requested value.
+     */
+    void setBrightnessCap(const uint8_t cap) {
+        brightnessCap = cap;
+        applyBrightness();
+    }
+
+private:
+    void applyBrightness() const {
+        FastLED.setBrightness(requestedBrightness < brightnessCap ? requestedBrightness : brightnessCap);
+    }
+
+    uint8_t requestedBrightness = 255;
+    uint8_t brightnessCap = 255;
 };
 
 

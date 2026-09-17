@@ -1,7 +1,7 @@
 #ifndef CONFIG_MODE_H
 #define CONFIG_MODE_H
 
-#include "BatterySensor.h"
+#include "BatteryMonitor.h"
 #include "PreferencesManager.h"
 #include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
@@ -10,7 +10,6 @@
 
 class ConfigMode final : public DeviceMode {
     PreferencesManager &preferencesManager;
-    std::unique_ptr<View> activeView;
 
 public:
     ConfigMode(
@@ -20,12 +19,12 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         PreferencesManager &preferencesManager,
-        const BatterySensor &batterySensor
+        const BatteryMonitor &batteryMonitor
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           preferencesManager(preferencesManager) {
 
-        activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange, batterySensor);
+        activeView = std::make_unique<ConfigView>(preferencesManager, onDeviceModeChange, batteryMonitor);
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
         activeView->initEInkDisplay(einkDisplay);

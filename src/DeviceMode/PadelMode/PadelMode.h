@@ -19,7 +19,6 @@ class PadelMode final : public DeviceMode {
     PadelModeState previousState = PadelModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::unique_ptr<View> activeView;
     std::function<void()> onMatchOver;
 
     void setState(const PadelModeState newState) {

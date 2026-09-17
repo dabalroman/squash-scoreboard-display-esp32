@@ -9,16 +9,44 @@ class Buzzer {
     ulong offAtMs = 0;
     bool enabled = true;
 
-    uint16_t celebrationPattern[8] = {
-        60, 80,
-        120, 160,
-        60, 80,
-        120, 0
-    };
+    // Patterns are on/off durations in ms, terminated by 0. Function-local statics
+    // rather than static class members: those are an ODR link error on GCC 8.4.
+    const uint16_t *pattern = nullptr;
 
     uint8_t patternIndex = 0;
     bool patternPlaying = false;
     ulong patternNextAtMs = 0;
+
+    static const uint16_t *celebrationPattern() {
+        static const uint16_t steps[] = {
+            60, 80,
+            120, 160,
+            60, 80,
+            120, 0
+        };
+        return steps;
+    }
+
+    // Three long beeps, distinct from any in-game sound.
+    static const uint16_t *lowBatteryPattern() {
+        static const uint16_t steps[] = {
+            300, 200,
+            300, 200,
+            300, 0
+        };
+        return steps;
+    }
+
+    void playPattern(const uint16_t *steps) {
+        if (!enabled) {
+            return;
+        }
+
+        pattern = steps;
+        patternIndex = 0;
+        patternPlaying = true;
+        patternNextAtMs = millis();
+    }
 
 public:
     explicit Buzzer(const uint8_t gpio) : gpio(gpio) {}
@@ -44,20 +72,18 @@ public:
     }
 
     void playCelebration() {
-        if (!enabled) {
-            return;
-        }
+        playPattern(celebrationPattern());
+    }
 
-        patternIndex = 0;
-        patternPlaying = true;
-        patternNextAtMs = millis();
+    void playLowBattery() {
+        playPattern(lowBatteryPattern());
     }
 
     void loop() {
         const ulong now = millis();
 
         if (patternPlaying && static_cast<long>(now - patternNextAtMs) >= 0) {
-            if (celebrationPattern[patternIndex] == 0) {
+            if (pattern == nullptr || pattern[patternIndex] == 0) {
                 patternPlaying = false;
                 digitalWrite(gpio, LOW);
                 return;
@@ -65,7 +91,7 @@ public:
 
             const bool isOn = patternIndex % 2 == 0;
             digitalWrite(gpio, isOn ? HIGH : LOW);
-            patternNextAtMs = now + celebrationPattern[patternIndex];
+            patternNextAtMs = now + pattern[patternIndex];
             patternIndex++;
             return;
         }

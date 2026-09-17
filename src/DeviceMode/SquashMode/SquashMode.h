@@ -19,7 +19,6 @@ class SquashMode final : public DeviceMode {
     SquashModeState previousState = SquashModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::unique_ptr<View> activeView;
     std::function<void()> onMatchOver;
 
     void setState(const SquashModeState newState) {

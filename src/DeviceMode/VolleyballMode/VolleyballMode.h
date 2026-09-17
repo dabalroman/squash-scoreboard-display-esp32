@@ -19,7 +19,6 @@ class VolleyballMode final : public DeviceMode {
     VolleyballModeState previousState = VolleyballModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::unique_ptr<View> activeView;
     std::function<void()> onMatchOver;
 
     void setState(const VolleyballModeState newState) {

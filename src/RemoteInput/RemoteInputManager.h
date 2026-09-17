@@ -48,6 +48,13 @@ public:
         buttonD.setOnActionTaken(callback);
     }
 
+    void clearLatches() {
+        buttonA.clearLatch();
+        buttonB.clearLatch();
+        buttonC.clearLatch();
+        buttonD.clearLatch();
+    }
+
     void preventTriggerForMs(const ulong delayMs = 1000) {
         buttonA.preventTriggerForMs(delayMs);
         buttonB.preventTriggerForMs(delayMs);

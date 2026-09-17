@@ -21,6 +21,8 @@
 #include "RemoteInput/RemoteInputManager.h"
 #include "Buzzer.h"
 #include "BatterySensor.h"
+#include "BatteryMonitor.h"
+#include "Display/Overlay.h"
 #include "Display/LedDisplay/LedBar.h"
 #include "Display/EInk/EInkDisplay.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
@@ -46,7 +48,16 @@ std::unique_ptr<BackDisplay> backDisplay;
 
 Buzzer gBuzzer(Board::BUZZER);
 BatterySensor batterySensor;
+BatteryMonitor batteryMonitor(batterySensor);
 unsigned long lastBatteryLogMs = 0;
+
+// Device-level message that takes the displays over and pauses the active mode.
+Overlay overlay;
+bool lastBatteryLow = false;
+
+// While the pack is low the LEDs are held at menu level 1, whatever the config says.
+constexpr uint8_t LOW_BATTERY_BRIGHTNESS_CAP = 31;
+constexpr uint32_t LOW_BATTERY_OVERLAY_MS = 10000;
 
 // V2 e-paper; an empty stub on V1.
 EInkDisplay einkDisplay;
@@ -87,7 +98,8 @@ void initHardware() {
     backDisplay = std::make_unique<BackDisplay>(&display);
 
     FastLED.addLeds<NEOPIXEL, Board::LED_DATA>(pixels, Board::LED_COUNT);
-    FastLED.setBrightness(preferencesManager.settings.brightness);
+    // Through the wrapper, never FastLED directly: it applies the low-battery cap.
+    ledDisplay.setBrightness(preferencesManager.settings.brightness);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
@@ -109,7 +121,8 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); }
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                batteryMonitor
             );
             break;
 
@@ -121,7 +134,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
                 preferencesManager,
-                batterySensor
+                batteryMonitor
             );
             break;
 
@@ -216,6 +229,27 @@ void setup() {
     changeDeviceMode(DeviceModeState::ModeSwitchingMode);
 }
 
+/**
+ * The one-shot low-battery message. Shown once per entry into the low state -
+ * the monitor re-arms only above its exit threshold. #17 (3.3 V warn / 3.0 V
+ * shutdown) will reuse the same Overlay with different content.
+ */
+void showLowBatteryOverlay() {
+    char line[8];
+    snprintf(line, sizeof(line), "%u%%", batteryMonitor.percent());
+
+    const OverlayContent content = {
+        "LOW BATTERY",
+        line,
+        {Glyph::b, Glyph::A, Glyph::t, Glyph::t},
+        Colors::Red,
+        LOW_BATTERY_OVERLAY_MS
+    };
+
+    overlay.show(content, millis());
+    gBuzzer.playLowBattery();
+}
+
 void loop() {
     // First, before the frame gate: polls the panel's BUSY pin on every pass.
     einkDisplay.update();
@@ -233,10 +267,24 @@ void loop() {
     remoteInputManager.handleInput(interruptTriggeredGpio);
     gBuzzer.loop();
     batterySensor.loop();
+    batteryMonitor.loop(millis());
+
+    if (batteryMonitor.isLow() != lastBatteryLow) {
+        lastBatteryLow = batteryMonitor.isLow();
+        // Not persisted: the config keeps whatever the user set, the cap just
+        // limits what reaches the LEDs while the pack is low.
+        ledDisplay.setBrightnessCap(lastBatteryLow ? LOW_BATTERY_BRIGHTNESS_CAP : 255);
+        printLn("Battery %s (%u%%)", lastBatteryLow ? "LOW" : "recovered", batteryMonitor.percent());
+    }
+
+    if (batteryMonitor.takeLowWarning()) {
+        showLowBatteryOverlay();
+    }
 
     if (batterySensor.available() && millis() - lastBatteryLogMs >= 10000) {
         lastBatteryLogMs = millis();
-        printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
+        printLn("Battery: %u mV raw, %.3f V, %u%%", static_cast<unsigned>(batterySensor.rawMilliVolts()),
+                batterySensor.volts(), batteryMonitor.percent());
     }
 
     // At most 20 fps, for now
@@ -245,6 +293,24 @@ void loop() {
     }
 
     lastUpdate = millis();
+
+    // While an overlay runs it owns all three displays and the active mode is
+    // paused - no input, no rendering. Its state and timers are untouched, so a
+    // pending score commit lands on the first frame after.
+    if (overlay.active(lastUpdate)) {
+        overlay.render(ledDisplay, *backDisplay, einkDisplay);
+        return;
+    }
+
+    if (overlay.takeFinished()) {
+        // Presses made while the message was up must not act on the view coming back.
+        remoteInputManager.clearLatches();
+        Overlay::resetLedState(ledDisplay);
+
+        if (deviceMode) {
+            deviceMode->restoreView();
+        }
+    }
 
     if (deviceMode) {
         deviceMode->loop();

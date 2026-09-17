@@ -49,6 +49,15 @@ public:
         onActionTakenHook = callback;
     }
 
+    /**
+     * Drop a press that is latched but not yet consumed, without touching the
+     * debounce window. Used after a device-level overlay, so buttons pushed while
+     * the screen was taken over do not act on the view that comes back.
+     */
+    void clearLatch() {
+        canTakeAction = false;
+    }
+
     void preventTriggerForMs(const ulong delayMs = 500) {
         canBeTriggerAtMs = millis() + delayMs;
         canTakeAction = false;

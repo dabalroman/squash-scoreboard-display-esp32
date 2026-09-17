@@ -119,8 +119,10 @@ A pre-build script (`helpers/version_increment.py`) auto-increments the firmware
 ### Top-Level Loop (`src/main.cpp`)
 Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tick). It polls `RemoteInputManager` for input and delegates to the active `DeviceMode`. `einkDisplay.update()` and `batterySensor.loop()` run on **every** pass, before the 50 ms gate (the e-paper polls its BUSY pin). No custom FreeRTOS tasks.
 
+An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active mode: while `overlay.active()` it renders to all three displays and `deviceMode->loop()` is **skipped**, so the mode is *paused*, not changed — no input, no rendering, state and timers intact, and a pending score commit lands on the first frame after (the commit check lives in `handleInput`). On the pass it ends, `main.cpp` calls `RemoteInputManager::clearLatches()` (presses made during the overlay must not act on the view coming back), `Overlay::resetLedState()` and `DeviceMode::restoreView()`. The overlay knows nothing about modes, views or sports — it is content only (title, line, 4 glyphs, colour, duration), so #17's shutdown warning reuses it.
+
 ### DeviceMode + View pattern
-- `DeviceMode` (abstract) — owns a state machine and an active `View`. Each mode has its own state enum (e.g., `SquashModeState`). When the state changes, a new `View` is instantiated.
+- `DeviceMode` (abstract) — owns a state machine and an active `View`. Each mode has its own state enum (e.g., `SquashModeState`). When the state changes, a new `View` is instantiated. `activeView` lives in the **base class**, not in each mode, so `restoreView()` (re-run the view's three `init*Display` hooks + `queueRender()`) works without knowing which mode is active.
 - `View` (abstract) — each frame it calls `handleInput()`, `renderLedDisplay()` (front LEDs), and `renderBackDisplay()` (rear OLED). Flags `shouldRenderLedDisplay`/`shouldRenderBack` control dirty rendering.
 - `renderEInkDisplay(EInkDisplay&)` is the third, non-pure hook (default: blank). It is called every frame, but the e-paper must refresh only on real change: views pass **values** to `EInkDisplay` (`showMatchScore`, `showBlank`), which compares them with what is shown. Never rely on `queueRender()` for it (GamePlaying views never call it). Start each override with `if (!einkDisplay.available()) return;` so V1 computes nothing for its stub.
 - View flow per sport mode: `TournamentChoosePlayers` → `MatchStartGame` → `GamePlaying` → `GameOver` → back to `MatchStartGame`.
@@ -216,7 +218,14 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 Player profiles (`UserProfile`) are hardcoded in `main.cpp` with names and assigned colors. To add/change players, edit the `userA`–`userI` declarations and the `users` vector there.
 
 ### Battery (V2)
-`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. Shown on the OLED Config screen and in the log. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17.
+`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17. Volts appear only in the log now; both screens show percent.
+
+`BatteryMonitor` (`src/BatteryMonitor.h`) turns that voltage into what the user sees. Board-agnostic — **no `#if BOARD_REV`**; on V1 the sensor is unavailable, so nothing downstream fires.
+- `voltsToPercent()` interpolates one curve: the **midpoint** of the resting-OCV and 10 W-load columns for the 1S2P INR18650-35E pack (3.340 V = 0 %, 4.175 V = 100 %, 10 % steps). It is a local `constexpr` inside the static method (a `static constexpr` array member is an ODR link error on GCC 8.4) and the single place to retune the mapping.
+- Two separate numbers, deliberately: the **mapped** percent drives the thresholds, the **shown** percent (5 % steps, only ever falling, jumping up only on a >= 10 point rise) is what displays print — otherwise the readout flickers as LED load sags the cell.
+- Low state: mapped < 30 % held for 10 s continuously; clears above 35 % (hysteresis), so it warns once per discharge, not once per sag. `takeLowWarning()` is the one-shot that fires the overlay.
+- While low, `main.cpp` sets `LedDisplay::setBrightnessCap(31)` (menu level 1). The cap is **not** persisted and callers never see it: `setBrightness()` stores what was requested and applies `min(requested, cap)`, so `ConfigView`'s brightness edits stay capped on their own. Always set brightness through `LedDisplay`, never `FastLED.setBrightness` directly.
+- Shown on the mode selector (e-paper title `MODE  75%`, OLED `BAT 75%`) and in the CONFIG menu (footer and OLED).
 
 ### `lib/` directory
 The `lib/` directory contains only backup files (`.h~`) and is not used for active code. All project source is under `src/`.

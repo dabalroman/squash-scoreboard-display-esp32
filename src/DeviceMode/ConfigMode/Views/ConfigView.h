@@ -3,7 +3,7 @@
 
 #include <version.h>
 
-#include "BatterySensor.h"
+#include "BatteryMonitor.h"
 #include "SafeRestart.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -24,8 +24,8 @@ enum Settings {
 class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
-    const BatterySensor &batterySensor;
-    int32_t shownBatteryCentivolts = -1;
+    const BatteryMonitor &batteryMonitor;
+    int16_t shownBatteryPercent = -1;
 
     const std::vector<String> optionsList = {
         "Brightness",
@@ -43,10 +43,10 @@ public:
     explicit ConfigView(
         PreferencesManager &preferencesManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
-        const BatterySensor &batterySensor
+        const BatteryMonitor &batteryMonitor
     )
         : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange),
-          batterySensor(batterySensor), scrollable(optionsList), scrollableWidget(scrollable) {
+          batteryMonitor(batteryMonitor), scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
     static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
@@ -203,10 +203,8 @@ public:
         };
 
         char footer[16] = "";
-        if (batterySensor.available()) {
-            const int32_t centivolts = static_cast<int32_t>(lround(batterySensor.volts() * 100.0f));
-            snprintf(footer, sizeof(footer), "BAT %d.%02dV",
-                     static_cast<int>(centivolts / 100), static_cast<int>(centivolts % 100));
+        if (batteryMonitor.available()) {
+            snprintf(footer, sizeof(footer), "BAT %u%%", batteryMonitor.percent());
         }
 
         // The only place the firmware version is shown on the device - the splash is
@@ -223,12 +221,12 @@ public:
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        const int32_t batteryCentivolts = batterySensor.available()
-            ? static_cast<int32_t>(lround(batterySensor.volts() * 100.0f))
+        const int16_t batteryPercent = batteryMonitor.available()
+            ? static_cast<int16_t>(batteryMonitor.percent())
             : -1;
 
         // Refresh while open whenever the shown battery value changes.
-        if (batteryCentivolts != shownBatteryCentivolts) {
+        if (batteryPercent != shownBatteryPercent) {
             shouldRenderBack = true;
         }
 
@@ -239,28 +237,22 @@ public:
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
 
-        if (batteryCentivolts >= 0) {
-            renderBattery(backDisplay, batteryCentivolts);
+        if (batteryPercent >= 0) {
+            renderBattery(backDisplay, batteryPercent);
         }
 
-        shownBatteryCentivolts = batteryCentivolts;
+        shownBatteryPercent = batteryPercent;
         backDisplay.display();
 
         shouldRenderBack = false;
     }
 
 private:
-    // Built-in 6x8 font in the free strip above the first 9pt line (rows 0-6),
-    // right-aligned, so the menu layout does not move.
-    static void renderBattery(BackDisplay &backDisplay, const int32_t centivolts) {
-        char text[12];
-        snprintf(text, sizeof(text), "BAT %d.%02dV",
-                 static_cast<int>(centivolts / 100), static_cast<int>(centivolts % 100));
+    static void renderBattery(BackDisplay &backDisplay, const int16_t percent) {
+        char text[10];
+        snprintf(text, sizeof(text), "BAT %d%%", percent);
 
-        backDisplay.screen->setFont(nullptr);
-        backDisplay.screen->setCursor(128 - static_cast<int16_t>(strlen(text)) * 6, 0);
-        backDisplay.screen->print(text);
-        backDisplay.initSmallFont();
+        backDisplay.printStatusRight(text);
     }
 };
 

@@ -164,6 +164,39 @@ public:
     }
 
     /**
+     * A free-text screen: inverted title bar plus one large centred line. Used by
+     * the device-level Overlay (low battery and, later, the shutdown warning), and
+     * value-compared like every other screen, so it is safe to call every frame.
+     */
+    void showMessage(const char *title, const char *line) {
+        if (splashHoldActive()) {
+            return;
+        }
+
+        uint32_t h = hashAdd(HASH_SEED, SCREEN_MESSAGE);
+        h = hashText(h, title);
+        h = hashText(h, line);
+        if (!commit(h)) {
+            return;
+        }
+
+        GFXcanvas1 &g = eink.gfx();
+        g.fillScreen(PAPER);
+        g.setTextWrap(false);
+
+        g.fillRect(0, 0, g.width(), EInkLayout::TITLE_HEIGHT, INK);
+        g.setTextColor(PAPER);
+        printFitted(g, title, 22);
+
+        if (line != nullptr && line[0] != '\0') {
+            g.setTextColor(INK);
+            printCentered(g, line, 170, &FreeMonoBold24pt7b);
+        }
+
+        present(SCREEN_MESSAGE);
+    }
+
+    /**
      * A scrolling menu: title bar, rows with the selected one inverted, optional
      * footer. The visible window is this renderer's own state (the OLED keeps its
      * own); it follows the selection and resets when the title changes.
@@ -264,7 +297,7 @@ private:
     enum : uint32_t { SPLASH_HOLD_MS = 4000 };
 
     // Screen types for change detection and the ghosting policy.
-    enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU };
+    enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE };
 
     // True if `hash` differs from what is on the panel; the caller then redraws.
     bool commit(const uint32_t hash) {
@@ -358,6 +391,15 @@ private:
         g.getTextBounds(text, 0, baseline, &x1, &y1, &w, &h);
         g.setCursor((g.width() - static_cast<int16_t>(w)) / 2 - x1, baseline);
         g.print(text);
+    }
+
+    // Title text wider than the panel drops to 9 pt rather than being clipped.
+    static void printFitted(GFXcanvas1 &g, const char *text, const int16_t baseline) {
+        const int16_t room = g.width() - 2 * EInkLayout::TEXT_MARGIN;
+        const GFXfont *font = textWidth(g, text, &FreeSansBold12pt7b) <= room
+                                  ? &FreeSansBold12pt7b
+                                  : &FreeSans9pt7b;
+        printCentered(g, text, baseline, font);
     }
 
     // Menu rows use FreeSans; the selected row gets an outline, not a fill.
@@ -456,6 +498,7 @@ public:
                         const char *, const int16_t = -1, const int16_t = -1) {}
     void showMenu(const char *, const EInkMenuRow *, const uint8_t, const uint8_t,
                   const char * = nullptr, const char * = nullptr) {}
+    void showMessage(const char *, const char *) {}
 
     uint32_t refreshes() const { return 0; }
     uint32_t fullRefreshes() const { return 0; }
