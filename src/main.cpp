@@ -5,6 +5,8 @@
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
 
+#include "Board.h"
+
 #include "DeviceMode/DeviceModeState.h"
 #include "UserProfile.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -24,41 +26,32 @@
 
 constexpr uint8_t OLED_SSD1106_SCREEN_WIDTH = 128;
 constexpr uint8_t OLED_SSD1106_SCREEN_HEIGHT = 64;
-constexpr uint8_t OLED_SSD1106_I2C_SDA_GPIO = 33;
-constexpr uint8_t OLED_SSD1106_I2C_SCL_GPIO = 34;
 constexpr uint8_t OLED_SSD1106_I2C_ADDRESS = 0x3C;
 Adafruit_SSD1306 display(OLED_SSD1106_SCREEN_WIDTH, OLED_SSD1106_SCREEN_HEIGHT, &Wire);
 
-constexpr uint8_t REMOTE_RECEIVER_GPIO_D0 = 14;
-constexpr uint8_t REMOTE_RECEIVER_GPIO_D1 = 13;
-constexpr uint8_t REMOTE_RECEIVER_GPIO_D2 = 10;
-constexpr uint8_t REMOTE_RECEIVER_GPIO_D3 = 8;
 RemoteInputManager remoteInputManager(
-    REMOTE_RECEIVER_GPIO_D0,
-    REMOTE_RECEIVER_GPIO_D1,
-    REMOTE_RECEIVER_GPIO_D2,
-    REMOTE_RECEIVER_GPIO_D3
+    Board::RF_D0,
+    Board::RF_D1,
+    Board::RF_D2,
+    Board::RF_D3
 );
 
-constexpr uint8_t LED_WS2812B_GPIO = 18;
-constexpr uint8_t LED_WS2812B_AMOUNT = 112;
-CRGB pixels[LED_WS2812B_AMOUNT];
+CRGB pixels[Board::LED_COUNT];
 LedDisplay ledDisplay(pixels);
 
 // Need to wait for I2C init
 std::unique_ptr<BackDisplay> backDisplay;
 
-constexpr uint8_t BUZZER_GPIO = 3;
-Buzzer gBuzzer(BUZZER_GPIO);
+Buzzer gBuzzer(Board::BUZZER);
 
 RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 PreferencesManager preferencesManager;
 
 volatile uint8_t interruptTriggeredGpio = 0;
-void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D0; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d1() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D1; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D2; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = REMOTE_RECEIVER_GPIO_D3; }
+void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = Board::RF_D0; }
+void IRAM_ATTR onRemoteReceiverInterrupt_d1() { interruptTriggeredGpio = Board::RF_D1; }
+void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = Board::RF_D2; }
+void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = Board::RF_D3; }
 
 unsigned long lastUpdate = 0;
 
@@ -78,23 +71,23 @@ UserProfile userI(8, "Damian", Colors::Violet);
 std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF, &userG, &userH, &userI};
 
 void initHardware() {
-    Wire.begin(OLED_SSD1106_I2C_SDA_GPIO, OLED_SSD1106_I2C_SCL_GPIO);
+    Wire.begin(Board::OLED_SDA, Board::OLED_SCL);
     if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_SSD1106_I2C_ADDRESS)) {
         printLn("SSD1106 allocation failed!");
     }
 
     backDisplay = std::make_unique<BackDisplay>(&display);
 
-    FastLED.addLeds<NEOPIXEL, LED_WS2812B_GPIO>(pixels, LED_WS2812B_AMOUNT);
+    FastLED.addLeds<NEOPIXEL, Board::LED_DATA>(pixels, Board::LED_COUNT);
     FastLED.setBrightness(preferencesManager.settings.brightness);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
 
-    attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D0), onRemoteReceiverInterrupt_d0, RISING);
-    attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D1), onRemoteReceiverInterrupt_d1, RISING);
-    attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D2), onRemoteReceiverInterrupt_d2, RISING);
-    attachInterrupt(digitalPinToInterrupt(REMOTE_RECEIVER_GPIO_D3), onRemoteReceiverInterrupt_d3, RISING);
+    attachInterrupt(digitalPinToInterrupt(Board::RF_D0), onRemoteReceiverInterrupt_d0, RISING);
+    attachInterrupt(digitalPinToInterrupt(Board::RF_D1), onRemoteReceiverInterrupt_d1, RISING);
+    attachInterrupt(digitalPinToInterrupt(Board::RF_D2), onRemoteReceiverInterrupt_d2, RISING);
+    attachInterrupt(digitalPinToInterrupt(Board::RF_D3), onRemoteReceiverInterrupt_d3, RISING);
 
     gBuzzer.init();
 }
@@ -182,7 +175,7 @@ void setup() {
     gBuzzer.setEnabled(preferencesManager.settings.enableBuzzer);
     remoteInputManager.setOnActionTaken([] { gBuzzer.trigger(); });
 
-    printLn("ESP-S2 ready. FW version: %s, %s %s\n", FW_VERSION, __DATE__, __TIME__);
+    printLn("%s ready. FW version: %s, %s %s\n", Board::NAME, FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");
     printLn("  enableWifi: %d", preferencesManager.settings.enableWifi);
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
