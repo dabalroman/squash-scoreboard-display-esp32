@@ -70,7 +70,7 @@ LEDs shine through the plastic, creating a smooth, diffused surface. It was my m
 | Display (rear)  | 0.96" OLED (SSD1306, 128×64)                                |
 | Input           | 433 MHz remote with 4 buttons                               |
 | Audio           | Buzzer for interaction tones and victory theme              |
-| Power           | 2× 18650 Li-Ion cells with boost converter and USB charging |
+| Power           | 2× INR18650-35E 3500mAh Li-Ion cells with 2A boost converter and USB charging |
 | Enclosure       | 3D-printed, semi-transparent PLA                            |
 | Battery life    | ~10 hours continuous use                                    |
 

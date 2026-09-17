@@ -149,6 +149,9 @@ Hardware is initialized in `setup()`. The main `loop()` runs at ~20fps (50ms tic
 - **Border (V2)** — `LedCentralScreenBorder` is its own concept, independent of the back indicators: `LedDisplay::setBorderEnabled(bool)` and `setBorderAppearance(top, bottom, blinkTop, blinkBottom)`. The indicator methods never touch it. Colours are used **as passed**, never `sameSideMode`-redirected (border faces front; indicators face back). It is the legend for the e-paper rows.
   - Every LED view calls `setBorderEnabled` in `initLedDisplay` (no implicit default, it would leak across views): off in the menus (`ConfigView`, `ModeSwitchingView`, the three `*TournamentChoosePlayersView`s), on everywhere else with the same colours as the indicators.
 - **E-paper (V2)** — `EInkDisplay` wraps `EInkAsync` (ported from the rig): non-blocking refresh state machine, ~10 ms SPI bursts, the ~0.5 s panel wait polled from `loop()`, requests coalesce. Driver class `GxEPD2_290_GDEY029T94` (GxEPD2 pinned 1.6.9); never the blocking `GxEPD2_BW` in the loop. Panel is mounted upside down → canvas rotation 2. Black is `INK`, white `PAPER` (`Adafruit_SSD1306.h` #defines `BLACK`/`WHITE`). Shows match-level score only: games won, or gems + sets in padel; top row = left court player. **`BackDisplay` and the e-ink share nothing** (no base class, helpers or interface).
+  - Menus: views pass `EInkMenuRow`s to `showMenu()`; FreeSans 12 pt, selected row outlined (not filled), checkboxes for in/out. The scroll window is each renderer's own state - `Scrollable` holds only options + selection + wrap (the OLED `ScrollableWidget` keeps its 3-row window, the e-paper its own).
+  - Ghosting: `EInkPolicy` - a screen-type change after >= 16 partials, or 128 partials in any case, becomes a non-blocking full refresh (~1.6 s flash, loop keeps running); every full refresh resets the counter.
+  - Never write a raw NUL into a source file from a script (`'\\0'` in a Python string becomes a real NUL): the file still compiles but git treats it as binary.
 - `BackDisplay` — wraps the rear 0.96" OLED (Adafruit SSD1306 128×64). Provides helper methods like `renderScoreWidget()`. Rotation is `Board::OLED_ROTATION` (V1 2, V2 0).
 - Bar renderers live in `src/Display/LedDisplay/Renderer/`. Each exposes a static `toLedBarPixels()` returning `std::array<LedBarPixel, LedBar::PIXEL_COUNT>`.
 - `static constexpr` arrays as class members in header-only adapters cause ODR linker errors with GCC 8.4 (C++14). Declare them as local `constexpr` variables inside the static method instead.
@@ -188,7 +191,7 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 - `RemoteInputManager` — manages 4 `RemoteInput` buttons (A/B/C/D) triggered by GPIO interrupts from the 433 MHz receiver. Use `button.takeActionIfPossible(debounceMs)` in views.
 - The 433 MHz receiver generates multiple RISING edges per button press (RF noise). `RemoteInput::trigger()` must guard against this — do not remove the debounce check without understanding the double-trigger bug.
 - `Buzzer` (`src/Buzzer.h`, GPIO 3) plays a short tone on remote presses and a victory theme on game win; toggled via `PrefsData.enableBuzzer`.
-- Powered by 18650 battery with boost converter / charger.
+- Powered by 1S2P INR18650-35E battery with 2A boost converter / charger.
 
 ### Persistence & Networking
 - `PreferencesManager` — reads/writes `PrefsData` (WiFi SSID/password, brightness, AP mode) to ESP32 NVS.
@@ -210,7 +213,7 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 Player profiles (`UserProfile`) are hardcoded in `main.cpp` with names and assigned colors. To add/change players, edit the `userA`–`userI` declarations and the `users` vector there.
 
 ### Battery (V2)
-`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. Shown on the OLED Config screen and in the log. `FACTOR` is still the core-3.3.11 value until re-derived against a meter.
+`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. Shown on the OLED Config screen and in the log. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17.
 
 ### `lib/` directory
 The `lib/` directory contains only backup files (`.h~`) and is not used for active code. All project source is under `src/`.
