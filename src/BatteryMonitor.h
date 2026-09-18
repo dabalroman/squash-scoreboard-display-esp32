@@ -33,8 +33,8 @@ class BatteryMonitor {
     };
 
     enum : uint8_t {
-        LOW_ENTER_PERCENT = 20,
-        LOW_EXIT_PERCENT = 25,   // hysteresis: leaving low needs a real recovery
+        LOW_ENTER_PERCENT = 10,
+        LOW_EXIT_PERCENT = 15,   // hysteresis: leaving low needs a real recovery
         // The shown percent jumps back up only on a change this big (charging, pack swap).
         JUMP_UP_PERCENT = 10,
     };
@@ -68,7 +68,7 @@ public:
         // header-only class is an ODR link error on GCC 8.4 (see CLAUDE.md).
         constexpr uint8_t POINTS = 11;   // 0 %, 10 % ... 100 %
         constexpr float curve[POINTS] = {
-            3.340f, 3.425f, 3.520f, 3.590f, 3.650f, 3.710f,
+            3.000f, 3.425f, 3.520f, 3.590f, 3.650f, 3.710f,
             3.770f, 3.840f, 3.920f, 4.030f, 4.175f
         };
 
@@ -130,7 +130,7 @@ public:
 
 private:
     void updateLowState(const uint32_t nowMs) {
-        if (mappedPercent < LOW_ENTER_PERCENT) {
+        if (mappedPercent <= LOW_ENTER_PERCENT) {
             if (!lowTimerRunning) {
                 lowTimerRunning = true;
                 lowSinceMs = nowMs;

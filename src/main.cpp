@@ -58,7 +58,7 @@ unsigned long lastBatteryLogMs = 0;
 
 // Device-level message that takes the displays over and pauses the active mode.
 Overlay overlay;
-bool lastBatteryLow = false;
+bool lowBatteryLatchActive = false;
 
 // While the pack is low the LEDs are held at menu level 1, whatever the config says.
 constexpr uint8_t LOW_BATTERY_BRIGHTNESS_CAP = 31;
@@ -389,12 +389,10 @@ void loop() {
     batterySensor.loop();
     batteryMonitor.loop(millis());
 
-    if (batteryMonitor.isLow() != lastBatteryLow) {
-        lastBatteryLow = batteryMonitor.isLow();
-        // Not persisted: the config keeps whatever the user set, the cap just
-        // limits what reaches the LEDs while the pack is low.
-        ledDisplay.setBrightnessCap(lastBatteryLow ? LOW_BATTERY_BRIGHTNESS_CAP : 255);
-        printLn("Battery %s (%u%%)", lastBatteryLow ? "LOW" : "recovered", batteryMonitor.percent());
+    if (!lowBatteryLatchActive && batteryMonitor.isLow()) {
+        lowBatteryLatchActive = true;
+        ledDisplay.setLowPowerMode(true);
+        printLn("Battery LOW (%u%%)", batteryMonitor.percent());
     }
 
     if (batteryMonitor.takeLowWarning()) {
@@ -446,11 +444,9 @@ void loop() {
         }
     }
 
-    // After the overlay check, so a long press made while the mode was paused does not
-    // act on it. Silence when goBack() declines is the signal that this screen is a root.
+    // Handle long press C
     if (remoteInputManager.buttonC.takeLongPressIfPossible()) {
         const bool handled = deviceMode && deviceMode->goBack();
-        printLn("Long press C -> %s", handled ? "back" : "not handled");
 
         if (handled) {
             gBuzzer.playBack();

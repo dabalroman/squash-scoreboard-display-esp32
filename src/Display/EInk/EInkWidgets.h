@@ -98,19 +98,12 @@ namespace EInkWidgets {
         }
     }
 
-    /**
-     * Outline, nub, and a coarse three-segment gauge inside it: > 80 % is three
-     * bars, > 50 % two, > 20 % one, and at or below 20 % none. Deliberately coarse
-     * - the percent printed beside it carries the exact value, and a finer gauge
-     * would only invite reading a number off the picture that the text already
-     * gives. A segment is drawn full or as an outline, never partially.
-     */
     inline void drawBatteryIcon(GFXcanvas1 &g, const int16_t x, const int16_t y, const int16_t percent) {
         constexpr int16_t bodyWidth = EInkLayout::BATTERY_ICON_WIDTH - 3;
         g.drawRect(x, y, bodyWidth, EInkLayout::BATTERY_ICON_HEIGHT, INK);
         g.fillRect(x + bodyWidth, y + 4, 3, EInkLayout::BATTERY_ICON_HEIGHT - 8, INK);
 
-        const int16_t filled = percent > 80 ? 3 : (percent > 50 ? 2 : (percent > 20 ? 1 : 0));
+        const int16_t filled = percent >= 80 ? 3 : (percent >= 50 ? 2 : (percent >= 20 ? 1 : 0));
 
         constexpr int16_t barWidth = 6;
         constexpr int16_t barGap = 2;

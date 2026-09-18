@@ -3,7 +3,6 @@
 
 #include <utility>
 
-#include "Board.h"
 #include "Color.h"
 #include "LedBar.h"
 #include "LedCentralScreenBorder.h"
@@ -15,6 +14,9 @@ class LedDisplay {
     CRGB *pixels;
     uint32_t tickMs = 0;
     bool sameSideMode = false;
+
+    uint8_t requestedBrightness = 255;
+    uint8_t brightnessCap = 255;
 
     LedGlyph glyphA = LedGlyph(pixels, GlyphId::A);
     LedGlyph glyphB = LedGlyph(pixels, GlyphId::B);
@@ -224,21 +226,13 @@ public:
 #endif
     }
 
-    /**
-     * The brightness a view or the config asks for. What actually reaches FastLED
-     * is `min(requested, cap)`, so a caller never has to know about the cap.
-     */
     void setBrightness(const uint8_t brightness) {
-        requestedBrightness = brightness;
+        requestedBrightness = static_cast<uint8_t>(brightness * 0.8f);
         applyBrightness();
     }
 
-    /**
-     * Upper limit applied on top of the requested brightness, e.g. while the pack
-     * is low. Never persisted: clearing it restores the requested value.
-     */
-    void setBrightnessCap(const uint8_t cap) {
-        brightnessCap = cap;
+    void setLowPowerMode(const bool lowPowerMode) {
+        brightnessCap = lowPowerMode ? 31 : 255;
         applyBrightness();
     }
 
@@ -246,9 +240,6 @@ private:
     void applyBrightness() const {
         FastLED.setBrightness(requestedBrightness < brightnessCap ? requestedBrightness : brightnessCap);
     }
-
-    uint8_t requestedBrightness = 255;
-    uint8_t brightnessCap = 255;
 };
 
 
