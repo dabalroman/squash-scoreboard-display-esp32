@@ -2,6 +2,7 @@
 
 #include <Update.h>
 
+#include "LoggerHelper.h"
 #include "Strings.h"
 #include "SafeRestart.h"
 #include "Utils.h"
@@ -53,26 +54,98 @@ void RemoteDevelopmentService::setupOTA() {
         "/update",
         HTTP_POST,
         [this] {
-            // OTA - onUploadEnd
+            // OTA - onUploadEnd. The whole body has been drained by now, whatever the
+            // upload handler did with it, so a rejection can still answer properly.
+            ::printLn("OTA: %u bytes, chip 0x%04X, forced %d, %s",
+                    static_cast<unsigned>(otaBytes), otaHeader.seenChipId(), otaForced ? 1 : 0,
+                    otaRejectReason != nullptr
+                        ? "rejected"
+                        : (Update.hasError() ? "write error" : "accepted"));
+
             OTAServer->sendHeader("Connection", "close");
-            OTAServer->send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
-            safeRestart();
+
+            if (otaRejectReason != nullptr) {
+                // 400, and no restart: the running firmware keeps going, which is the
+                // whole point of checking before Update.end(true) switches partitions.
+                OTAServer->send(400, "text/plain; charset=utf-8", otaRejectReason);
+                notifyUpdate(FirmwareUpdateStage::Failed, otaRejectLabel);
+                return;
+            }
+
+            if (Update.hasError()) {
+                // Say what went wrong, not "FAIL": the scripted path
+                // (`pio run -t upload -e lolin_s2_mini_ota`) curls this and used to be
+                // handed HTTP 200 for a flash that never landed.
+                OTAServer->send(400, "text/plain; charset=utf-8", Update.errorString());
+                notifyUpdate(FirmwareUpdateStage::Failed, Str::OTA_EINK_TITLE_ERROR);
+                return;
+            }
+
+            OTAServer->send(200, "text/plain; charset=utf-8", "OK");
+            notifyUpdate(FirmwareUpdateStage::Succeeded, nullptr);
+            armOtaRestart();
         },
         [this] {
             // OTA - onUpload
             HTTPUpload &upload = OTAServer->upload();
+
             if (upload.status == UPLOAD_FILE_START) {
-                if (telnetClient && telnetClient.connected()) {
-                    telnetFlushLogBuffer();
-                    telnetClient.stop();
-                    telnetServer->close();
-                }
+                otaHeader.reset();
+                otaRejectReason = nullptr;
+                otaRejectLabel = nullptr;
+                otaBytes = 0;
+                otaVerdictLogged = false;
+                otaTelnetClosed = false;
+                // From the query string, not a form field: WebServer parses the URL
+                // arguments before the multipart body and merges them into the POST
+                // arguments, so this is readable both here and in the end handler.
+                otaForced = OTAServer->hasArg("force") && OTAServer->arg("force") == "1";
+
+                ::printLn("OTA: upload started from %s, file %s, forced %d",
+                        OTAServer->client().remoteIP().toString().c_str(),
+                        upload.filename.c_str(), otaForced ? 1 : 0);
+
+                notifyUpdate(FirmwareUpdateStage::Started, nullptr);
 
                 Update.begin(UPDATE_SIZE_UNKNOWN);
             } else if (upload.status == UPLOAD_FILE_WRITE) {
+                otaBytes += upload.currentSize;
+                otaHeader.feed(upload.buf, upload.currentSize);
+
+                if (!otaVerdictLogged && otaHeader.ready()) {
+                    otaVerdictLogged = true;
+                    latchOtaReject(otaHeader.verdict());
+                }
+
+                if (otaRejectReason != nullptr) {
+                    // Nothing more reaches flash. The body still drains on its own -
+                    // WebServer's boundary search reads it regardless of what happens
+                    // here - so the end handler still runs and can send the 400.
+                    return;
+                }
+
+                closeTelnetForOta();
                 Update.write(upload.buf, upload.currentSize);
             } else if (upload.status == UPLOAD_FILE_END) {
-                Update.end(true);
+                // A file too short to hold a header never reached a verdict above.
+                if (otaRejectReason == nullptr && !otaHeader.ready()) {
+                    latchOtaReject(FirmwareImageCheck::Verdict::NotFirmware);
+                }
+
+                if (otaRejectReason != nullptr) {
+                    // abort() on its own is enough: it resets the writer and latches an
+                    // error, after which end(true) could only return false.
+                    Update.abort();
+                } else {
+                    Update.end(true);
+                }
+            } else if (upload.status == UPLOAD_FILE_ABORTED) {
+                // Only the dropped-connection case, and the end handler never runs for
+                // it, so nothing is sent back here.
+                Update.abort();
+                otaRejectReason = nullptr;
+                otaRejectLabel = nullptr;
+                ::printLn("OTA: upload aborted after %u bytes", static_cast<unsigned>(otaBytes));
             }
         }
     );
@@ -263,5 +336,63 @@ void RemoteDevelopmentService::loop() {
         OTAServer->handleClient();
     }
 
+    // After handleClient(), so the reply is already queued when the board goes down.
+    if (otaRestartArmed && static_cast<int32_t>(millis() - otaRestartAtMs) >= 0) {
+        otaRestartArmed = false;
+        safeRestart();
+    }
+
     handleTelnet();
+}
+
+void RemoteDevelopmentService::armOtaRestart() {
+    otaRestartAtMs = millis() + OTA_RESTART_DELAY_MS;
+    otaRestartArmed = true;
+}
+
+void RemoteDevelopmentService::notifyUpdate(const FirmwareUpdateStage stage, const char *detail) {
+    if (updateStatusHandler) {
+        updateStatusHandler(stage, detail);
+    }
+}
+
+/**
+ * Turns a verdict into the rejection, or into a log line when it was forced past.
+ * The check runs either way - forcing only means it does not abort - so the log
+ * always records what the image actually was.
+ */
+void RemoteDevelopmentService::latchOtaReject(const FirmwareImageCheck::Verdict verdict) {
+    if (verdict == FirmwareImageCheck::Verdict::Ok) {
+        ::printLn("OTA: header ok, chip 0x%04X", otaHeader.seenChipId());
+        return;
+    }
+
+    const char *label = verdict == FirmwareImageCheck::Verdict::WrongChip
+                            ? Str::OTA_EINK_TITLE_WRONG_BOARD
+                            : Str::OTA_EINK_TITLE_BAD_FILE;
+
+    if (otaForced) {
+        ::printLn("OTA: header rejected (%s, chip 0x%04X) but forced - writing anyway",
+                label, otaHeader.seenChipId());
+        return;
+    }
+
+    ::printLn("OTA: header rejected - %s, chip 0x%04X", label, otaHeader.seenChipId());
+    otaRejectReason = FirmwareImageCheck::reasonFor(verdict);
+    otaRejectLabel = label;
+}
+
+void RemoteDevelopmentService::closeTelnetForOta() {
+    if (otaTelnetClosed) {
+        return;
+    }
+    otaTelnetClosed = true;
+
+    if (telnetClient && telnetClient.connected()) {
+        telnetFlushLogBuffer();
+        telnetClient.stop();
+    }
+    if (telnetServer) {
+        telnetServer->close();
+    }
 }

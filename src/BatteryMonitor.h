@@ -22,10 +22,10 @@
 class BatteryMonitor {
     enum : uint32_t {
         // The sensor itself samples at 200 ms; matching it costs nothing.
-        UPDATE_INTERVAL_MS = 200,
+        UPDATE_INTERVAL_MS = 5000,
         // The mapped percent must stay below the entry threshold this long before
         // the low state latches - a single LED-load sag must not trip it.
-        LOW_HOLD_MS = 10000,
+        LOW_HOLD_MS = 30000,
         // The voltage floats across the enter/exit thresholds as the LED load
         // varies, so the low state can latch again minutes later. The warning is
         // for the user, not for every latch: once shown, stay quiet this long.
@@ -33,8 +33,8 @@ class BatteryMonitor {
     };
 
     enum : uint8_t {
-        LOW_ENTER_PERCENT = 30,
-        LOW_EXIT_PERCENT = 35,   // hysteresis: leaving low needs a real recovery
+        LOW_ENTER_PERCENT = 20,
+        LOW_EXIT_PERCENT = 25,   // hysteresis: leaving low needs a real recovery
         // The shown percent jumps back up only on a change this big (charging, pack swap).
         JUMP_UP_PERCENT = 10,
     };

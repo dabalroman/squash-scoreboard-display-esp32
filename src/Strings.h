@@ -94,6 +94,17 @@ namespace Str {
     constexpr const char *const BOOT_OLED_WIFI_CONNECTING_PREFIX = "WIFI: ";
     constexpr const char *const BOOT_OLED_CREDENTIALS_SAVED = "ZAPISANO. RESTART...";
 
+    // Firmware update over the web page (V2). The e-paper line is drawn in the big
+    // 24 pt font, so it holds 4 characters - the title carries the reason.
+    constexpr const char *const OTA_EINK_TITLE_STARTED = "UPDATING";
+    constexpr const char *const OTA_EINK_LINE_STARTED = "OTA";
+    constexpr const char *const OTA_EINK_TITLE_WRONG_BOARD = "ZLA TABLICA";
+    constexpr const char *const OTA_EINK_TITLE_BAD_FILE = "ZLY PLIK";
+    constexpr const char *const OTA_EINK_TITLE_ERROR = "BLAD ZAPISU";
+    constexpr const char *const OTA_EINK_LINE_FAILED = "BLAD";
+    constexpr const char *const OTA_OLED_STARTED = "WGRYWANIE";
+    constexpr const char *const OTA_OLED_FAILED = "NIE WGRANO";
+
     // LED words - 4 characters, spelled as they light up (see LedText.h).
     // LED_CONFIG_BRIGHTNESS is 3: the view appends the level digit.
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "LEd";
@@ -109,6 +120,9 @@ namespace Str {
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "StAr";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
+    // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".
+    constexpr const char *const LED_OTA_PROGRESS = "otA";
+    constexpr const char *const LED_OTA_FAILED = "FAIL";
 
 #else
 
@@ -166,6 +180,17 @@ namespace Str {
     constexpr const char *const BOOT_OLED_WIFI_CONNECTING_PREFIX = "Connecting to ";
     constexpr const char *const BOOT_OLED_CREDENTIALS_SAVED = "Credentials saved! Rebooting...";
 
+    // Firmware update over the web page (V2). The e-paper line is drawn in the big
+    // 24 pt font, so it holds 4 characters - the title carries the reason.
+    constexpr const char *const OTA_EINK_TITLE_STARTED = "UPDATING";
+    constexpr const char *const OTA_EINK_LINE_STARTED = "OTA";
+    constexpr const char *const OTA_EINK_TITLE_WRONG_BOARD = "WRONG BOARD";
+    constexpr const char *const OTA_EINK_TITLE_BAD_FILE = "NOT FIRMWARE";
+    constexpr const char *const OTA_EINK_TITLE_ERROR = "WRITE ERROR";
+    constexpr const char *const OTA_EINK_LINE_FAILED = "FAIL";
+    constexpr const char *const OTA_OLED_STARTED = "UPDATING";
+    constexpr const char *const OTA_OLED_FAILED = "FAILED";
+
     // LED words - 4 characters, spelled as they light up (see LedText.h).
     // LED_CONFIG_BRIGHTNESS is short: the view appends the level digit.
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "br";
@@ -181,6 +206,9 @@ namespace Str {
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "PLAY";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
+    // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".
+    constexpr const char *const LED_OTA_PROGRESS = "otA";
+    constexpr const char *const LED_OTA_FAILED = "FAIL";
 
 #endif
 }

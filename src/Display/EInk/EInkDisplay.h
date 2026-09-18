@@ -190,8 +190,13 @@ public:
      * A free-text screen: inverted title bar plus one large centred line. Used by
      * the device-level Overlay (low battery and, later, the shutdown warning), and
      * value-compared like every other screen, so it is safe to call every frame.
+     *
+     * `forceFull` turns it into a full refresh, for a screen that must not carry
+     * the ghost of what it replaced. It is folded into the hash, or a forced call
+     * showing the same title and line as the partial before it is swallowed by the
+     * dedup and stays partial.
      */
-    void showMessage(const char *title, const char *line) {
+    void showMessage(const char *title, const char *line, const bool forceFull = false) {
         if (splashHoldActive()) {
             return;
         }
@@ -199,6 +204,7 @@ public:
         uint32_t h = hashAdd(HASH_SEED, SCREEN_MESSAGE);
         h = hashText(h, title);
         h = hashText(h, line);
+        h = hashAdd(h, forceFull ? 1u : 0u);
         if (!commit(h)) {
             return;
         }
@@ -212,6 +218,12 @@ public:
         if (line != nullptr && line[0] != '\0') {
             g.setTextColor(INK);
             EInkWidgets::printCentered(g, line, 170, &FreeMonoBold24pt7b);
+        }
+
+        if (forceFull) {
+            shownScreen = SCREEN_MESSAGE;
+            eink.requestFullRefresh();
+            return;
         }
 
         present(SCREEN_MESSAGE);
@@ -530,7 +542,7 @@ public:
     void showMatchScore(const char *, const uint8_t, const char *, const uint8_t, const char *) {}
     void showMenu(const char *, const EInkMenuRow *, const uint8_t, const uint8_t,
                   const EInkFooter & = EInkFooter()) {}
-    void showMessage(const char *, const char *) {}
+    void showMessage(const char *, const char *, const bool = false) {}
     void showImage(const uint8_t *) {}
 
     uint32_t refreshes() const { return 0; }

@@ -10,7 +10,7 @@
  * Two screens, sharing one shell and nav bar:
  *   GET /        the profile (roster) editor - the default screen
  *   POST /save   its save endpoint
- *   GET /update  the firmware upload screen (UI only - see TODO #18)
+ *   GET /update  the firmware upload screen, which posts to POST /update
  *
  * `/` used to be the WiFi credentials form. That form now lives on the update
  * screen, because WiFi exists here only to serve OTA: the profile editor always
@@ -85,6 +85,16 @@ public:
     }
 
     /**
+     * Called by whatever else counts as someone using the editor - the firmware
+     * upload does, and it is the slow case: a fumbling recipient who opens PROFILE
+     * and then works only on the update screen must not have the AP closed under
+     * them by the 15-minute idle timer.
+     */
+    void noteActivity() {
+        lastActivity = millis();
+    }
+
+    /**
      * Pumped from main.cpp right after the networking loop. The restart is
      * deferred by a few hundred ms so the socket flushes and the phone sees the
      * confirmation instead of a dropped connection.
@@ -132,7 +142,9 @@ private:
             else if (*c == '"') out += F("&quot;");
             else out += *c;
         }
-        server->sendContent(out);
+        if (out.length() > 0) {
+            server->sendContent(out);
+        }
     }
 
     // Escaped for a JavaScript string literal. `<` is escaped too, so a name can
@@ -225,8 +237,10 @@ private:
             ".card input[type=text],.card input[type=password]{width:100%;padding:11px 12px;"
             "font-size:16px;color:var(--text);background:#fff;border:1px solid var(--line);"
             "border-radius:10px;margin-bottom:12px}"
-            ".todo{background:#fff7e0;border:1px solid #e6d5a3;"
-            "border-radius:12px;padding:12px;color:#6d5c2f;font-size:13px}"
+            "p.fwv{margin:0 0 12px;color:var(--muted);font-size:13px}"
+            "#otabar{display:none;width:100%;height:14px;margin-top:12px}"
+            ".danger{display:none;width:100%;padding:13px;margin-top:10px;font-size:16px;color:#fff;"
+            "background:var(--danger);border:0;border-radius:14px;cursor:pointer}"
             "#otamsg{min-height:22px;font-size:14px;color:var(--muted);margin-top:10px;"
             "word-break:break-word}"
             // The picker is a tap-to-open sheet rather than a dropdown: a colour is
@@ -352,39 +366,95 @@ private:
     // ---- firmware update ---------------------------------------------------
 
     /**
-     * TODO #18: the upload itself. This renders the picker and validates the
-     * choice, then stops - it deliberately does not POST anything. The receiving
-     * end already exists (RemoteDevelopmentService registers POST /update, which
-     * is what `pio run -t upload -e lolin_s2_mini_ota` curls a multipart body to),
-     * so #18 is mostly wiring this form to it, plus progress and error reporting.
+     * The firmware upload screen. It posts to POST /update, which
+     * RemoteDevelopmentService owns - the same endpoint
+     * `pio run -t upload -e lolin_s2_mini_ota` curls a multipart body to.
+     *
+     * Written for the person this whole path exists for: someone who was emailed a
+     * .bin and has never seen a build directory. That is why the running version is
+     * on the page (the only confirmation an update landed that they will ever see),
+     * why a refusal says what to do rather than what the header held, and why the
+     * bypass appears only *after* a refusal - offered up front it would simply be
+     * pressed, and the check would buy nothing.
      *
      * Ungated on purpose: unlike the profile editor this has to stay reachable
      * whenever networking is up, including when no screen is open on the board.
      */
     void handleUpdatePage() {
+        // Browsing this screen is using the editor; without this the mode closes
+        // under someone who came here and stayed.
+        lastActivity = millis();
+
         beginPage(200, "Aktualizacja oprogramowania", NAV_UPDATE);
         server->sendContent(F(
             "<header><h1>Aktualizacja oprogramowania</h1>"
             "<p class=\"sub\">Wybierz plik firmware.bin i wyślij go na tablicę.</p></header>"
             "<main><div class=\"card\">"
+            "<p class=\"fwv\">Wersja na tablicy: <b>"));
+        server->sendContent(FW_VERSION);
+        server->sendContent(F(
+            "</b></p>"
             "<input type=\"file\" id=\"fw\" accept=\".bin\">"
             "<button type=\"button\" id=\"otasend\" class=\"primary\">Wgraj i zrestartuj</button>"
-            "<div id=\"otamsg\"></div></div>"
-            "<p class=\"todo\">TODO #18 - wysyłka nie jest jeszcze podłączona. "
-            "Na razie jest to sam interfejs; wgrywanie obsłuży zadanie #18.</p>"));
+            "<progress id=\"otabar\" max=\"100\" value=\"0\"></progress>"
+            "<div id=\"otamsg\"></div>"
+            "<button type=\"button\" id=\"otaforce\" class=\"danger\">Wgraj mimo to</button>"
+            "</div>"));
 
         sendWifiCard();
 
         server->sendContent(F(
             "</main>"
             "<script>"
-            "function om(t){document.getElementById('otamsg').textContent=t;}"
-            "document.getElementById('otasend').onclick=function(){"
-            "var f=document.getElementById('fw').files[0];"
+            "var busy=false,bad=null,t0=0;"
+            "function el(i){return document.getElementById(i);}"
+            "function om(t){el('otamsg').textContent=t;}"
+            "function bar(p){var b=el('otabar');b.style.display=p<0?'none':'block';if(p>=0)b.value=p;}"
+            "function hideForce(){bad=null;el('otaforce').style.display='none';}"
+            "el('fw').onchange=function(){hideForce();om('');bar(-1);};"
+            "function send(f,force){"
+            "busy=true;hideForce();el('otasend').disabled=true;bar(0);"
+            "om('Wysy\\u0142anie pliku...');"
+            "var d=new FormData();d.append('update',f,f.name);"
+            "var x=new XMLHttpRequest();"
+            "x.open('POST','/update'+(force?'?force=1':''),true);"));
+
+        server->sendContent(F(
+            // Progress only. 100 % here means the browser has finished writing to its
+            // own socket, not that the board has finished reading it, so nothing is
+            // ever decided on this event - the verdict arrives in onload.
+            "x.upload.onprogress=function(e){if(e.lengthComputable)bar(Math.round(e.loaded*100/e.total));};"
+            "x.onload=function(){busy=false;el('otasend').disabled=false;"
+            "if(x.status==200){bar(100);"
+            "om('Wgrano. Tablica restartuje si\\u0119, poczekaj...');t0=Date.now();wait();return;}"
+            "bar(-1);om(x.responseText||('B\\u0142\\u0105d '+x.status));"
+            // Only a refused image can be forced. A connection that broke tells us
+            // nothing about the file, so it gets no bypass.
+            "if(x.status==400){bad=f;el('otaforce').style.display='block';}};"
+            "x.onerror=x.onabort=function(){busy=false;el('otasend').disabled=false;bar(-1);hideForce();"
+            "om('Po\\u0142\\u0105czenie przerwane. Sprawd\\u017a, czy telefon jest nadal "
+            "po\\u0142\\u0105czony z sieci\\u0105 tablicy, i spr\\u00f3buj ponownie.');};"
+            "x.send(d);}"));
+
+        server->sendContent(F(
+            // Any answer at all proves the board is back: GET / legitimately replies
+            // 503 when the profile screen is not the open one.
+            "function wait(){var x=new XMLHttpRequest();"
+            "x.open('GET','/?ping='+Date.now(),true);x.timeout=4000;"
+            "x.onload=function(){location.reload();};"
+            "x.onerror=x.ontimeout=function(){"
+            "if(Date.now()-t0>120000){om('Tablica nie odpowiada. Po\\u0142\\u0105cz telefon ponownie "
+            "z sieci\\u0105 tablicy i od\\u015bwie\\u017c stron\\u0119.');return;}"
+            "setTimeout(wait,2000);};x.send();}"
+            "el('otasend').onclick=function(){if(busy)return;"
+            "var f=el('fw').files[0];"
             "if(!f){om('Najpierw wybierz plik .bin.');return;}"
             "if(!/\\.bin$/i.test(f.name)){om('To nie jest plik .bin.');return;}"
-            "om('TODO #18: wybrano '+f.name+' ('+Math.round(f.size/1024)+' kB). "
-            "Wysy\\u0142ka zostanie pod\\u0142\\u0105czona w zadaniu #18.');};"
+            "send(f,false);};"
+            "el('otaforce').onclick=function(){if(busy||!bad)return;"
+            "if(!confirm('Ten plik nie przeszed\\u0142 sprawdzenia. Wgranie go mo\\u017ce sprawi\\u0107, "
+            "\\u017ce tablica przestanie dzia\\u0142a\\u0107. Wgra\\u0107 mimo to?'))return;"
+            "send(bad,true);};"
             "</script>"));
         endPage();
     }
@@ -636,6 +706,7 @@ public:
     void open(uint32_t) {}
     void close() {}
     uint32_t lastActivityMs() const { return 0; }
+    void noteActivity() {}
     void loop() {}
 };
 

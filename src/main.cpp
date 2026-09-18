@@ -270,6 +270,57 @@ void setup() {
     // Before init(): the routes are registered with the port-80 server whenever it
     // is created, which may be here or later, when the roster editor raises its AP.
     remoteDev.setExtraRouteRegistrar([](WebServer &server) { playerSetupWebUi.registerRoutes(server); });
+    // Same capture rule as above - file-scope globals only. It is here, and not in
+    // RemoteDevelopmentService, so that class never learns about LedDisplay or
+    // EInkDisplay: it reports a stage, main.cpp decides what the board shows.
+    remoteDev.setUpdateStatusHandler([](const FirmwareUpdateStage stage, const char *detail) {
+        // An upload is someone using the roster editor. Without this the 15-minute
+        // idle close can drop the AP out from under a phone that is mid-update.
+        playerSetupWebUi.noteActivity();
+
+        // Nothing to paint on success: the board reboots a moment later and the
+        // splash puts the panel back on its own.
+        if (stage == FirmwareUpdateStage::Succeeded) {
+            return;
+        }
+
+        const bool failed = stage == FirmwareUpdateStage::Failed;
+        const Color color = failed ? Colors::Red : Colors::White;
+
+        ledDisplay.resetAnimations();
+        ledDisplay.setColonAppearance();
+        ledDisplay.setGlyphsText(failed ? Str::LED_OTA_FAILED : Str::LED_OTA_PROGRESS);
+        ledDisplay.setGlyphsColor(color, color);
+        ledDisplay.setGlyphBlinking(false, false);
+        ledDisplay.setPlayersIndicatorsState(true);
+        ledDisplay.setIndicatorAppearancePlayerA(color, false);
+        ledDisplay.setIndicatorAppearancePlayerB(color, false);
+        ledDisplay.setBorderEnabled(true);
+        ledDisplay.setBorderAppearance(color, color, false, false);
+        ledDisplay.display();
+
+        backDisplay->clear();
+        backDisplay->initSmallFont();
+        backDisplay->setCursorToLine();
+        backDisplay->println(failed ? Str::OTA_OLED_FAILED : Str::OTA_OLED_STARTED);
+        if (detail != nullptr) {
+            backDisplay->setCursorToLine(0, 1);
+            backDisplay->println(detail);
+        }
+        backDisplay->display();
+
+        // WebServer reads the whole multipart body inside handleClient(), so loop()
+        // - and with it the e-paper's refresh pump - is stalled for the entire
+        // upload. This screen has to be driven to completion right here, and as a
+        // full refresh: an update screen must not carry the ghost of the match
+        // behind it.
+        einkDisplay.dismissSplash();
+        einkDisplay.showMessage(
+            failed ? (detail != nullptr ? detail : Str::OTA_EINK_TITLE_ERROR) : Str::OTA_EINK_TITLE_STARTED,
+            failed ? Str::OTA_EINK_LINE_FAILED : Str::OTA_EINK_LINE_STARTED,
+            true);
+        einkDisplay.flushRefresh();
+    });
     remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
