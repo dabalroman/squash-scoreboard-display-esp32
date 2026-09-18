@@ -10,6 +10,7 @@
 #include "Tournament/Tournament.h"
 #include "Tournament/Game/GameScoreHistory.h"
 #include "Tournament/Game/PadelGemScorer.h"
+#include "Tournament/Rules/PadelRules.h"
 
 /**
  * Padel set scoring.
@@ -18,7 +19,13 @@
  * tentative for COMMIT_TIMEOUT_MS (undoable) exactly like the other sports.
  * On commit the gem ladder advances; when a gem is won it is registered as one
  * "point" on the engine Game (whose score = gems won this set). When the gems
- * satisfy PadelRules (6, win by 2) the set is over.
+ * satisfy PadelRules the set is over.
+ *
+ * All-square at PadelRules::GEMS_PER_SET the set goes to a tiebreak: the scorer
+ * counts numerically to 7 (win by 2) and both displays print plain numbers in
+ * place of the ladder. The mode is derived from the gem score on every commit
+ * and step-back, never latched, so undoing out of a tiebreak restores the
+ * ladder on its own.
  *
  * Front display & rear OLED: current gem points (Love/15/30/40, "Ad" for
  * advantage). LED bar: gems won this set. While the uncommitted rally is itself
@@ -63,6 +70,14 @@ class PadelGamePlayingView final : public View {
         }
     }
 
+    // Tens blank below 10, matching the ladder's own [  ][0] for love.
+    static GlyphPair numberToGlyphs(const uint8_t value) {
+        return {
+            value < 10 ? Glyph::Empty : LedDisplay::digitToGlyph(value / 10),
+            LedDisplay::digitToGlyph(value % 10)
+        };
+    }
+
     static String pointToString(const PadelPoint point) {
         switch (point) {
             default:
@@ -74,6 +89,22 @@ class PadelGamePlayingView final : public View {
         }
     }
 
+    GlyphPair glyphsFor(const GameSide side) const {
+        return scorer.isTiebreak()
+                   ? numberToGlyphs(scorer.getRawPoints(side))
+                   : pointToGlyphs(scorer.getPoint(side));
+    }
+
+    String stringFor(const GameSide side) const {
+        return scorer.isTiebreak()
+                   ? String(scorer.getRawPoints(side))
+                   : pointToString(scorer.getPoint(side));
+    }
+
+    bool isTiebreakNow() const {
+        return PadelRules::isTiebreakScore(game->getRealScore(GameSide::a), game->getRealScore(GameSide::b));
+    }
+
     void stepBackToPreviousGem() {
         const CompletedGem last = completedGems.back();
         completedGems.pop_back();
@@ -81,6 +112,10 @@ class PadelGamePlayingView final : public View {
         game->losePoint(last.winner);
         game->commit();
 
+        // Set the mode before restore(): the gem coming back predates the
+        // tiebreak once the step-back drops the set below all-square, and the
+        // commit() below must weigh it against the right target.
+        scorer.setTiebreak(isTiebreakNow());
         scorer.restore(last.history);
         scorer.undoRally(last.winner);
         scorer.commit();
@@ -162,7 +197,7 @@ public:
                 }
 
                 completedGems.push_back({scorer.scoreHistory(), gemWinner});
-                scorer.reset();
+                scorer.reset(isTiebreakNow());
             }
         }
     }
@@ -189,7 +224,7 @@ public:
         if (pendingWinner != GameSide::none) {
             const bool leftWon = pendingWinner == GameSide::a;
             const Color winnerColor = leftWon ? playerLeft->getColor() : playerRight->getColor();
-            const GlyphPair point = pointToGlyphs(scorer.getPoint(pendingWinner));
+            const GlyphPair point = glyphsFor(pendingWinner);
 
             if (leftWon) {
                 ledDisplay.setGlyphsGlyph(point.high, point.low, Glyph::Empty, Glyph::Empty);
@@ -208,8 +243,8 @@ public:
                 !leftWon
             );
         } else {
-            const GlyphPair left = pointToGlyphs(scorer.getPoint(GameSide::a));
-            const GlyphPair right = pointToGlyphs(scorer.getPoint(GameSide::b));
+            const GlyphPair left = glyphsFor(GameSide::a);
+            const GlyphPair right = glyphsFor(GameSide::b);
             ledDisplay.setGlyphsGlyph(left.high, left.low, right.high, right.low);
 
             ledDisplay.setGlyphsAppearance(
@@ -263,7 +298,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), game->getRealScore(GameSide::a),
             playerRight->getName(), game->getRealScore(GameSide::b),
-            "GEMS",
+            scorer.isTiebreak() ? "TIE" : "GEMS",
             sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
         );
     }
@@ -274,15 +309,15 @@ public:
         const GameSide pendingWinner = scorer.pendingGemWinner();
 
         if (pendingWinner != GameSide::none) {
-            const String winningPoint = pointToString(scorer.getPoint(pendingWinner));
+            const String winningPoint = stringFor(pendingWinner);
             backDisplay.renderScoreWidget(
                 pendingWinner == GameSide::a ? winningPoint : String(""),
                 pendingWinner == GameSide::b ? winningPoint : String("")
             );
         } else {
             backDisplay.renderScoreWidget(
-                pointToString(scorer.getPoint(GameSide::a)),
-                pointToString(scorer.getPoint(GameSide::b))
+                stringFor(GameSide::a),
+                stringFor(GameSide::b)
             );
         }
 

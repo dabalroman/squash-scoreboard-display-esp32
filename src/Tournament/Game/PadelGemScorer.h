@@ -36,8 +36,17 @@ enum class PadelPoint : uint8_t {
 class PadelGemScorer {
     // A gem tops out around 8 rallies (standard) and stays well under 16 even in
     // a long advantage battle, so reserve 16 up front — the live gem never
-    // reallocates in practice.
+    // reallocates in practice. An uncapped tiebreak runs longer (15-13 is 28
+    // rallies), so it reserves twice as much.
     static constexpr size_t GEM_RALLY_RESERVE = 16;
+    static constexpr size_t TIEBREAK_RALLY_RESERVE = 32;
+
+    // Points that take a gem, win by 2: the ladder's 40 is the 4th point, a
+    // tiebreak runs to 7.
+    static constexpr uint8_t GEM_TARGET = 4;
+    static constexpr uint8_t TIEBREAK_TARGET = 7;
+
+    bool tiebreak = false;
 
     GameScoreHistory history = GameScoreHistory(GEM_RALLY_RESERVE);
 
@@ -66,13 +75,28 @@ class PadelGemScorer {
         return points;
     }
 
-    static GameSide winnerOf(const int a, const int b) {
-        if (a >= 4 && (a - b) >= 2) return GameSide::a;
-        if (b >= 4 && (b - a) >= 2) return GameSide::b;
+    GameSide winnerOf(const int a, const int b) const {
+        const int target = tiebreak ? TIEBREAK_TARGET : GEM_TARGET;
+
+        if (a >= target && (a - b) >= 2) return GameSide::a;
+        if (b >= target && (b - a) >= 2) return GameSide::b;
         return GameSide::none;
     }
 
 public:
+    /**
+     * Tiebreak mode: the same rally history, scored numerically to 7 instead of
+     * the 0/15/30/40 ladder's 4. The owner derives it from the gem score rather
+     * than latching it, so stepping back out of a tiebreak restores the ladder.
+     */
+    void setTiebreak(const bool value) {
+        tiebreak = value;
+    }
+
+    bool isTiebreak() const {
+        return tiebreak;
+    }
+
     void scoreRally(const GameSide side) {
         history.scorePoint(side);
     }
@@ -138,6 +162,11 @@ public:
         return PadelPoint::Love;
     }
 
+    /** Raw point count (committed + tentative) — what a tiebreak shows in place of the ladder. */
+    uint8_t getRawPoints(const GameSide side) const {
+        return temporaryPoints(side);
+    }
+
     /** Full rally history of the current gem, for snapshotting a finished gem. */
     const GameScoreHistory &scoreHistory() const {
         return history;
@@ -148,9 +177,10 @@ public:
         history = saved;
     }
 
-    /** Clears the gem for a fresh start. */
-    void reset() {
-        history = GameScoreHistory(GEM_RALLY_RESERVE);
+    /** Clears the gem for a fresh start, as a normal gem or as the tiebreak. */
+    void reset(const bool asTiebreak = false) {
+        tiebreak = asTiebreak;
+        history = GameScoreHistory(asTiebreak ? TIEBREAK_RALLY_RESERVE : GEM_RALLY_RESERVE);
     }
 };
 
