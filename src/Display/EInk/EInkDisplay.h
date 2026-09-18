@@ -266,21 +266,36 @@ public:
         }
         updateMenuWindow(selected, rowCount, visible);
 
-        uint32_t h = hashAdd(HASH_SEED, SCREEN_MENU);
-        h = hashText(h, title);
-        h = hashText(h, hasFooter ? footer.line1 : "");
+        uint32_t contentHash = hashAdd(HASH_SEED, SCREEN_MENU);
+        contentHash = hashText(contentHash, title);
+        contentHash = hashText(contentHash, hasFooter ? footer.line1 : "");
         for (uint8_t i = 0; i < extraCount; i++) {
-            h = hashText(h, extra[i]);
+            contentHash = hashText(contentHash, extra[i]);
         }
-        h = hashAdd(h, static_cast<uint16_t>(hasFooter ? footer.batteryPercent : -1));
-        h = hashAdd(h, selected);
-        h = hashAdd(h, menuOffset);
-        h = hashAdd(h, rowCount);
+        contentHash = hashAdd(contentHash, hasFooter && footer.batteryPercent >= 0 ? 1u : 0u);
+        contentHash = hashAdd(contentHash, selected);
+        contentHash = hashAdd(contentHash, menuOffset);
+        contentHash = hashAdd(contentHash, rowCount);
         for (uint8_t i = 0; i < rowCount; i++) {
-            h = hashText(h, rows[i].label);
-            h = hashText(h, rows[i].value);
-            h = hashAdd(h, static_cast<uint8_t>(rows[i].check));
+            contentHash = hashText(contentHash, rows[i].label);
+            contentHash = hashText(contentHash, rows[i].value);
+            contentHash = hashAdd(contentHash, static_cast<uint8_t>(rows[i].check));
         }
+
+        const bool contentChanged = (shownScreen != SCREEN_MENU || contentHash != lastMenuContentHash);
+        if (contentChanged) {
+            lastMenuContentHash = contentHash;
+            lastBatteryRefreshMs = millis();
+            displayedBatteryPercent = footer.batteryPercent;
+        } else if (footer.batteryPercent >= 0 && footer.batteryPercent != displayedBatteryPercent
+                   && millis() - lastBatteryRefreshMs >= BATTERY_REFRESH_COOLDOWN_MS) {
+            displayedBatteryPercent = footer.batteryPercent;
+            lastBatteryRefreshMs = millis();
+        }
+
+        const int16_t effectiveBatteryPercent = (footer.batteryPercent >= 0) ? displayedBatteryPercent : -1;
+
+        uint32_t h = hashAdd(contentHash, static_cast<uint16_t>(hasFooter ? effectiveBatteryPercent : -1));
         if (!commit(h)) {
             return;
         }
@@ -309,7 +324,7 @@ public:
 
         if (hasFooter) {
             EInkWidgets::drawFooter(g, g.height() - footerHeight, footer.line1, extra, extraCount,
-                                    footer.batteryPercent);
+                                    effectiveBatteryPercent);
         }
 
         present(SCREEN_MENU);
@@ -358,6 +373,9 @@ private:
 
     // Upper bound for flushRefresh(); a partial is ~0.5 s, a full ~1.6 s.
     enum : uint32_t { FLUSH_TIMEOUT_MS = 5000 };
+
+    // Minimum interval between idle battery-forced e-ink refreshes (5 minutes).
+    enum : uint32_t { BATTERY_REFRESH_COOLDOWN_MS = 300000 };
 
     /**
      * The match screen, in canvas y. Reading down the panel it is name, score,
@@ -525,6 +543,9 @@ private:
     uint32_t menuTitleHash = 0;
     uint8_t menuOffset = 0;
     uint32_t splashHoldUntilMs = 0;
+    uint32_t lastMenuContentHash = 0;
+    int16_t displayedBatteryPercent = -1;
+    uint32_t lastBatteryRefreshMs = 0;
 };
 
 #else
