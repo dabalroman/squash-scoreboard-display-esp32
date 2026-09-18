@@ -82,6 +82,11 @@ unsigned long lastEInkStatsLog = 0;
 std::unique_ptr<DeviceMode> deviceMode;
 DeviceModeState deviceState = DeviceModeState::Booting;
 
+// A mode change is requested from inside the outgoing mode's own loop(), so the
+// swap itself is deferred to one safe point in loop() - see requestDeviceMode().
+DeviceModeState pendingMode = DeviceModeState::ModeSwitchingMode;
+bool modeChangePending = false;
+
 /**
  * The factory roster. Still hardcoded here, as player profiles always have been,
  * but now only as the fallback: PlayerRoster reads the live list from NVS and
@@ -139,7 +144,18 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(Board::RF_D3), onRemoteReceiverInterrupt_d3, RISING);
 }
 
-void changeDeviceMode(const DeviceModeState deviceModeState) {
+/**
+ * What every mode's onDeviceModeChange callback calls. It only records the wish:
+ * the call arrives from handleInput(), deep inside the outgoing mode's own loop(),
+ * and building the new mode here would free `this` and the active view under the
+ * three render calls that still follow. loop() applies it on the next frame.
+ */
+void requestDeviceMode(const DeviceModeState deviceModeState) {
+    pendingMode = deviceModeState;
+    modeChangePending = true;
+}
+
+void buildDeviceMode(const DeviceModeState deviceModeState) {
     deviceState = deviceModeState;
 
     switch (deviceModeState) {
@@ -150,7 +166,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 batteryMonitor
             );
             break;
@@ -161,7 +177,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 preferencesManager,
                 batteryMonitor
             );
@@ -173,7 +189,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 []{ gBuzzer.playCelebration(); }
             );
@@ -185,7 +201,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 std::make_unique<VolleyballRules>(),
                 []{ gBuzzer.playCelebration(); }
@@ -198,7 +214,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 std::make_unique<ShortVolleyballRules>(),
                 []{ gBuzzer.playCelebration(); }
@@ -211,7 +227,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 *gRemoteDevelopmentService,
                 playerSetupWebUi
             );
@@ -223,7 +239,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 *backDisplay,
                 einkDisplay,
                 remoteInputManager,
-                [](const DeviceModeState state) { changeDeviceMode(state); },
+                [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 []{ gBuzzer.playCelebration(); }
             );
@@ -276,7 +292,7 @@ void setup() {
         printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
     }
 
-    changeDeviceMode(DeviceModeState::ModeSwitchingMode);
+    buildDeviceMode(DeviceModeState::ModeSwitchingMode);
 }
 
 /**
@@ -353,6 +369,20 @@ void loop() {
     if (overlay.active(lastUpdate)) {
         overlay.render(ledDisplay, *backDisplay, einkDisplay);
         return;
+    }
+
+    // Applied here, not in the callback: the request arrives from inside the outgoing
+    // mode's loop(), which would leave its own render calls running on a freed object.
+    // After the overlay gate, because an overlay pauses the mode and owns all three
+    // displays - the incoming constructor must not draw underneath it - and so the
+    // restoreView() below lands on the new mode.
+    if (modeChangePending) {
+        // Cleared first, so a constructor that requests a change is honoured next frame.
+        modeChangePending = false;
+        // reset() before the build: the outgoing teardown (PlayerSetupMode drops its AP)
+        // runs before the incoming constructor, and peak heap stays lower.
+        deviceMode.reset();
+        buildDeviceMode(pendingMode);
     }
 
     if (overlay.takeFinished()) {
