@@ -35,7 +35,6 @@ struct ModeMenuEntry {
 class ModeSwitchingView final : public View {
     std::function<void(DeviceModeState)> onDeviceModeChange;
     const BatteryMonitor &batteryMonitor;
-    int16_t shownBatteryPercent = -1;
 
     // Declaration order is the correctness argument: entryIds feeds optionsList,
     // which Scrollable binds by reference and whose size it snapshots. Both are
@@ -121,30 +120,16 @@ public:
                              EInkFooter(nullptr, nullptr, nullptr, batteryPercent));
     }
 
+    // The battery is an e-paper-only readout now: on the OLED it lived in the top
+    // strip the damaged panel never lights, and the 3-row menu below leaves it
+    // nowhere else to go.
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        const int16_t batteryPercent = batteryMonitor.available()
-            ? static_cast<int16_t>(batteryMonitor.percent())
-            : -1;
-
-        // Redraw while the menu is open whenever the shown percent changes.
-        if (batteryPercent != shownBatteryPercent) {
-            shouldRenderBack = true;
-        }
-
         if (!shouldRenderBack) {
             return;
         }
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-
-        if (batteryPercent >= 0) {
-            char text[10];
-            snprintf(text, sizeof(text), "BAT %d%%", batteryPercent);
-            backDisplay.printStatusRight(text);
-        }
-
-        shownBatteryPercent = batteryPercent;
         backDisplay.display();
 
         shouldRenderBack = false;

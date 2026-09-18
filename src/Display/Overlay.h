@@ -133,9 +133,13 @@ private:
         const uint8_t size = length * 12 <= 128 ? 2 : 1;
         const int16_t width = static_cast<int16_t>(length) * 6 * size;
 
+        // Built-in font: the cursor y is the glyph top, not a baseline, so the
+        // dead strip is cleared by a plain floor rather than a measured deficit.
+        const int16_t top = y < BackDisplay::DEAD_TOP_ROWS ? BackDisplay::DEAD_TOP_ROWS : y;
+
         backDisplay.screen->setFont(nullptr);
         backDisplay.screen->setTextSize(size);
-        backDisplay.screen->setCursor((128 - width) / 2, y);
+        backDisplay.screen->setCursor((128 - width) / 2, top);
         backDisplay.screen->print(text);
     }
 };

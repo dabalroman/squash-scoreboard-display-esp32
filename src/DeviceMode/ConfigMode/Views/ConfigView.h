@@ -25,7 +25,6 @@ class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
     const BatteryMonitor &batteryMonitor;
-    int16_t shownBatteryPercent = -1;
 
     const std::vector<String> optionsList = {
         Str::CONFIG_OPTION_BRIGHTNESS_OLED,
@@ -221,39 +220,19 @@ public:
                                         ip.length() > 0 ? ip.c_str() : nullptr, batteryPercent));
     }
 
+    // The battery is an e-paper-only readout now: on the OLED it lived in the top
+    // strip the damaged panel never lights, and the 3-row menu below leaves it
+    // nowhere else to go. The footer here still carries it.
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        const int16_t batteryPercent = batteryMonitor.available()
-            ? static_cast<int16_t>(batteryMonitor.percent())
-            : -1;
-
-        // Refresh while open whenever the shown battery value changes.
-        if (batteryPercent != shownBatteryPercent) {
-            shouldRenderBack = true;
-        }
-
         if (!shouldRenderBack) {
             return;
         }
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-
-        if (batteryPercent >= 0) {
-            renderBattery(backDisplay, batteryPercent);
-        }
-
-        shownBatteryPercent = batteryPercent;
         backDisplay.display();
 
         shouldRenderBack = false;
-    }
-
-private:
-    static void renderBattery(BackDisplay &backDisplay, const int16_t percent) {
-        char text[10];
-        snprintf(text, sizeof(text), "BAT %d%%", percent);
-
-        backDisplay.printStatusRight(text);
     }
 };
 

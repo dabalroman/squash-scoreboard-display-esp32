@@ -20,6 +20,7 @@ class BackDisplay {
     bool isBlinking = false;
     bool sameSideMode = false;
     Dimensions currentFontDimensions = {0, 0};
+    uint8_t currentFontAscent = 0;
 
 public:
     constexpr static uint8_t ONE_CHAR_WIDTH_24pt7b = 26;
@@ -29,16 +30,32 @@ public:
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_2x_24pt7b = 59;
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_9pt7b = 20;
 
+    /**
+     * First row text may occupy on the damaged V2 rear panel. The damage is not a
+     * solid strip: every *even* row from 0 to 12 is dead (alternating COM lines),
+     * measured on the device 2026-09-18. 13 would clear it completely, but 11 is
+     * the chosen floor - only the stripe at row 12 then crosses a glyph, and one
+     * missing line is hard to notice, while the two rows saved keep the 3-row menu
+     * spacing closer to even.
+     *
+     * Any text that would land above is pushed down by exactly the deficit; set to
+     * 0 to restore the original layout, no other edit needed. Global on purpose -
+     * the shift is invisible on a healthy panel, so a per-board split would not
+     * earn itself.
+     */
+    constexpr static uint8_t DEAD_TOP_ROWS = 11;
+
     Adafruit_SSD1306 *screen;
 
     explicit BackDisplay(Adafruit_SSD1306 *backDisplay) : screen(backDisplay) {
         screen->setRotation(Board::OLED_ROTATION);
         screen->clearDisplay();
-        screen->setFont(&FreeMono9pt7b);
-        screen->setTextSize(1);
         screen->setTextColor(SSD1306_WHITE);
-        screen->setCursor(0, VERTICAL_CURSOR_OFFSET_9pt7b);
-        screen->println(Str::BOOT_OLED_INITIALIZING);
+        // Through initSmallFont, so the ascent used by clearDeadTop is set before
+        // the first draw rather than left at 0.
+        initSmallFont();
+        setCursorToLine();
+        println(Str::BOOT_OLED_INITIALIZING);
         screen->display();
     }
 
@@ -68,14 +85,16 @@ public:
 
     void printCentered(const String &text) const {
         setCursorToCenter(text.length());
-        screen->print(text);
+        print(text);
     }
 
     void print(const String &text) const {
+        clearDeadTop();
         screen->print(text);
     }
 
     void println(const String &text) const {
+        clearDeadTop();
         screen->println(text);
     }
 
@@ -127,29 +146,18 @@ public:
         drawThiccTopToBottomLine(77, 128 - 83, 3);
     }
 
-    /**
-     * A short status string in the free strip above the first 9 pt line (rows
-     * 0-6), right-aligned with the built-in 6x8 font, so the menu below does not
-     * move. Restores the small font afterwards.
-     */
-    void printStatusRight(const char *text) {
-        screen->setFont(nullptr);
-        screen->setTextSize(1);
-        screen->setCursor(128 - static_cast<int16_t>(strlen(text)) * 6, 0);
-        screen->print(text);
-        initSmallFont();
-    }
-
     void initBigFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMonoBold24pt7b);
         currentFontDimensions = {ONE_CHAR_WIDTH_24pt7b, VERTICAL_CURSOR_OFFSET_24pt7b};
+        currentFontAscent = measureAscent();
     }
 
     void initSmallFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMono9pt7b);
         currentFontDimensions = {ONE_CHAR_WIDTH_9pt7b, VERTICAL_CURSOR_OFFSET_9pt7b};
+        currentFontAscent = measureAscent();
     }
 
     void setCursorToCenter(const uint8_t amountOfChars) const {
@@ -173,6 +181,53 @@ public:
 
     void setCursorToLineRightForNumbers(const String &text, const uint8_t line = 0, const uint8_t offset = 4) const {
         setCursorToLineRight(text, line, offset);
+    }
+
+private:
+    /**
+     * Tallest ascent among the glyphs these screens actually draw, for the font
+     * that is currently set. Measured once per font switch, from one sample
+     * string, rather than from the font's whole table: the table's worst case
+     * comes from punctuation nothing here uses and would drop every line 3 px
+     * further than needed.
+     */
+    uint8_t measureAscent() const {
+        int16_t x1, y1;
+        uint16_t w, h;
+        screen->getTextBounds(
+            F("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"),
+            0, 0, &x1, &y1, &w, &h
+        );
+
+        return y1 < 0 ? static_cast<uint8_t>(-y1) : 0;
+    }
+
+    /**
+     * Push the cursor down so the line about to be drawn starts at or below
+     * DEAD_TOP_ROWS.
+     *
+     * Applied here, at print time, rather than in each cursor setter: this is the
+     * one point every draw passes through, so no call site can land in the dead
+     * rows by using a setter that was missed. The drop comes from the font's
+     * ascent, not the individual string - fitting each string exactly made the top
+     * score hop 1-2 px as its value changed ('1' and '4' are shorter than the
+     * other digits) and put the menu's ">" marker a pixel off its label. A
+     * `println` block inherits the same offset on its following lines.
+     *
+     * With no GFX font set the ascent is 0 and the cursor y is already the glyph
+     * top, so this degrades to a plain floor - which is correct for that font too.
+     */
+    void clearDeadTop() const {
+        if (DEAD_TOP_ROWS == 0) {
+            return;
+        }
+
+        const int16_t y = screen->getCursorY();
+        const int16_t top = y - currentFontAscent;
+
+        if (top < DEAD_TOP_ROWS) {
+            screen->setCursor(screen->getCursorX(), y + (DEAD_TOP_ROWS - top));
+        }
     }
 };
 
