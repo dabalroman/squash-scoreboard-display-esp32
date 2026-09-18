@@ -21,6 +21,10 @@ namespace Board {
     constexpr const char *NAME = "V1 ESP32-S2";
     constexpr bool SERIAL_LOG = false;   // logs go to telnet only
 
+    // No e-paper to show the QR placard on, and the HTML payload would eat into a
+    // 1280 KB app slot that is flashed over OTA. V1 keeps its factory roster.
+    constexpr bool HAS_PLAYER_SETUP = false;
+
     constexpr uint8_t OLED_SDA = 33;
     constexpr uint8_t OLED_SCL = 34;
     constexpr uint8_t OLED_ROTATION = 2;   // mounted upside down
@@ -45,6 +49,9 @@ namespace Board {
 namespace Board {
     constexpr const char *NAME = "V2 ESP32-S3";
     constexpr bool SERIAL_LOG = true;    // mirror logs to native USB CDC when a host is attached
+
+    // The roster editor: an AP, a web page and the dual-QR placard on the e-paper.
+    constexpr bool HAS_PLAYER_SETUP = true;
 
     constexpr uint8_t OLED_SDA = 4;    // V1: 33 (33-37 are octal PSRAM here)
     constexpr uint8_t OLED_SCL = 5;    // V1: 34

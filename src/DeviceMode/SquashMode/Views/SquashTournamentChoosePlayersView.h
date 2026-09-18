@@ -12,6 +12,7 @@
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "Display/LedDisplay/Renderer/TournamentPlayersBarRenderer.h"
+#include "PlayerRoster.h"
 
 class SquashTournamentChoosePlayersView final : public View {
     Tournament &tournament;
@@ -122,7 +123,6 @@ public:
         const bool isPlayerIn = tournament.isPlayerIn(*users.at(playerId));
         const Color playerColor = users.at(playerId)->getColor();
         const Color playerStateColor = isPlayerIn ? Colors::Green : Colors::Red;
-        const Glyph playerGlyph = isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot;
 
         if (optionId == startOptionId) {
             const Color color = tournament.getPlayers().size() < 2 ? Colors::Red : Colors::Green;
@@ -136,7 +136,19 @@ public:
             ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
             ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
         } else {
-            ledDisplay.setGlyphsGlyph(Glyph::P, LedDisplay::digitToGlyph(playerId), Glyph::Empty, playerGlyph);
+            // P plus the id, right-aligned in the two rightmost slots: "P  5", "P 31".
+            // The roster now goes to 32 and digitToGlyph returns Empty above 9, so a
+            // single digit slot showed nothing from player 10 up. Right-aligned, not
+            // left, so the ones digit stays put as the id crosses 10.
+            // The in/out dot is dropped to make room - it was never the only signal:
+            // both digits are tinted green/red and indicator B carries it too.
+            const uint8_t tens = playerId / 10;
+            ledDisplay.setGlyphsGlyph(
+                Glyph::P,
+                Glyph::Empty,
+                tens > 0 ? LedDisplay::digitToGlyph(tens) : Glyph::Empty,
+                LedDisplay::digitToGlyph(playerId % 10)
+            );
             ledDisplay.setGlyphsColor(playerColor, playerStateColor);
             ledDisplay.setIndicatorAppearancePlayerA(playerColor);
             ledDisplay.setIndicatorAppearancePlayerB(playerStateColor);
@@ -157,8 +169,10 @@ public:
             return;
         }
 
+        // TODO: USE SCROLLABLE WIDGET
         // Rows follow menuOptions: [Start], one per user, [Exit].
-        constexpr uint8_t MAX_ROWS = 24;
+        // [Start] + up to 32 players + [Exit]. Stack-local, ~408 bytes at this size.
+        constexpr uint8_t MAX_ROWS = 2 + PlayerRosterLimits::MAX_PLAYERS;
         EInkMenuRow rows[MAX_ROWS];
         uint8_t count = 0;
 

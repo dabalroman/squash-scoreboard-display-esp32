@@ -50,16 +50,18 @@ namespace Str {
     constexpr const char *const MODE_OPTION_SQUASH = "SQUASH";
     constexpr const char *const MODE_OPTION_VOLLEYBALL = "SIATKA";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL = "SIATKA 15";
-    constexpr const char *const MODE_OPTION_PADEL = "PADEL PRZ.";
+    constexpr const char *const MODE_OPTION_PADEL = "PADEL";
     constexpr const char *const MODE_OPTION_CONFIG = "OPCJE";
     constexpr const char *const MODE_OPTION_SQUASH_OLED = "  SQUASH  ";
     constexpr const char *const MODE_OPTION_VOLLEYBALL_OLED = "  SIATKA  ";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL_OLED = " SIATKA 15";
-    constexpr const char *const MODE_OPTION_PADEL_OLED = "PADEL PRZ.";
-    constexpr const char *const MODE_OPTION_CONFIG_OLED = " [OPCJE]  ";
+    constexpr const char *const MODE_OPTION_PADEL_OLED = "  PADEL  ";
+    constexpr const char *const MODE_OPTION_PLAYERS = "PROFILE";
+    constexpr const char *const MODE_OPTION_PLAYERS_OLED = " [PROFILE]";
+    constexpr const char *const MODE_OPTION_CONFIG_OLED =  " [OPCJE]   ";
 
     // Player picker
-    constexpr const char *const PLAYERS_MENU_TITLE = "GRACZE";
+    constexpr const char *const PLAYERS_MENU_TITLE = "PROFILE";
     constexpr const char *const PLAYERS_ROW_START = "START";
     constexpr const char *const PLAYERS_ROW_EXIT = "KONIEC";
     constexpr const char *const PLAYERS_OPTION_START_OLED = " [START] ";
@@ -73,8 +75,19 @@ namespace Str {
     constexpr const char *const MATCH_SCORE_LABEL_SQUASH_GAMES = "GEMY";
     constexpr const char *const MATCH_SCORE_LABEL_VOLLEYBALL_SETS = "SETY";
     constexpr const char *const MATCH_SCORE_LABEL_PADEL_GEMS = "GEMY";
-    constexpr const char *const MATCH_SCORE_LABEL_PADEL_TIEBREAK = "TIE";
+    constexpr const char *const MATCH_SCORE_LABEL_PADEL_TIEBREAK = "TIEBREAK";
     constexpr const char *const MATCH_SCORE_SETS_LINE_FMT = "SETY %d";
+
+    // Roster editor (V2). PROFILE, not GRACZE: the in-match player picker is already
+    // called GRACZE, and two screens under one word is how you open the wrong one.
+    // The e-paper placard is a pre-rendered bitmap and cannot read this table - its
+    // wording lives in helpers/player_setup_qr.py and has to be changed there too.
+    // The web page itself is out of scope, like the WiFi config
+    // page; only what the device's own screens say lives here. The OLED small font
+    // fits 9 characters per line.
+    constexpr const char *const PLAYER_SETUP_OLED_TITLE = "PROFILE";
+    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK =   "Zobacz drugi";
+    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK_2 = "  ekran";
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "NISKA BATERIA";
@@ -97,7 +110,9 @@ namespace Str {
     constexpr const char *const LED_MODE_SHORT_VOLLEYBALL = "SIA1";
     constexpr const char *const LED_MODE_PADEL = "PAdE";
     constexpr const char *const LED_MODE_CONFIG = "oPCJ";
-    constexpr const char *const LED_PLAYERS_START = "GrAc";
+    constexpr const char *const LED_MODE_PLAYERS = "ProF";
+    constexpr const char *const LED_PLAYER_SETUP = "ProF";
+    constexpr const char *const LED_PLAYERS_START = "StAr";
     constexpr const char *const LED_PLAYERS_EXIT = "CoFn";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
 
@@ -124,12 +139,14 @@ namespace Str {
     constexpr const char *const MODE_OPTION_SQUASH = "Squash";
     constexpr const char *const MODE_OPTION_VOLLEYBALL = "Volleyball";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL = "Volley 15";
-    constexpr const char *const MODE_OPTION_PADEL = "Padel Adv.";
+    constexpr const char *const MODE_OPTION_PADEL = "Padel";
     constexpr const char *const MODE_OPTION_CONFIG = "Config";
     constexpr const char *const MODE_OPTION_SQUASH_OLED = "  Squash  ";
     constexpr const char *const MODE_OPTION_VOLLEYBALL_OLED = "Volleyball";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL_OLED = "Volleyb 15";
-    constexpr const char *const MODE_OPTION_PADEL_OLED = "Padel Adv.";
+    constexpr const char *const MODE_OPTION_PADEL_OLED = "  Padel  ";
+    constexpr const char *const MODE_OPTION_PLAYERS = "Profiles";
+    constexpr const char *const MODE_OPTION_PLAYERS_OLED = "[Profiles]";
     constexpr const char *const MODE_OPTION_CONFIG_OLED = " [Config] ";
 
     // Player picker
@@ -146,6 +163,12 @@ namespace Str {
     constexpr const char *const MATCH_SCORE_LABEL_PADEL_GEMS = "GEMS";
     constexpr const char *const MATCH_SCORE_LABEL_PADEL_TIEBREAK = "TIE";
     constexpr const char *const MATCH_SCORE_SETS_LINE_FMT = "SETS %d";
+
+    // Roster editor (V2)
+    constexpr const char *const PLAYER_SETUP_OLED_TITLE = "PROFILES";
+    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK =   " Use front";
+    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK_2 = "  screen";
+
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "LOW BATTERY";
@@ -168,6 +191,8 @@ namespace Str {
     constexpr const char *const LED_MODE_SHORT_VOLLEYBALL = "Shor";
     constexpr const char *const LED_MODE_PADEL = "PAdE";
     constexpr const char *const LED_MODE_CONFIG = "CFG";
+    constexpr const char *const LED_MODE_PLAYERS = "ProF";
+    constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "PLAY";
     constexpr const char *const LED_PLAYERS_EXIT = "rEtu";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";

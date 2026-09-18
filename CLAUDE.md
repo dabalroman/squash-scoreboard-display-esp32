@@ -126,7 +126,7 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
 - `View` (abstract) — each frame it calls `handleInput()`, `renderLedDisplay()` (front LEDs), and `renderBackDisplay()` (rear OLED). Flags `shouldRenderLedDisplay`/`shouldRenderBack` control dirty rendering.
 - `renderEInkDisplay(EInkDisplay&)` is the third, non-pure hook (default: blank). It is called every frame, but the e-paper must refresh only on real change: views pass **values** to `EInkDisplay` (`showMatchScore`, `showBlank`), which compares them with what is shown. Never rely on `queueRender()` for it (GamePlaying views never call it). Start each override with `if (!einkDisplay.available()) return;` so V1 computes nothing for its stub.
 - View flow per sport mode: `TournamentChoosePlayers` → `MatchStartGame` → `GamePlaying` → `GameOver` → back to `MatchStartGame`.
-- Modes: `ModeSwitchingMode` (menu), `ConfigMode`, `SquashMode`, `VolleyballMode`, `PadelMode`
+- Modes: `ModeSwitchingMode` (menu), `ConfigMode`, `SquashMode`, `VolleyballMode`, `PadelMode`, `PlayerSetupMode` (V2 roster editor)
 - Mode transitions happen via a callback `onDeviceModeChange` passed down from `main.cpp`.
 - Views that need per-tick updates (blinking) must NOT guard `renderLedDisplay` with `if (!shouldRenderLedDisplay)` — that flag prevents every-tick rendering. Only use the guard for purely event-driven views.
 - Always use `match->getLeftCourtSidePlayer()` / `getRightCourtSidePlayer()` in views for display positioning. Never use `getPlayerA()` / `getPlayerB()` directly — those ignore the court-side swap state.
@@ -148,7 +148,7 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
 - No serve or change-of-ends tracking: the players deliberately skip ends changes, and the board has never known who serves.
 
 ### Display
-- **`#if BOARD_REV` only in `src/Board.h` and hardware wrapper headers** (`DisplayProfile.h`, `LedDisplay.h`, `LedCentralScreenBorder.h`, `Animation/LedSweepAnimation.h`, `Animation/LedSlotPositions.h`, `EInk/EInkDisplay.h`, `BatterySensor.h`). Never in views, modes, `Tournament`, `Match`, `Game`, `Rules`. Wrappers keep identical APIs on both boards (empty stubs on V1).
+- **`#if BOARD_REV` only in `src/Board.h` and hardware wrapper headers** (`DisplayProfile.h`, `LedDisplay.h`, `LedCentralScreenBorder.h`, `Animation/LedSweepAnimation.h`, `Animation/LedSlotPositions.h`, `EInk/EInkDisplay.h`, `EInk/PlayerSetupWebUi.h`, `EInk/Images/PlayerSetupQr.h`, `BatterySensor.h`). Never in views, modes, `Tournament`, `Match`, `Game`, `Rules`. Wrappers keep identical APIs on both boards (empty stubs on V1).
 - `ledDisplay` — wraps the WS2812B chain (`Board::LED_COUNT`: 112 on V1, 74 on V2). Exposes 4 digit glyphs (A–D), a colon (no LEDs on V2), two player indicators, and on V1 a 24-pixel history bar (`LedBar`, from index 88). Call `display()` to clear, render, and show in one step.
 - **V2 has no history bar.** `setLedBarState` takes a **lambda** (`[&] { return XBarRenderer::toLedBarPixels(...); }`), never pixels: an argument is evaluated even into an empty setter. `resetAnimations` (the old `resetHistoryBar`) clears the bar on V1 and stops the celebration on V2. Keep `LedBar::PIXEL_COUNT = 24` on both boards (`MatchResultBarRenderer` breaks at 0).
 - **Sweep animations (V2)** — `Animation/LedSweepAnimation.h` is one ring animation with two parameterisations: `bootParams()` (rainbow by radius, one 1 s cycle) and `celebrationParams()` (the winner's colour, three 800 ms cycles). `play()` is only a blocking driver over the same `start`/`active`/`render` state machine, so boot and celebration share one code path; never call it from `loop()`.
@@ -181,6 +181,15 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   - The 7-segment collapse keeps bit 3 (`CENTER`) and drops `MID_LEFT`/`MID_RIGHT`; never OR (renders `0` as `8`) or AND them.
   - Segment loops are bounded by `SegmentTable.count` (0 for V2's colon, 1 for indicators), **never** by a widest segment count.
   - Blink: `tickMs % 500 < 250` is the dark phase, shared by glyphs and border.
+  - The three `*TournamentChoosePlayersView.h` render a selected profile as `P` plus its id **right-aligned in the two rightmost slots** (`P  5`, `P 31`), so the ones digit does not move as the id crosses 10 - `digitToGlyph` returns `Empty` above 9, so one slot was blank from profile 10 up. The old trailing in/out dot was dropped for the room; in/out is still carried by the digit tint and indicator B.
+  - `TournamentPlayersBarRenderer` clamps instead of blanking: from 13 selected players the segment width hit 0 and the whole V1 bar went dark, which a 32-profile roster makes easy to reach.
+
+### Mode selector
+One `ModeMenuEntry` table in `ModeSwitchingView.h` drives every row: OLED label, e-paper label, LED word, target `DeviceModeState`, colour and V1 bar slot. They used to be four hand-aligned lists plus an enum, which drifted; add a row, do not add a list. `enabled` hides a row at runtime (`Board::HAS_PLAYER_SETUP`) - never an `#if` here.
+
+Member declaration order in that view is load-bearing: `entryIds` feeds `optionsList`, which `Scrollable` binds **by reference** and whose size it snapshots at construction. Both are `const` and never resized afterwards.
+
+`ModeSwitchingBarRenderer` takes a slot index and a colour rather than the menu index, so reordering the menu cannot leave the V1 bar showing another sport's colour.
 
 ### Pinout
 All pins live in `src/Board.h` (per `BOARD_REV`).
@@ -213,6 +222,7 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 
 ### Persistence & Networking
 - `PreferencesManager` — reads/writes `PrefsData` (WiFi SSID/password, brightness, AP mode) to ESP32 NVS.
+- **`enableWifi` defaults to 0.** A device with empty or invalid NVS boots with STA, AP, OTA and telnet all off, instead of spending ~15 s failing STA against an empty SSID and then raising an open AP. Stored blobs keep their own value, so V1's OTA path is untouched. Recovery on a wiped device is CONFIG -> WiFi ON -> `[Reboot]`, from the remote alone.
 - `RemoteDevelopmentService` — provides OTA firmware updates and WiFi-based serial logging.
 - **This file is already Arduino-core-3.x-ready.** Two fixes were applied on
   2026-09-04 and are valid on *both* cores, so do not revert them if the platform
@@ -238,8 +248,29 @@ Every user-visible string is a `constexpr const char* const` in `src/Strings.h`,
 - Out of scope: `printLn`/telnet/serial logs, the WiFi config web page, player names, the AP SSID/password, and the `BAT` / `FW` abbreviations.
 - Verify a language change with `grep -ac "<english word>" .pio/build/esp32s3_devkitc/firmware.bin` - it must return 0.
 
-### Players
-Player profiles (`UserProfile`) are hardcoded in `main.cpp` with names and assigned colors. To add/change players, edit the `userA`–`userI` declarations and the `users` vector there.
+### Players / profiles
+The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone (see *Roster editor*). The nine `FACTORY_PLAYERS` in `main.cpp` are only the fallback, used when NVS holds nothing valid and by "restore factory profiles".
+
+- `PlayerRoster` (`src/PlayerRoster.h`, board-agnostic) owns the profiles and exposes `profiles()` as `std::vector<UserProfile *> &`, so every mode's signature is unchanged. Built exactly once, by `load()` in `setup()`.
+- Its own NVS key `"ply"` in namespace `"ns"` - **never a field in `PrefsData`**, whose `read()` rejects the blob unless `getBytesLength == sizeof(PrefsData)`, so growing it would drop brightness *and* the WiFi credentials.
+- Blob is fixed-size `PlayersData` v2. `readBlob()` recognises the v1 layout (no uid) by its length and migrates it in place rather than reseeding, so an update never wipes a roster. Keep that path when adding a v3.
+- **Two identifiers, deliberately** (`UserProfile`): `id` is the position in this boot's roster - what the LEDs show as `P  3` and what `MatchOrderKeeper` keys on - and is renumbered by any reorder. `uid` is a `uint32_t` from `esp_random()`, stored beside the name, and survives rename/recolour/reorder. Use `id` inside a match, `uid` for anything outliving one. Nothing persists an `id`, which is what makes positional ids safe.
+- Colours come from `PlayerPalette` / `PlayerColors` (`src/PlayerPalette.h`), **not** `Colors::` - those are UI accents. 16 entries, user-specified. Read the caveat block in that header before changing them: the set is screen-derived, so several pairs separate only by lightness, which a WS2812 conveys poorly.
+- The web wire format is the palette **index**, never hex. `nearestIndex()` maps a stored colour that is no longer a preset onto the closest one, so a palette change does not silently recolour everyone.
+- Duplicate names and duplicate colours are both allowed and unwarned; the `uid` is what makes two people called Krystian two people.
+
+### Roster editor (V2)
+`PlayerSetupMode` + `PlayerSetupView`, reached from the mode selector ("PROFILE"). Entering **forces the AP up** whatever `enableWifi` says (`RemoteDevelopmentService::enablePlayerSetupAp()`: tears STA down, no blocking delay); the editor never runs over the house network, so it is always reached by the placard's QR codes and never by a guessed IP. The e-paper shows a pre-rendered dual-QR placard (`EInkDisplay::showImage()`, always a full refresh - a ghosted QR will not scan). C or D exits, and it closes itself after 15 minutes idle.
+
+- The AP is raised in the mode's **constructor** and dropped in its **destructor**, not in a button handler, so every exit path tears it down identically.
+- `PlayerSetupWebUi` lives at **file scope in `main.cpp`**, because `WebServer` (core 2.0.17) has no `removeHandler`: a route handler outlives every mode, so no route lambda may capture a view. Requests arriving while the screen is shut are refused by an `active` gate, not by unregistering.
+- Routes: `GET /` (editor), `POST /save`, `GET /update` (firmware screen; the WiFi credentials form lives there, since WiFi exists only to serve OTA). `POST /connect` and `POST /update` stay in `RemoteDevelopmentService`. The legacy `/` credentials form is registered **after** `extraRoutes` - WebServer dispatches to the first matching handler, so V2's root wins and V1, which has no web UI, still gets a form. That ordering is the V1 fallback; do not move it.
+- The save is server-authoritative and atomic: every field validated on its own, whole blob staged in RAM, one `putBytes`, then a deferred `safeRestart()`. Any rejection is a 400 and leaves NVS untouched.
+- The page must post `application/x-www-form-urlencoded`. Verified in the core's `Parsing.cpp`: `WEBSERVER_MAX_POST_ARGS` (32) caps only `_parseForm` (multipart); urlencoded bodies go to `_parseArguments`, which allocates per `&`.
+- The page is **Polish-only and not in `Strings.h`** - it is rendered by a browser, so it carries real diacritics, unlike every GFX-font string. Profile *names* stay printable ASCII because those do reach the LED/OLED/e-paper fonts.
+- The placard is a baked bitmap and cannot read `Strings.h`; its wording lives in `helpers/player_setup_qr.py`. Regenerate with `python helpers/player_setup_qr.py` (needs `pillow` and `qrcode`) after changing the AP name, password, URL or captions.
+
+### Battery (V2)
 
 ### Battery (V2)
 `BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17. Volts appear only in the log now; both screens show percent.

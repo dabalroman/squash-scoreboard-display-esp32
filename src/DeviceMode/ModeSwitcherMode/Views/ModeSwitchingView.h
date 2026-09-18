@@ -1,6 +1,9 @@
 #ifndef MODE_SWITCHING_VIEW_H
 #define MODE_SWITCHING_VIEW_H
 
+#include <vector>
+
+#include "Board.h"
 #include "BatteryMonitor.h"
 #include "Strings.h"
 #include "DeviceMode/DeviceModeState.h"
@@ -10,12 +13,23 @@
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
-enum Options {
-    Squash = 0,
-    Volleyball = 1,
-    ShortVolleyball = 2,
-    Padel = 3,
-    Config = 4,
+/**
+ * One row of the mode selector. Everything a row needs sits in one struct, so the
+ * OLED label, the e-paper label, the LED word, the colour and the mode it opens
+ * cannot drift out of alignment - which is what a hand-kept enum plus three
+ * parallel lists used to allow.
+ *
+ * `enabled` is a runtime flag, never an `#if`: BOARD_REV belongs in Board.h and
+ * the hardware wrappers only.
+ */
+struct ModeMenuEntry {
+    const char *optionOled;      // space-padded to 10, for the OLED fixed-x centring
+    const char *einkLabel;
+    const char *ledWord;
+    DeviceModeState target;
+    Color color;
+    int8_t barSlot;              // V1 history bar segment; -1 = no segment
+    bool enabled;
 };
 
 class ModeSwitchingView final : public View {
@@ -23,13 +37,12 @@ class ModeSwitchingView final : public View {
     const BatteryMonitor &batteryMonitor;
     int16_t shownBatteryPercent = -1;
 
-    const std::vector<String> optionsList = {
-        Str::MODE_OPTION_SQUASH_OLED,
-        Str::MODE_OPTION_VOLLEYBALL_OLED,
-        Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED,
-        Str::MODE_OPTION_PADEL_OLED,
-        Str::MODE_OPTION_CONFIG_OLED,
-    };
+    // Declaration order is the correctness argument: entryIds feeds optionsList,
+    // which Scrollable binds by reference and whose size it snapshots. Both are
+    // const and never resized after construction, so that reference and that
+    // count stay valid for the life of the view.
+    const std::vector<uint8_t> entryIds;
+    const std::vector<String> optionsList;
 
     Scrollable scrollable;
     ScrollableWidget scrollableWidget;
@@ -40,6 +53,7 @@ public:
         const BatteryMonitor &batteryMonitor
     )
         : onDeviceModeChange(onDeviceModeChange), batteryMonitor(batteryMonitor),
+          entryIds(buildEntryIds()), optionsList(buildOptions(entryIds)),
           scrollable(optionsList), scrollableWidget(scrollable) {
     }
 
@@ -55,27 +69,8 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            switch (scrollable.getSelectedOptionId()) {
-                case Options::Squash:
-                    onDeviceModeChange(DeviceModeState::SquashMode);
-                    break;
-                case Options::Volleyball:
-                    onDeviceModeChange(DeviceModeState::VolleyballMode);
-                    break;
-                case Options::ShortVolleyball:
-                    onDeviceModeChange(DeviceModeState::ShortVolleyballMode);
-                    break;
-                case Options::Padel:
-                    onDeviceModeChange(DeviceModeState::PadelMode);
-                    break;
-                case Options::Config:
-                    onDeviceModeChange(DeviceModeState::ConfigMode);
-                    break;
-                default:
-                    break;
-            }
-
-            queueRender();
+            // The callback destroys this view, so nothing may touch `this` after it.
+            onDeviceModeChange(selectedEntry().target);
         }
     }
 
@@ -91,36 +86,15 @@ public:
             return;
         }
 
-        Color color;
+        const ModeMenuEntry &entry = selectedEntry();
 
-        switch (scrollable.getSelectedOptionId()) {
-            default:
-            case Options::Squash:
-                color = Colors::Green;
-                ledDisplay.setGlyphsText(Str::LED_MODE_SQUASH);
-                break;
-            case Options::Volleyball:
-                color = Colors::Yellow;
-                ledDisplay.setGlyphsText(Str::LED_MODE_VOLLEYBALL);
-                break;
-            case Options::ShortVolleyball:
-                color = Colors::Orange;
-                ledDisplay.setGlyphsText(Str::LED_MODE_SHORT_VOLLEYBALL);
-                break;
-            case Options::Padel:
-                color = Colors::Blue;
-                ledDisplay.setGlyphsText(Str::LED_MODE_PADEL);
-                break;
-            case Options::Config:
-                color = Colors::White;
-                ledDisplay.setGlyphsText(Str::LED_MODE_CONFIG);
-                break;
-        }
-
-        ledDisplay.setGlyphsColor(color, color);
-        ledDisplay.setIndicatorAppearancePlayerA(color);
-        ledDisplay.setIndicatorAppearancePlayerB(color);
-        ledDisplay.setLedBarState([&] { return ModeSwitchingBarRenderer::toLedBarPixels(scrollable.getSelectedOptionId()); });
+        ledDisplay.setGlyphsText(entry.ledWord);
+        ledDisplay.setGlyphsColor(entry.color, entry.color);
+        ledDisplay.setIndicatorAppearancePlayerA(entry.color);
+        ledDisplay.setIndicatorAppearancePlayerB(entry.color);
+        ledDisplay.setLedBarState([&] {
+            return ModeSwitchingBarRenderer::toLedBarPixels(entry.barSlot, entry.color);
+        });
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;
@@ -131,16 +105,11 @@ public:
             return;
         }
 
-        // E-paper labels, index-aligned with `Options` / optionsList.
-        static const char *const labels[] = {
-            Str::MODE_OPTION_SQUASH, Str::MODE_OPTION_VOLLEYBALL, Str::MODE_OPTION_SHORT_VOLLEYBALL,
-            Str::MODE_OPTION_PADEL, Str::MODE_OPTION_CONFIG,
-        };
-        constexpr uint8_t count = sizeof(labels) / sizeof(labels[0]);
-
-        EInkMenuRow rows[count];
+        // TODO: USE SCROLLABLE WIDGET
+        EInkMenuRow rows[MAX_ENTRIES];
+        const uint8_t count = static_cast<uint8_t>(entryIds.size());
         for (uint8_t i = 0; i < count; i++) {
-            rows[i] = {labels[i], nullptr, -1};
+            rows[i] = {entryAt(i).einkLabel, nullptr, -1};
         }
 
         // The battery percent rides in the title; without a sensor the title is plain.
@@ -180,6 +149,70 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+private:
+    // Upper bound for the stack-allocated e-paper row array.
+    enum : uint8_t { MAX_ENTRIES = 8 };
+
+    // Function-local static, never a `static constexpr` class member: that is an
+    // ODR link error on GCC 8.4.
+    static const ModeMenuEntry *table(uint8_t &count) {
+        static const ModeMenuEntry TABLE[] = {
+            {Str::MODE_OPTION_PADEL_OLED, Str::MODE_OPTION_PADEL, Str::LED_MODE_PADEL,
+             DeviceModeState::PadelMode, Colors::Blue, 3, true},
+            {Str::MODE_OPTION_SQUASH_OLED, Str::MODE_OPTION_SQUASH, Str::LED_MODE_SQUASH,
+             DeviceModeState::SquashMode, Colors::Green, 0, true},
+            {Str::MODE_OPTION_VOLLEYBALL_OLED, Str::MODE_OPTION_VOLLEYBALL, Str::LED_MODE_VOLLEYBALL,
+             DeviceModeState::VolleyballMode, Colors::Yellow, 1, true},
+            {Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED, Str::MODE_OPTION_SHORT_VOLLEYBALL,
+             Str::LED_MODE_SHORT_VOLLEYBALL, DeviceModeState::ShortVolleyballMode, Colors::Orange, 2, true},
+            {Str::MODE_OPTION_PLAYERS_OLED, Str::MODE_OPTION_PLAYERS, Str::LED_MODE_PLAYERS,
+             DeviceModeState::PlayerSetupMode, Colors::Aqua, -1, Board::HAS_PLAYER_SETUP},
+            {Str::MODE_OPTION_CONFIG_OLED, Str::MODE_OPTION_CONFIG, Str::LED_MODE_CONFIG,
+             DeviceModeState::ConfigMode, Colors::White, -1, true},
+        };
+
+        count = static_cast<uint8_t>(sizeof(TABLE) / sizeof(TABLE[0]));
+        return TABLE;
+    }
+
+    static std::vector<uint8_t> buildEntryIds() {
+        uint8_t count = 0;
+        const ModeMenuEntry *entries = table(count);
+
+        std::vector<uint8_t> ids;
+        ids.reserve(count);
+        for (uint8_t i = 0; i < count; i++) {
+            if (entries[i].enabled) {
+                ids.push_back(i);
+            }
+        }
+
+        return ids;
+    }
+
+    static std::vector<String> buildOptions(const std::vector<uint8_t> &ids) {
+        uint8_t count = 0;
+        const ModeMenuEntry *entries = table(count);
+
+        std::vector<String> options;
+        options.reserve(ids.size());
+        for (std::vector<uint8_t>::const_iterator it = ids.begin(); it != ids.end(); ++it) {
+            options.push_back(entries[*it].optionOled);
+        }
+
+        return options;
+    }
+
+    const ModeMenuEntry &entryAt(const uint8_t index) const {
+        uint8_t count = 0;
+        const ModeMenuEntry *entries = table(count);
+        return entries[entryIds[index < entryIds.size() ? index : 0]];
+    }
+
+    const ModeMenuEntry &selectedEntry() const {
+        return entryAt(scrollable.getSelectedOptionId());
     }
 };
 

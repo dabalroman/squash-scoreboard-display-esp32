@@ -12,16 +12,14 @@ void RemoteDevelopmentService::setupOTA() {
         return;
     }
 
-    OTAServer = std::make_unique<WebServer>(80);
+    // No longer once per boot: the roster editor raises its AP on demand and calls
+    // this again. WebServer::on() does not deduplicate and there is no
+    // removeHandler, so a second pass would register every route twice.
+    if (OTAServer) {
+        return;
+    }
 
-    OTAServer->on("/", HTTP_GET, [this] {
-        const String html = "<html><body><h1>Squash Scoreboard Display</h1><form action=\"/connect\" method=\"POST\">"
-                "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
-                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
-                "<input type=\"submit\" value=\"Connect\">"
-                "</form></body></html>";
-        OTAServer->send(200, "text/html", html);
-    });
+    OTAServer = std::make_unique<WebServer>(80);
 
     OTAServer->on("/connect", HTTP_POST, [this] {
         if (OTAServer->hasArg("ssid") && OTAServer->hasArg("password")) {
@@ -78,6 +76,26 @@ void RemoteDevelopmentService::setupOTA() {
             }
         }
     );
+
+    if (extraRoutes) {
+        extraRoutes(*OTAServer);
+    }
+
+    // Registered LAST, and that ordering is the whole design: WebServer dispatches
+    // to the first handler that matches, so on V2 the web UI's own "/" (registered
+    // just above) wins and this never runs. On V1 there is no web UI at all, and
+    // this stays the only way to type WiFi credentials into a board whose stored
+    // ones are wrong - which matters more there, because V1 is flashed over OTA.
+    // A fallback by ordering, rather than by `#if BOARD_REV`, which belongs in
+    // Board.h and the hardware wrappers only.
+    OTAServer->on("/", HTTP_GET, [this] {
+        const String html = "<html><body><h1>Squash Scoreboard Display</h1><form action=\"/connect\" method=\"POST\">"
+                "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
+                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
+                "<input type=\"submit\" value=\"Connect\">"
+                "</form></body></html>";
+        OTAServer->send(200, "text/html", html);
+    });
 
     OTAServer->begin();
 
@@ -170,12 +188,12 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 }
 
 void RemoteDevelopmentService::enableAP() {
-    WiFi.softAP("SquashCounter", "12345678");
+    WiFi.softAP("Scoreboard", "19092026");
 
     backDisplay->clear();
     backDisplay->setCursorToLine();
-    backDisplay->println(F("SquashCount"));
-    backDisplay->println(F("12345678"));
+    backDisplay->println(F("Scoreboard"));
+    backDisplay->println(F("19092026"));
     backDisplay->println(WiFi.softAPIP().toString());
     backDisplay->display();
 
@@ -186,6 +204,35 @@ void RemoteDevelopmentService::enableAP() {
 
 void RemoteDevelopmentService::disableAP() {
     WiFi.softAPdisconnect();
+    isAPActive = false;
+}
+
+void RemoteDevelopmentService::enablePlayerSetupAp() {
+    // Clear the flag before tearing STA down: handleTelnet() would otherwise poll a
+    // server whose socket has just gone away.
+    isWifiActive = false;
+    isTelnetActive = false;
+
+    if (telnetClient) {
+        telnetClient.stop();
+    }
+    if (telnetServer) {
+        telnetServer->close();
+    }
+
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("Scoreboard", "19092026");
+
+    isAPActive = true;
+
+    // Load-bearing: with enableWifi off (the default on a fresh device) init()
+    // returned early and no WebServer exists yet.
+    setupOTA();
+}
+
+void RemoteDevelopmentService::disablePlayerSetupAp() {
+    WiFi.softAPdisconnect(true);
     isAPActive = false;
 }
 

@@ -295,6 +295,33 @@ public:
         present(SCREEN_MENU);
     }
 
+    /**
+     * A full-screen 128x296 bitmap, same format as the splash. Hashed by pointer
+     * identity, not by its 4736 PROGMEM bytes - the content is fixed per header,
+     * so the address is the identity, and hashing the bytes every frame is not.
+     *
+     * Always a full refresh: present() would issue a partial coming off the MODE
+     * menu, and a ghosted QR code is one phones fail to decode.
+     */
+    void showImage(const uint8_t *bitmap) {
+        if (splashHoldActive() || bitmap == nullptr) {
+            return;
+        }
+
+        const uint32_t h = hashAdd(hashAdd(HASH_SEED, SCREEN_IMAGE),
+                                   static_cast<uint32_t>(reinterpret_cast<uintptr_t>(bitmap)));
+        if (!commit(h)) {
+            return;
+        }
+
+        GFXcanvas1 &g = eink.gfx();
+        g.fillScreen(PAPER);
+        g.drawBitmap(0, 0, bitmap, EInkAsync::WIDTH, EInkAsync::HEIGHT, INK);
+
+        shownScreen = SCREEN_IMAGE;
+        eink.requestFullRefresh();
+    }
+
     uint32_t refreshes() const { return eink.getStats().refreshes; }
     uint32_t fullRefreshes() const { return eink.getStats().fullRefreshes; }
     uint32_t partialsSinceFull() const { return eink.partialsSinceFull(); }
@@ -313,7 +340,7 @@ private:
     enum : uint32_t { FLUSH_TIMEOUT_MS = 5000 };
 
     // Screen types for change detection and the ghosting policy.
-    enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE };
+    enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE, SCREEN_IMAGE };
 
     // True if `hash` differs from what is on the panel; the caller then redraws.
     bool commit(const uint32_t hash) {
@@ -516,6 +543,7 @@ public:
     void showMenu(const char *, const EInkMenuRow *, const uint8_t, const uint8_t,
                   const char * = nullptr, const char * = nullptr) {}
     void showMessage(const char *, const char *) {}
+    void showImage(const uint8_t *) {}
 
     uint32_t refreshes() const { return 0; }
     uint32_t fullRefreshes() const { return 0; }

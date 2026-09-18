@@ -18,6 +18,7 @@
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
 #include "DeviceMode/PadelMode/PadelMode.h"
+#include "DeviceMode/PlayerSetupMode/PlayerSetupMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "Tournament/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
@@ -27,6 +28,8 @@
 #include "Display/Overlay.h"
 #include "Display/LedDisplay/LedBar.h"
 #include "Display/EInk/EInkDisplay.h"
+#include "Display/EInk/PlayerSetupWebUi.h"
+#include "PlayerRoster.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
@@ -79,17 +82,34 @@ unsigned long lastEInkStatsLog = 0;
 std::unique_ptr<DeviceMode> deviceMode;
 DeviceModeState deviceState = DeviceModeState::Booting;
 
-UserProfile userA(0, "Adrian", Colors::Green);
-UserProfile userB(1, "Roman", Colors::Yellow);
-UserProfile userC(2, "Basia", Colors::Pink);
-UserProfile userD(3, "Krystian", Colors::Blue);
-UserProfile userE(4, "Jola", Colors::Red);
-UserProfile userF(5, "Cegiel", Colors::White);
-UserProfile userG(6, "Szymon", Colors::Aqua);
-UserProfile userH(7, "Igor", Colors::Orange);
-UserProfile userI(8, "Damian", Colors::Violet);
+/**
+ * The factory roster. Still hardcoded here, as player profiles always have been,
+ * but now only as the fallback: PlayerRoster reads the live list from NVS and
+ * seeds it from this one when there is nothing valid stored, which is also what
+ * the web editor restores. Ids are assigned by roster position, not written here.
+ *
+ * Colours come from PlayerColors, not Colors: those are UI accents, these belong
+ * to people. Picked from the saturated end of the palette, so the nine that ship
+ * on a fresh device stay apart on the digits without anyone having to choose.
+ */
+const FactoryPlayer FACTORY_PLAYERS[] = {
+    {"Adrian", PlayerColors::Zielony},
+    {"Roman", PlayerColors::Zolty},
+    {"Basia", PlayerColors::Magenta},
+    {"Krystian", PlayerColors::Niebieski},
+    {"Jola", PlayerColors::Czerwony},
+    {"Cegiel", PlayerColors::Rozowy},
+    {"Szymon", PlayerColors::Cyjan},
+    {"Igor", PlayerColors::Pomaranczowy},
+    {"Damian", PlayerColors::Purpurowy},
+};
+constexpr uint8_t FACTORY_PLAYER_COUNT = sizeof(FACTORY_PLAYERS) / sizeof(FACTORY_PLAYERS[0]);
 
-std::vector<UserProfile *> users = {&userA, &userB, &userC, &userD, &userE, &userF, &userG, &userH, &userI};
+PlayerRoster playerRoster;
+
+// File scope on purpose: its route handlers outlive every mode (WebServer has no
+// removeHandler), so they may capture only objects that live as long as the server.
+PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager);
 
 void initHardware() {
     Wire.begin(Board::OLED_SDA, Board::OLED_SCL);
@@ -154,7 +174,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
-                users,
+                playerRoster.profiles(),
                 []{ gBuzzer.playCelebration(); }
             );
             break;
@@ -166,7 +186,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
-                users,
+                playerRoster.profiles(),
                 std::make_unique<VolleyballRules>(),
                 []{ gBuzzer.playCelebration(); }
             );
@@ -179,9 +199,21 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
-                users,
+                playerRoster.profiles(),
                 std::make_unique<ShortVolleyballRules>(),
                 []{ gBuzzer.playCelebration(); }
+            );
+            break;
+
+        case DeviceModeState::PlayerSetupMode:
+            deviceMode = std::make_unique<PlayerSetupMode>(
+                ledDisplay,
+                *backDisplay,
+                einkDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { changeDeviceMode(state); },
+                *gRemoteDevelopmentService,
+                playerSetupWebUi
             );
             break;
 
@@ -192,7 +224,7 @@ void changeDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { changeDeviceMode(state); },
-                users,
+                playerRoster.profiles(),
                 []{ gBuzzer.playCelebration(); }
             );
             break;
@@ -209,6 +241,8 @@ void setup() {
     }
 
     preferencesManager.read();
+    // Before any mode is built: every mode is handed playerRoster.profiles().
+    playerRoster.load(FACTORY_PLAYERS, FACTORY_PLAYER_COUNT);
     initHardware();
     einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
     // begin() only queues the splash; the sweep below blocks before loop() can send it.
@@ -217,6 +251,9 @@ void setup() {
     batterySensor.begin();
 
     static RemoteDevelopmentService remoteDev;
+    // Before init(): the routes are registered with the port-80 server whenever it
+    // is created, which may be here or later, when the roster editor raises its AP.
+    remoteDev.setExtraRouteRegistrar([](WebServer &server) { playerSetupWebUi.registerRoutes(server); });
     remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
@@ -233,6 +270,7 @@ void setup() {
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
+    printLn("Roster: %u players", static_cast<unsigned>(playerRoster.size()));
 
     if (batterySensor.available()) {
         printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
@@ -276,6 +314,9 @@ void loop() {
     }
 
     gRemoteDevelopmentService->loop();
+    // Right after it: a save handled above arms a restart a few hundred ms out, so
+    // the socket flushes before the board goes down.
+    playerSetupWebUi.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
     gBuzzer.loop();
     batterySensor.loop();

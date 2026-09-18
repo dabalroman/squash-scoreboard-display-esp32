@@ -40,4 +40,9 @@ namespace Colors {
     static constexpr auto Violet = Color(0x5500FF);
 }
 
+// Player colours are NOT here: they live in PlayerPalette.h, which answers a
+// different question. These are UI accents, picked to look right in a menu; those
+// have to stay tellable apart from each other on a seven-segment digit across a
+// hall, which rules out white and any two colours sharing a hue.
+
 #endif //COLOR_H

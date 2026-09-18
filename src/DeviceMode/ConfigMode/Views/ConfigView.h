@@ -192,6 +192,7 @@ public:
             return;
         }
 
+        // TODO: USE SCROLLABLE WIDGET
         const PrefsData &settings = preferencesManager.settings;
 
         char brightnessLevel[4];

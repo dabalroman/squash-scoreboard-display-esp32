@@ -1,6 +1,7 @@
 #ifndef REMOTE_DEVELOPMENT_SERVICE_H
 #define REMOTE_DEVELOPMENT_SERVICE_H
 
+#include <functional>
 #include <memory>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -13,6 +14,12 @@ class RemoteDevelopmentService {
     WiFiClient telnetClient;
     PreferencesManager *preferencesManager = nullptr;
     BackDisplay *backDisplay = nullptr;
+
+    // Extra routes to hang off the port-80 server, registered once per server
+    // object. Set from main.cpp so this class needs no knowledge of what registers
+    // them; the callback must capture only objects with static storage duration,
+    // because WebServer has no removeHandler and handlers outlive any view.
+    std::function<void(WebServer &)> extraRoutes;
 
     bool isAPActive = false;
     bool isWifiActive = false;
@@ -36,9 +43,26 @@ class RemoteDevelopmentService {
     void handleTelnet();
 
 public:
+    void setExtraRouteRegistrar(const std::function<void(WebServer &)> &registrar) {
+        extraRoutes = registrar;
+    }
+
     void enableAP();
 
     void disableAP();
+
+    /**
+     * Raise the setup AP on demand, whatever `enableWifi` says - an explicit user
+     * action, not a background service, so there is no blocking delay here.
+     *
+     * STA is torn down and does not come back until the next reboot; the roster
+     * editor always ends in one on save, and the log says so on cancel.
+     */
+    void enablePlayerSetupAp();
+
+    // Drops the AP only. The port-80 server object stays alive, because WebServer
+    // cannot unregister handlers and re-creating it would register them twice.
+    void disablePlayerSetupAp();
 
     void init(PreferencesManager &_preferencesManager, BackDisplay &_backDisplay);
 
