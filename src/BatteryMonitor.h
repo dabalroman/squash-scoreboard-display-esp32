@@ -26,6 +26,10 @@ class BatteryMonitor {
         // The mapped percent must stay below the entry threshold this long before
         // the low state latches - a single LED-load sag must not trip it.
         LOW_HOLD_MS = 10000,
+        // The voltage floats across the enter/exit thresholds as the LED load
+        // varies, so the low state can latch again minutes later. The warning is
+        // for the user, not for every latch: once shown, stay quiet this long.
+        WARNING_COOLDOWN_MS = 300000,
     };
 
     enum : uint8_t {
@@ -47,6 +51,8 @@ class BatteryMonitor {
     bool lowTimerRunning = false;
     uint32_t lowSinceMs = 0;
     bool pendingWarning = false;
+    bool warningShown = false;
+    uint32_t lastWarningMs = 0;
 
 public:
     explicit BatteryMonitor(const BatterySensor &sensor) : sensor(sensor) {}
@@ -113,7 +119,7 @@ public:
 
     bool isLow() const { return low; }
 
-    // One-shot: true exactly once per entry into the low state.
+    // One-shot: true at most once per WARNING_COOLDOWN_MS window.
     bool takeLowWarning() {
         if (!pendingWarning) {
             return false;
@@ -132,7 +138,12 @@ private:
 
             if (!low && nowMs - lowSinceMs >= LOW_HOLD_MS) {
                 low = true;
-                pendingWarning = true;
+
+                if (!warningShown || nowMs - lastWarningMs >= WARNING_COOLDOWN_MS) {
+                    pendingWarning = true;
+                    warningShown = true;
+                    lastWarningMs = nowMs;
+                }
             }
             return;
         }
