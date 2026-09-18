@@ -137,11 +137,15 @@ public:
             return;
         }
 
+        // Two slots per player, so an id of 10 or more shows only its last digit.
+        // Without the % it hit digitToGlyph's "above 9 is Empty" and the slot went
+        // blank, which looked like a missing player rather than a truncated id.
+        // Players 5 and 15 do read alike here; their colours are what separate them.
         ledDisplay.setGlyphsGlyph(
             Glyph::P,
-            LedDisplay::digitToGlyph(playerLeft->getId()),
+            LedDisplay::digitToGlyph(playerLeft->getId() % 10),
             Glyph::P,
-            LedDisplay::digitToGlyph(playerRight->getId())
+            LedDisplay::digitToGlyph(playerRight->getId() % 10)
         );
 
         ledDisplay.setGlyphsAppearance(playerLeft->getColor(), playerRight->getColor());
@@ -183,7 +187,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), result.scoreOf(playerLeft->getId()),
             playerRight->getName(), result.scoreOf(playerRight->getId()),
-            Str::MATCH_SCORE_LABEL_SQUASH_GAMES
+            Str::MODE_OPTION_SQUASH
         );
     }
 

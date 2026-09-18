@@ -13,14 +13,13 @@ public:
     ) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
-        constexpr uint8_t OPTION_COUNT = 6;
-        constexpr uint8_t SEGMENT = (LedBar::PIXEL_COUNT - (OPTION_COUNT - 1)) / OPTION_COUNT; // 3px
+        constexpr uint8_t OPTION_COUNT = 5;
+        constexpr uint8_t SEGMENT = (LedBar::PIXEL_COUNT - (OPTION_COUNT - 1)) / OPTION_COUNT; // 4px
 
         const Color colors[OPTION_COUNT] = {
             Colors::White,                               // Brightness
             enableBuzzer ? Colors::Green : Colors::Red,  // Buzzer
             enableWifi   ? Colors::Green : Colors::Red,  // WiFi
-            Colors::White,                               // IP address
             Colors::Pink,                                // Reboot
             Colors::Aqua,                                // Return
         };

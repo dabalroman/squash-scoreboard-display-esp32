@@ -136,11 +136,15 @@ public:
             return;
         }
 
+        // Two slots per player, so an id of 10 or more shows only its last digit.
+        // Without the % it hit digitToGlyph's "above 9 is Empty" and the slot went
+        // blank, which looked like a missing player rather than a truncated id.
+        // Players 5 and 15 do read alike here; their colours are what separate them.
         ledDisplay.setGlyphsGlyph(
             Glyph::P,
-            LedDisplay::digitToGlyph(playerLeft->getId()),
+            LedDisplay::digitToGlyph(playerLeft->getId() % 10),
             Glyph::P,
-            LedDisplay::digitToGlyph(playerRight->getId())
+            LedDisplay::digitToGlyph(playerRight->getId() % 10)
         );
 
         ledDisplay.setGlyphsAppearance(playerLeft->getColor(), playerRight->getColor());
@@ -178,18 +182,13 @@ public:
             return;
         }
 
-        // Gems of the last finished set (0:0 before the first), plus sets won.
+        // Sets, not gems: between sets the gem count belongs to a set that is over,
+        // and the standing in the match is the only number that still means anything.
         const MatchResult sets = match->getMatchResult();
-        const GameResult *last = match->getLastGameResult();
-        const auto gemsOf = [last](const UserProfile *player) -> uint8_t {
-            if (last == nullptr) return 0;
-            return player->getId() == last->playerAId ? last->playerAScore : last->playerBScore;
-        };
         einkDisplay.showMatchScore(
-            playerLeft->getName(), gemsOf(playerLeft),
-            playerRight->getName(), gemsOf(playerRight),
-            Str::MATCH_SCORE_LABEL_PADEL_GEMS,
-            sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
+            playerLeft->getName(), sets.scoreOf(playerLeft->getId()),
+            playerRight->getName(), sets.scoreOf(playerRight->getId()),
+            Str::MODE_OPTION_PADEL
         );
     }
 

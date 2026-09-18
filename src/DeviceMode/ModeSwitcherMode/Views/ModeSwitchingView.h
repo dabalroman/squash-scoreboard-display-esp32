@@ -112,14 +112,13 @@ public:
             rows[i] = {entryAt(i).einkLabel, nullptr, -1};
         }
 
-        // The battery percent rides in the title; without a sensor the title is plain.
-        char title[16];
-        snprintf(title, sizeof(title), "%s", Str::MODE_MENU_TITLE);
-        if (batteryMonitor.available()) {
-            snprintf(title, sizeof(title), Str::MODE_MENU_TITLE_BATTERY_FMT, batteryMonitor.percent());
-        }
+        // The battery sits in the footer with its icon; the title is just the title.
+        const int16_t batteryPercent = batteryMonitor.available()
+                                           ? static_cast<int16_t>(batteryMonitor.percent())
+                                           : -1;
 
-        einkDisplay.showMenu(title, rows, count, scrollable.getSelectedOptionId());
+        einkDisplay.showMenu(Str::MODE_MENU_TITLE, rows, count, scrollable.getSelectedOptionId(),
+                             EInkFooter(nullptr, nullptr, nullptr, batteryPercent));
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {

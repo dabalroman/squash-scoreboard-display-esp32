@@ -46,7 +46,6 @@ namespace Str {
 
     // Mode selector
     constexpr const char *const MODE_MENU_TITLE = "TRYB";
-    constexpr const char *const MODE_MENU_TITLE_BATTERY_FMT = "TRYB  %u%%";
     constexpr const char *const MODE_OPTION_SQUASH = "SQUASH";
     constexpr const char *const MODE_OPTION_VOLLEYBALL = "SIATKA";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL = "SIATKA 15";
@@ -61,22 +60,20 @@ namespace Str {
     constexpr const char *const MODE_OPTION_CONFIG_OLED =  " [OPCJE]   ";
 
     // Player picker
-    constexpr const char *const PLAYERS_MENU_TITLE = "PROFILE";
     constexpr const char *const PLAYERS_ROW_START = "START";
-    constexpr const char *const PLAYERS_ROW_EXIT = "KONIEC";
     constexpr const char *const PLAYERS_OPTION_START_OLED = " [START] ";
-    constexpr const char *const PLAYERS_OPTION_EXIT_OLED = " [KONIEC] ";
     // Label-colon form on purpose: Polish numerals decline (1 gracz / 2-4 gracze /
     // 5+ graczy), so anything of the shape "%u <noun>" is wrong for some counts.
     constexpr const char *const PLAYERS_FOOTER_COUNT_FMT = "W GRZE: %u";
 
     // E-paper match score labels. Squash and volleyball share one English word but
     // not one Polish word, hence the per-sport names.
-    constexpr const char *const MATCH_SCORE_LABEL_SQUASH_GAMES = "GEMY";
-    constexpr const char *const MATCH_SCORE_LABEL_VOLLEYBALL_SETS = "SETY";
-    constexpr const char *const MATCH_SCORE_LABEL_PADEL_GEMS = "GEMY";
-    constexpr const char *const MATCH_SCORE_LABEL_PADEL_TIEBREAK = "TIEBREAK";
-    constexpr const char *const MATCH_SCORE_SETS_LINE_FMT = "SETY %d";
+    // One label per thing counted, shared by every sport that counts it: squash
+    // and volleyball only ever count sets, padel counts gems within a set and
+    // sets on the screen between them.
+    constexpr const char *const MATCH_SCORE_LABEL_SETS = "SETY";
+    constexpr const char *const MATCH_SCORE_LABEL_GEMS = "GEMY";
+    constexpr const char *const MATCH_SCORE_LABEL_TIEBREAK = "TIEBREAK";
 
     // Roster editor (V2). PROFILE, not GRACZE: the in-match player picker is already
     // called GRACZE, and two screens under one word is how you open the wrong one.
@@ -102,7 +99,6 @@ namespace Str {
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "LEd";
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
     constexpr const char *const LED_CONFIG_WIFI = "SIEC";
-    constexpr const char *const LED_CONFIG_IP = "IP";
     constexpr const char *const LED_CONFIG_REBOOT = "rESt";
     constexpr const char *const LED_CONFIG_RETURN = "CoFn";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
@@ -113,7 +109,6 @@ namespace Str {
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "StAr";
-    constexpr const char *const LED_PLAYERS_EXIT = "CoFn";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
 
 #else
@@ -135,7 +130,6 @@ namespace Str {
 
     // Mode selector
     constexpr const char *const MODE_MENU_TITLE = "MODE";
-    constexpr const char *const MODE_MENU_TITLE_BATTERY_FMT = "MODE  %u%%";
     constexpr const char *const MODE_OPTION_SQUASH = "Squash";
     constexpr const char *const MODE_OPTION_VOLLEYBALL = "Volleyball";
     constexpr const char *const MODE_OPTION_SHORT_VOLLEYBALL = "Volley 15";
@@ -150,19 +144,14 @@ namespace Str {
     constexpr const char *const MODE_OPTION_CONFIG_OLED = " [Config] ";
 
     // Player picker
-    constexpr const char *const PLAYERS_MENU_TITLE = "PLAYERS";
     constexpr const char *const PLAYERS_ROW_START = "Start";
-    constexpr const char *const PLAYERS_ROW_EXIT = "Exit";
     constexpr const char *const PLAYERS_OPTION_START_OLED = " [Start] ";
-    constexpr const char *const PLAYERS_OPTION_EXIT_OLED = "  [Exit]  ";
     constexpr const char *const PLAYERS_FOOTER_COUNT_FMT = "%u in";
 
     // E-paper match score labels
-    constexpr const char *const MATCH_SCORE_LABEL_SQUASH_GAMES = "GAMES";
-    constexpr const char *const MATCH_SCORE_LABEL_VOLLEYBALL_SETS = "GAMES";
-    constexpr const char *const MATCH_SCORE_LABEL_PADEL_GEMS = "GEMS";
-    constexpr const char *const MATCH_SCORE_LABEL_PADEL_TIEBREAK = "TIE";
-    constexpr const char *const MATCH_SCORE_SETS_LINE_FMT = "SETS %d";
+    constexpr const char *const MATCH_SCORE_LABEL_SETS = "SETS";
+    constexpr const char *const MATCH_SCORE_LABEL_GEMS = "GEMS";
+    constexpr const char *const MATCH_SCORE_LABEL_TIEBREAK = "TIE";
 
     // Roster editor (V2)
     constexpr const char *const PLAYER_SETUP_OLED_TITLE = "PROFILES";
@@ -183,7 +172,6 @@ namespace Str {
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "br";
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
     constexpr const char *const LED_CONFIG_WIFI = "conn";
-    constexpr const char *const LED_CONFIG_IP = "IP";
     constexpr const char *const LED_CONFIG_REBOOT = "boot";
     constexpr const char *const LED_CONFIG_RETURN = "rEtu";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
@@ -194,7 +182,6 @@ namespace Str {
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "PLAY";
-    constexpr const char *const LED_PLAYERS_EXIT = "rEtu";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
 
 #endif

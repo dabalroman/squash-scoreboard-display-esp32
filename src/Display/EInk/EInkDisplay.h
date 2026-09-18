@@ -27,7 +27,6 @@
 #include <Adafruit_GFX.h>
 
 #include "../../Board.h"
-#include "../../Strings.h"
 
 /**
  * One menu row. `value` is drawn right-aligned (nullptr = none). `check` draws a
@@ -39,15 +38,37 @@ struct EInkMenuRow {
     int8_t check;
 };
 
+/**
+ * The menu footer: up to three centred lines. `batteryPercent >= 0` makes line 1
+ * the battery icon and that percent, otherwise `line1` is used as plain text;
+ * `line2` and `line3` are smaller lines under it, each skipped when empty.
+ *
+ * One item per line, never two side by side - 128 px does not hold a 12 pt
+ * percentage next to a firmware version without them colliding.
+ *
+ * A default-constructed footer (all null, no battery) means no footer at all, so
+ * a menu that wants none simply omits the argument.
+ */
+struct EInkFooter {
+    const char *line1;
+    const char *line2;
+    const char *line3;
+    int16_t batteryPercent;
+
+    EInkFooter() : line1(nullptr), line2(nullptr), line3(nullptr), batteryPercent(-1) {}
+
+    EInkFooter(const char *line1, const char *line2, const char *line3, const int16_t batteryPercent)
+        : line1(line1), line2(line2), line3(line3), batteryPercent(batteryPercent) {}
+};
+
 #if BOARD_REV == 2
 
-#include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
-#include <Fonts/FreeSansBold12pt7b.h>
 #include "EInkAsync.h"
+#include "EInkWidgets.h"
+#include "Fonts/ScoreDigits.h"
 #include "Images/Splash.h"
 
 static_assert(SPLASH_WIDTH == EInkAsync::WIDTH && SPLASH_HEIGHT == EInkAsync::HEIGHT,
@@ -61,19 +82,6 @@ namespace EInkPolicy {
     constexpr uint32_t TRANSITION_MIN_PARTIALS = 16;
     // Hard limit: the next refresh is full, whatever is on screen.
     constexpr uint32_t MAX_PARTIALS = 128;
-}
-
-// E-paper layout, 128 x 296 portrait. Its own constants - nothing from the OLED.
-namespace EInkLayout {
-    constexpr int16_t TITLE_HEIGHT = 30;
-    constexpr int16_t ROWS_TOP = 36;
-    constexpr int16_t ROW_PITCH = 29;
-    constexpr int16_t ROW_BASELINE = 21;     // from the row top, FreeSans12pt
-    constexpr int16_t FOOTER_HEIGHT = 26;        // one 12 pt line
-    constexpr int16_t FOOTER_HEIGHT_TWO = 44;    // two 9 pt lines (e.g. battery + firmware)
-    constexpr int16_t CHECKBOX_SIZE = 13;
-    constexpr int16_t SELECTION_BORDER = 2;  // outline thickness of the selected row
-    constexpr int16_t TEXT_MARGIN = 5;
 }
 
 class EInkDisplay {
@@ -137,13 +145,17 @@ public:
     }
 
     /**
-     * The match screen: top row = the player the border's top half shows (left
-     * court side), bottom row = the other. Values are match-level - games won, or
-     * gems in padel - never rally points. Sets < 0 hides the sets line.
+     * The match screen: name, score, divider, score, name down the panel, so each
+     * player's name sits at their outer edge and the two scores face each other
+     * across the label that says what they count.
+     *
+     * Top half = the player the border's top half shows (left court side). Values
+     * are match-level - games won, or gems in padel - never rally points; the
+     * divider label says which (GEMY / SETY / TIEBREAK).
      */
     void showMatchScore(const char *topName, const uint8_t topValue,
                         const char *bottomName, const uint8_t bottomValue,
-                        const char *label, const int16_t topSets = -1, const int16_t bottomSets = -1) {
+                        const char *label) {
         if (splashHoldActive()) {
             return;
         }
@@ -154,8 +166,6 @@ public:
         h = hashText(h, label);
         h = hashAdd(h, topValue);
         h = hashAdd(h, bottomValue);
-        h = hashAdd(h, static_cast<uint16_t>(topSets));
-        h = hashAdd(h, static_cast<uint16_t>(bottomSets));
         if (!commit(h)) {
             return;
         }
@@ -165,13 +175,13 @@ public:
         g.setTextColor(INK);
         g.setTextWrap(false);
 
-        drawPlayerBlock(g, 0, topName, topValue, topSets);
+        drawPlayerHalf(g, topName, topValue, MATCH_TOP_SCORE_BASELINE, MATCH_TOP_NAME_BASELINE);
 
-        g.fillRect(0, 132, g.width(), 2, INK);
-        printCentered(g, label, 155, &FreeMonoBold12pt7b);
-        g.fillRect(0, 162, g.width(), 2, INK);
+        g.fillRect(0, MATCH_DIVIDER_TOP, g.width(), 2, INK);
+        EInkWidgets::printCentered(g, label, MATCH_LABEL_BASELINE, &FreeMonoBold12pt7b);
+        g.fillRect(0, MATCH_DIVIDER_BOTTOM, g.width(), 2, INK);
 
-        drawPlayerBlock(g, 164, bottomName, bottomValue, bottomSets);
+        drawPlayerHalf(g, bottomName, bottomValue, MATCH_BOTTOM_SCORE_BASELINE, MATCH_BOTTOM_NAME_BASELINE);
 
         present(SCREEN_MATCH);
     }
@@ -197,13 +207,11 @@ public:
         g.fillScreen(PAPER);
         g.setTextWrap(false);
 
-        g.fillRect(0, 0, g.width(), EInkLayout::TITLE_HEIGHT, INK);
-        g.setTextColor(PAPER);
-        printFitted(g, title, 22);
+        EInkWidgets::drawHeader(g, title);
 
         if (line != nullptr && line[0] != '\0') {
             g.setTextColor(INK);
-            printCentered(g, line, 170, &FreeMonoBold24pt7b);
+            EInkWidgets::printCentered(g, line, 170, &FreeMonoBold24pt7b);
         }
 
         present(SCREEN_MESSAGE);
@@ -214,22 +222,30 @@ public:
      * footer. The visible window is this renderer's own state (the OLED keeps its
      * own); it follows the selection and resets when the title changes.
      *
-     * A second footer line (only with the first) switches the footer to two 9 pt
-     * lines instead of one 12 pt line - 128 px is too narrow to hold both on one.
-     * Either height leaves 7 rows visible, so no menu re-flows.
+     * Each extra footer line makes the footer taller, but all three heights leave
+     * 6 rows visible, so the 6-entry MODE menu and the 5-row CONFIG menu fit
+     * without scrolling whatever their footer holds. A 7th MODE entry would start
+     * scrolling it.
      */
     void showMenu(const char *title, const EInkMenuRow *rows, const uint8_t rowCount,
-                  const uint8_t selected, const char *footer = nullptr,
-                  const char *footerSecondary = nullptr) {
+                  const uint8_t selected, const EInkFooter &footer = EInkFooter()) {
         if (splashHoldActive()) {
             return;
         }
 
-        const bool hasFooter = footer != nullptr && footer[0] != '\0';
-        const bool hasSecondary = hasFooter && footerSecondary != nullptr && footerSecondary[0] != '\0';
-        const int16_t footerHeight = !hasFooter
-                                         ? 0
-                                         : (hasSecondary ? EInkLayout::FOOTER_HEIGHT_TWO : EInkLayout::FOOTER_HEIGHT);
+        const char *extra[2];
+        uint8_t extraCount = 0;
+        if (hasText(footer.line2)) {
+            extra[extraCount++] = footer.line2;
+        }
+        if (hasText(footer.line3)) {
+            extra[extraCount++] = footer.line3;
+        }
+
+        const bool hasFooter = footer.batteryPercent >= 0 || hasText(footer.line1) || extraCount > 0;
+        const int16_t footerHeights[] = {EInkLayout::FOOTER_HEIGHT, EInkLayout::FOOTER_HEIGHT_TWO,
+                                         EInkLayout::FOOTER_HEIGHT_THREE};
+        const int16_t footerHeight = hasFooter ? footerHeights[extraCount] : 0;
         const uint8_t visible = visibleRows(footerHeight);
 
         if (menuTitleHash != hashText(HASH_SEED, title)) {
@@ -240,8 +256,11 @@ public:
 
         uint32_t h = hashAdd(HASH_SEED, SCREEN_MENU);
         h = hashText(h, title);
-        h = hashText(h, hasFooter ? footer : "");
-        h = hashText(h, hasSecondary ? footerSecondary : "");
+        h = hashText(h, hasFooter ? footer.line1 : "");
+        for (uint8_t i = 0; i < extraCount; i++) {
+            h = hashText(h, extra[i]);
+        }
+        h = hashAdd(h, static_cast<uint16_t>(hasFooter ? footer.batteryPercent : -1));
         h = hashAdd(h, selected);
         h = hashAdd(h, menuOffset);
         h = hashAdd(h, rowCount);
@@ -258,10 +277,7 @@ public:
         g.fillScreen(PAPER);
         g.setTextWrap(false);
 
-        // Title bar, inverted.
-        g.fillRect(0, 0, g.width(), EInkLayout::TITLE_HEIGHT, INK);
-        g.setTextColor(PAPER);
-        printCentered(g, title, 22, &FreeSansBold12pt7b);
+        EInkWidgets::drawHeader(g, title);
 
         for (uint8_t row = 0; row < visible && menuOffset + row < rowCount; row++) {
             const uint8_t index = menuOffset + row;
@@ -280,16 +296,8 @@ public:
         }
 
         if (hasFooter) {
-            const int16_t top = g.height() - footerHeight;
-            g.fillRect(0, top, g.width(), 2, INK);
-            g.setTextColor(INK);
-
-            if (hasSecondary) {
-                printCentered(g, footer, top + 17, &FreeSans9pt7b);
-                printCentered(g, footerSecondary, top + 37, &FreeSans9pt7b);
-            } else {
-                printCentered(g, footer, top + 20, &FreeSans12pt7b);
-            }
+            EInkWidgets::drawFooter(g, g.height() - footerHeight, footer.line1, extra, extraCount,
+                                    footer.batteryPercent);
         }
 
         present(SCREEN_MENU);
@@ -338,6 +346,27 @@ private:
 
     // Upper bound for flushRefresh(); a partial is ~0.5 s, a full ~1.6 s.
     enum : uint32_t { FLUSH_TIMEOUT_MS = 5000 };
+
+    /**
+     * The match screen, in canvas y. Reading down the panel it is name, score,
+     * divider, score, name - the names at the two outer edges, the scores facing
+     * each other across the label. The divider band stays at 132..164, the
+     * panel's vertical centre.
+     *
+     *       24  name, top edge            288  name, bottom edge
+     *   41..120  score (79 px digits)  175..254  score
+     *
+     * Both name-to-score gaps are 17 px, so the two halves read as mirrored.
+     */
+    enum : int16_t {
+        MATCH_TOP_NAME_BASELINE = 24,
+        MATCH_TOP_SCORE_BASELINE = 120,
+        MATCH_DIVIDER_TOP = 132,
+        MATCH_LABEL_BASELINE = 155,
+        MATCH_DIVIDER_BOTTOM = 162,
+        MATCH_BOTTOM_SCORE_BASELINE = 254,
+        MATCH_BOTTOM_NAME_BASELINE = 288,
+    };
 
     // Screen types for change detection and the ghosting policy.
     enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE, SCREEN_IMAGE };
@@ -416,34 +445,7 @@ private:
         }
     }
 
-    static int16_t textWidth(GFXcanvas1 &g, const char *text, const GFXfont *font) {
-        g.setFont(font);
-        g.setTextSize(1);
-        int16_t x1, y1;
-        uint16_t w, h;
-        g.getTextBounds(text, 0, 100, &x1, &y1, &w, &h);
-        return static_cast<int16_t>(w);
-    }
-
-    static void printCentered(GFXcanvas1 &g, const char *text, const int16_t baseline,
-                              const GFXfont *font, const uint8_t size = 1) {
-        g.setFont(font);
-        g.setTextSize(size);
-        int16_t x1, y1;
-        uint16_t w, h;
-        g.getTextBounds(text, 0, baseline, &x1, &y1, &w, &h);
-        g.setCursor((g.width() - static_cast<int16_t>(w)) / 2 - x1, baseline);
-        g.print(text);
-    }
-
-    // Title text wider than the panel drops to 9 pt rather than being clipped.
-    static void printFitted(GFXcanvas1 &g, const char *text, const int16_t baseline) {
-        const int16_t room = g.width() - 2 * EInkLayout::TEXT_MARGIN;
-        const GFXfont *font = textWidth(g, text, &FreeSansBold12pt7b) <= room
-                                  ? &FreeSansBold12pt7b
-                                  : &FreeSans9pt7b;
-        printCentered(g, text, baseline, font);
-    }
+    static bool hasText(const char *text) { return text != nullptr && text[0] != '\0'; }
 
     // Menu rows use FreeSans; the selected row gets an outline, not a fill.
     static void drawMenuRow(GFXcanvas1 &g, const int16_t top, const EInkMenuRow &row, const bool isSelected) {
@@ -459,44 +461,31 @@ private:
 
         if (row.check >= 0) {
             const int16_t boxTop = top + (EInkLayout::ROW_PITCH - EInkLayout::CHECKBOX_SIZE) / 2;
-            g.drawRect(x, boxTop, EInkLayout::CHECKBOX_SIZE, EInkLayout::CHECKBOX_SIZE, INK);
-            if (row.check > 0) {
-                g.fillRect(x + 3, boxTop + 3, EInkLayout::CHECKBOX_SIZE - 6, EInkLayout::CHECKBOX_SIZE - 6, INK);
-            }
+            EInkWidgets::drawTickbox(g, x, boxTop, EInkLayout::CHECKBOX_SIZE, row.check > 0);
             x += EInkLayout::CHECKBOX_SIZE + 5;
         }
 
-        int16_t valueWidth = 0;
-        if (row.value != nullptr && row.value[0] != '\0') {
-            valueWidth = textWidth(g, row.value, &FreeSans12pt7b);
-            g.setFont(&FreeSans12pt7b);
-            g.setCursor(g.width() - EInkLayout::TEXT_MARGIN - valueWidth, baseline);
-            g.print(row.value);
-            valueWidth += 6;
+        if (hasText(row.value)) {
+            EInkWidgets::printRightAligned(g, row.value, g.width() - EInkLayout::TEXT_MARGIN,
+                                           baseline, &FreeSans12pt7b);
         }
 
-        // Long labels (e.g. an IP address) fall back to the 9 pt size.
-        const int16_t room = g.width() - EInkLayout::TEXT_MARGIN - valueWidth - x;
-        const GFXfont *font = textWidth(g, row.label, &FreeSans12pt7b) <= room ? &FreeSans12pt7b : &FreeSans9pt7b;
-        g.setFont(font);
-        g.setCursor(x, baseline);
-        g.print(row.label);
+        // One size, always: an overlong label is clipped at the right edge rather
+        // than silently shrinking, which made whole screens look ragged.
+        EInkWidgets::printAt(g, row.label, x, baseline, &FreeSans12pt7b);
     }
 
-    // One 132 px tall player block starting at y: name, big value, optional sets.
-    static void drawPlayerBlock(GFXcanvas1 &g, const int16_t y, const char *name,
-                                const uint8_t value, const int16_t sets) {
-        printCentered(g, name, y + 22, &FreeMonoBold12pt7b);
-
+    // One half of the match screen: the name on its baseline, the score on its own.
+    // ScoreDigits is rendered at its real 79 px size, never setTextSize()-scaled,
+    // and its widest two digits still fit the 128 px panel - so there is no size
+    // fallback and no value that can overflow.
+    static void drawPlayerHalf(GFXcanvas1 &g, const char *name, const uint8_t value,
+                               const int16_t scoreBaseline, const int16_t nameBaseline) {
         char number[4];
         snprintf(number, sizeof(number), "%u", value);
-        printCentered(g, number, y + 96, &FreeMonoBold24pt7b, 2);   // ~62 px tall digits
 
-        if (sets >= 0) {
-            char line[12];
-            snprintf(line, sizeof(line), Str::MATCH_SCORE_SETS_LINE_FMT, sets);
-            printCentered(g, line, y + 124, &FreeMonoBold9pt7b);
-        }
+        EInkWidgets::printCentered(g, number, scoreBaseline, &ScoreDigits);
+        EInkWidgets::printCentered(g, name, nameBaseline, &FreeMonoBold12pt7b);
     }
 
     /**
@@ -538,10 +527,9 @@ public:
     void dismissSplash() {}
 
     void showBlank() {}
-    void showMatchScore(const char *, const uint8_t, const char *, const uint8_t,
-                        const char *, const int16_t = -1, const int16_t = -1) {}
+    void showMatchScore(const char *, const uint8_t, const char *, const uint8_t, const char *) {}
     void showMenu(const char *, const EInkMenuRow *, const uint8_t, const uint8_t,
-                  const char * = nullptr, const char * = nullptr) {}
+                  const EInkFooter & = EInkFooter()) {}
     void showMessage(const char *, const char *) {}
     void showImage(const uint8_t *) {}
 

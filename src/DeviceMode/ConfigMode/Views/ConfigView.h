@@ -17,9 +17,8 @@ enum Settings {
     brightness = 0,
     enableBuzzer = 1,
     enableWifi = 2,
-    ipAddress = 3,
-    reboot = 4,
-    goBack = 5,
+    reboot = 3,
+    goBack = 4,
 };
 
 class ConfigView final : public View {
@@ -32,7 +31,6 @@ class ConfigView final : public View {
         Str::CONFIG_OPTION_BRIGHTNESS_OLED,
         Str::CONFIG_OPTION_BUZZER_OLED,
         Str::CONFIG_OPTION_WIFI_OLED,
-        preferencesManager.wifiIpAddress,
         Str::CONFIG_OPTION_REBOOT_OLED,
         Str::CONFIG_OPTION_RETURN_OLED,
     };
@@ -160,10 +158,6 @@ public:
                 color = value ? Colors::Green : Colors::Red;
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_WIFI);
                 break;
-            case Settings::ipAddress:
-                color = Colors::White;
-                ledDisplay.setGlyphsText(Str::LED_CONFIG_IP);
-                break;
             case Settings::reboot:
                 color = Colors::Pink;
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_REBOOT);
@@ -198,32 +192,33 @@ public:
         char brightnessLevel[4];
         snprintf(brightnessLevel, sizeof(brightnessLevel), "%u/8", settings.brightness / 32 + 1);
 
-        // Index-aligned with `Settings` / optionsList.
+        // Index-aligned with `Settings` / optionsList. The two toggles show a
+        // tickbox here; the rear OLED keeps its TAK/NIE value column.
         const EInkMenuRow rows[] = {
             {Str::CONFIG_ROW_BRIGHTNESS_LABEL, brightnessLevel, -1},
-            {Str::CONFIG_ROW_BUZZER_LABEL, settings.enableBuzzer ? Str::CONFIG_VALUE_ON : Str::CONFIG_VALUE_OFF, -1},
-            {Str::CONFIG_ROW_WIFI_LABEL, settings.enableWifi ? Str::CONFIG_VALUE_ON : Str::CONFIG_VALUE_OFF, -1},
-            {preferencesManager.wifiIpAddress.c_str(), nullptr, -1},
+            {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(settings.enableBuzzer ? 1 : 0)},
+            {Str::CONFIG_ROW_WIFI_LABEL, nullptr, static_cast<int8_t>(settings.enableWifi ? 1 : 0)},
             {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},
         };
 
-        char footer[16] = "";
-        if (batteryMonitor.available()) {
-            snprintf(footer, sizeof(footer), "BAT %u%%", batteryMonitor.percent());
-        }
+        const int16_t batteryPercent = batteryMonitor.available()
+                                           ? static_cast<int16_t>(batteryMonitor.percent())
+                                           : -1;
 
-        // The only place the firmware version is shown on the device - the splash is
-        // an image now. A footer line, not a row, keeps the option indices untouched.
-        char version[24];
-        snprintf(version, sizeof(version), "FW %s", FW_VERSION);
+        // Footer lines, top to bottom: battery, firmware version, IP. The version is
+        // the only place it is shown on the device - the splash is an image now.
+        // The IP is a line rather than a row because it is never actionable, and as
+        // a row it both cost a scroll stop and was the one label too wide to fit.
+        const String &ip = preferencesManager.wifiIpAddress;
 
-        // Without a battery reading the version takes the single footer line instead.
-        const bool hasBattery = footer[0] != '\0';
+        char version[16];
+        snprintf(version, sizeof(version), "V%s", FW_VERSION);
 
         einkDisplay.showMenu(Str::CONFIG_MENU_TITLE, rows, sizeof(rows) / sizeof(rows[0]),
                              scrollable.getSelectedOptionId(),
-                             hasBattery ? footer : version, hasBattery ? version : nullptr);
+                             EInkFooter(nullptr, version,
+                                        ip.length() > 0 ? ip.c_str() : nullptr, batteryPercent));
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {

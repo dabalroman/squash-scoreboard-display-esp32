@@ -295,12 +295,11 @@ public:
         }
 
         // The engine Game is the set: its score is gems won. Side a = left court.
-        const MatchResult sets = match->getMatchResult();
+        // Sets are deliberately absent mid-game - gems are what the players track.
         einkDisplay.showMatchScore(
             playerLeft->getName(), game->getRealScore(GameSide::a),
             playerRight->getName(), game->getRealScore(GameSide::b),
-            scorer.isTiebreak() ? Str::MATCH_SCORE_LABEL_PADEL_TIEBREAK : Str::MATCH_SCORE_LABEL_PADEL_GEMS,
-            sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
+            scorer.isTiebreak() ? Str::MATCH_SCORE_LABEL_TIEBREAK : Str::MATCH_SCORE_LABEL_GEMS
         );
     }
 

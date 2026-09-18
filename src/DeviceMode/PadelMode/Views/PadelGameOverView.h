@@ -85,13 +85,12 @@ public:
             return;
         }
 
-        // Gems of the set that just ended, plus sets won.
-        const MatchResult sets = match->getMatchResult();
+        // Gems of the set that just ended. Sets appear one press later, on
+        // MatchStartGame, rather than competing with the gems here.
         einkDisplay.showMatchScore(
             playerLeft->getName(), leftScore,
             playerRight->getName(), rightScore,
-            Str::MATCH_SCORE_LABEL_PADEL_GEMS,
-            sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
+            Str::MATCH_SCORE_LABEL_GEMS
         );
     }
 

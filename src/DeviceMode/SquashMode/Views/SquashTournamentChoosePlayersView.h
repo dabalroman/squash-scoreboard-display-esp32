@@ -25,7 +25,6 @@ class SquashTournamentChoosePlayersView final : public View {
     std::unique_ptr<ScrollableWidget> scrollableWidget;
 
     uint8_t startOptionId;
-    uint8_t exitOptionId;
 
 public:
     explicit SquashTournamentChoosePlayersView(
@@ -37,23 +36,21 @@ public:
         : tournament(tournament), users(players), onDeviceModeChange(onDeviceModeChange),
           onStateChange(std::move(onStateChange)) {
 
-        menuOptions.reserve(players.size() + 2);
+        menuOptions.reserve(players.size() + 1);
         menuOptions.push_back(Str::PLAYERS_OPTION_START_OLED);
 
         for (const UserProfile *user: players) {
             menuOptions.push_back(user->getName());
         }
-        menuOptions.push_back(Str::PLAYERS_OPTION_EXIT_OLED);
 
         startOptionId = 0;
-        exitOptionId = menuOptions.size() - 1;
 
         scrollable = std::make_unique<Scrollable>(menuOptions);
         scrollableWidget = std::make_unique<ScrollableWidget>(*scrollable);
     }
 
     uint8_t getPlayerIdFromOptionId(const uint8_t optionId) const {
-        if (optionId == startOptionId || optionId == exitOptionId) {
+        if (optionId == startOptionId) {
             return 0;
         }
 
@@ -75,7 +72,17 @@ public:
             queueRender();
         }
 
-        if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
+        // C is back to the mode selector - which is what a long press already did
+        // here, and what let the KONIEC row go. D alone toggles or starts, so the
+        // two buttons no longer do the same thing.
+        if (remoteInputManager.buttonC.takeActionIfPossible()) {
+            remoteInputManager.preventTriggerForMs();
+            // The callback destroys this view; nothing may touch `this` after it.
+            onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+            return;
+        }
+
+        if (remoteInputManager.buttonD.takeActionIfPossible()) {
             const uint8_t selectedOptionId = scrollable->getSelectedOptionId();
 
             if (selectedOptionId == startOptionId) {
@@ -85,12 +92,6 @@ public:
 
                 remoteInputManager.preventTriggerForMs();
                 onStateChange(SquashModeState::MatchStartGame);
-                return;
-            }
-
-            if (selectedOptionId == exitOptionId) {
-                remoteInputManager.preventTriggerForMs();
-                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
                 return;
             }
 
@@ -130,24 +131,20 @@ public:
             ledDisplay.setGlyphsText(Str::LED_PLAYERS_START);
             ledDisplay.setIndicatorAppearancePlayerA(color);
             ledDisplay.setIndicatorAppearancePlayerB(color);
-        } else if (optionId == exitOptionId) {
-            ledDisplay.setGlyphsText(Str::LED_PLAYERS_EXIT);
-            ledDisplay.setGlyphsColor(Colors::White, Colors::White);
-            ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
-            ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
         } else {
-            // P plus the id, right-aligned in the two rightmost slots: "P  5", "P 31".
-            // The roster now goes to 32 and digitToGlyph returns Empty above 9, so a
-            // single digit slot showed nothing from player 10 up. Right-aligned, not
-            // left, so the ones digit stays put as the id crosses 10.
-            // The in/out dot is dropped to make room - it was never the only signal:
-            // both digits are tinted green/red and indicator B carries it too.
-            const uint8_t tens = playerId / 10;
+            // "P" and the id's last digit, then the in/out dot in the last slot:
+            // "P5 *" while the player is in, "P5 ." while they are out. The dot
+            // sits high for in and low for out, so the state is readable from its
+            // position alone and not only from the green/red tint that
+            // setGlyphsColor gives slots C and D below.
+            // Only the ones digit fits beside the dot, so ids 3, 13 and 23 share a
+            // face here; the profile name on the OLED and the e-paper is what
+            // picks between them.
             ledDisplay.setGlyphsGlyph(
                 Glyph::P,
+                LedDisplay::digitToGlyph(playerId % 10),
                 Glyph::Empty,
-                tens > 0 ? LedDisplay::digitToGlyph(tens) : Glyph::Empty,
-                LedDisplay::digitToGlyph(playerId % 10)
+                isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot
             );
             ledDisplay.setGlyphsColor(playerColor, playerStateColor);
             ledDisplay.setIndicatorAppearancePlayerA(playerColor);
@@ -170,26 +167,27 @@ public:
         }
 
         // TODO: USE SCROLLABLE WIDGET
-        // Rows follow menuOptions: [Start], one per user, [Exit].
-        // [Start] + up to 32 players + [Exit]. Stack-local, ~408 bytes at this size.
-        constexpr uint8_t MAX_ROWS = 2 + PlayerRosterLimits::MAX_PLAYERS;
+        // Rows follow menuOptions: [Start], then one per user. Stack-local.
+        constexpr uint8_t MAX_ROWS = 1 + PlayerRosterLimits::MAX_PLAYERS;
         EInkMenuRow rows[MAX_ROWS];
         uint8_t count = 0;
 
+        // No tickbox on START: here the box means in/out membership and nothing
+        // else. Readiness is carried by the footer count and the red/green LED word.
         const size_t playersIn = tournament.getPlayers().size();
-        rows[count++] = {Str::PLAYERS_ROW_START, nullptr, static_cast<int8_t>(playersIn >= 2 ? 1 : 0)};
+        rows[count++] = {Str::PLAYERS_ROW_START, nullptr, -1};
         for (const UserProfile *user : users) {
-            if (count >= MAX_ROWS - 1) {
+            if (count >= MAX_ROWS) {
                 break;
             }
             rows[count++] = {user->getName(), nullptr, static_cast<int8_t>(tournament.isPlayerIn(*user) ? 1 : 0)};
         }
-        rows[count++] = {Str::PLAYERS_ROW_EXIT, nullptr, -1};
 
         char footer[12];
         snprintf(footer, sizeof(footer), Str::PLAYERS_FOOTER_COUNT_FMT, static_cast<unsigned>(playersIn));
 
-        einkDisplay.showMenu(Str::PLAYERS_MENU_TITLE, rows, count, scrollable->getSelectedOptionId(), footer);
+        einkDisplay.showMenu(Str::MODE_OPTION_SQUASH, rows, count, scrollable->getSelectedOptionId(),
+                             EInkFooter(footer, nullptr, nullptr, -1));
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {

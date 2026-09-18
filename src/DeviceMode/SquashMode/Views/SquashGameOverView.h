@@ -89,7 +89,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), result.scoreOf(playerLeft->getId()),
             playerRight->getName(), result.scoreOf(playerRight->getId()),
-            Str::MATCH_SCORE_LABEL_SQUASH_GAMES
+            Str::MATCH_SCORE_LABEL_SETS
         );
     }
 
