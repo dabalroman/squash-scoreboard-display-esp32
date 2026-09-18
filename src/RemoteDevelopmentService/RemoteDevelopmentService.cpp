@@ -151,7 +151,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
     const String savedSSID = preferencesManager->settings.wifiSSID;
     const String savedPassword = preferencesManager->settings.wifiPassword;
 
-    if (!preferencesManager->settings.enableWifi) {
+    if (!preferencesManager->settings.enableDevMode) {
         preferencesManager->wifiIpAddress = "";
         return;
     }
@@ -231,7 +231,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
     preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
     isAPActive = true;
 
-    // Load-bearing: with enableWifi off (the default on a fresh device) init()
+    // Load-bearing: with enableDevMode off (the default on a fresh device) init()
     // returned early and no WebServer exists yet.
     setupOTA();
 }

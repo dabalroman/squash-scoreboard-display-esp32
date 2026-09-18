@@ -6,10 +6,11 @@
 struct PrefsData {
     uint8_t brightness = 127;
     uint8_t enableBuzzer = 1;
-    // Default OFF: with an empty or invalid NVS blob a fresh device would otherwise
-    // spend ~15 s failing STA against an empty SSID and then raise an open AP.
-    // Stored blobs keep their own value, so V1's OTA path is untouched.
-    uint8_t enableWifi = 0;
+    // Joins the house network at boot, for OTA and telnet without standing at the
+    // device. Default OFF: with an empty or invalid NVS blob a fresh device would
+    // otherwise spend ~15 s failing STA against an empty SSID and then raise an open
+    // AP. Stored blobs keep their own value, so V1's OTA path is untouched.
+    uint8_t enableDevMode = 0;
     char wifiSSID[64] = "";
     char wifiPassword[64] = "";
 } __attribute__((packed));

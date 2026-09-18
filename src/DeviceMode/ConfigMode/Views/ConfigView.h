@@ -16,7 +16,7 @@
 enum Settings {
     brightness = 0,
     enableBuzzer = 1,
-    enableWifi = 2,
+    devMode = 2,
     reboot = 3,
     goBack = 4,
 };
@@ -29,7 +29,7 @@ class ConfigView final : public View {
     const std::vector<String> optionsList = {
         Str::CONFIG_OPTION_BRIGHTNESS_OLED,
         Str::CONFIG_OPTION_BUZZER_OLED,
-        Str::CONFIG_OPTION_WIFI_OLED,
+        Str::CONFIG_OPTION_DEV_MODE_OLED,
         Str::CONFIG_OPTION_REBOOT_OLED,
         Str::CONFIG_OPTION_RETURN_OLED,
     };
@@ -86,8 +86,8 @@ public:
                     preferencesManager.settings.brightness =
                             (clamp(preferencesManager.settings.brightness / 32, 1, 8) - 1) * 32 + 31;
                     break;
-                case Settings::enableWifi:
-                    preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
+                case Settings::devMode:
+                    preferencesManager.settings.enableDevMode = !preferencesManager.settings.enableDevMode;
                     break;
                 case Settings::enableBuzzer:
                     preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
@@ -105,8 +105,8 @@ public:
                     preferencesManager.settings.brightness =
                             clamp(preferencesManager.settings.brightness / 32 + 1, 0, 7) * 32 + 31;
                     break;
-                case Settings::enableWifi:
-                    preferencesManager.settings.enableWifi = !preferencesManager.settings.enableWifi;
+                case Settings::devMode:
+                    preferencesManager.settings.enableDevMode = !preferencesManager.settings.enableDevMode;
                     break;
                 case Settings::enableBuzzer:
                     preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
@@ -152,10 +152,11 @@ public:
                 color = value ? Colors::Green : Colors::Red;
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_BUZZER);
                 break;
-            case Settings::enableWifi:
-                value = preferencesManager.settings.enableWifi;
+            case Settings::devMode:
+                value = preferencesManager.settings.enableDevMode;
                 color = value ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsText(Str::LED_CONFIG_WIFI);
+                // No glyph exists for D-E-V or M-O-D-E; the colour carries the state.
+                ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
                 break;
             case Settings::reboot:
                 color = Colors::Pink;
@@ -175,7 +176,7 @@ public:
         ledDisplay.setLedBarState([&] { return ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
             preferencesManager.settings.enableBuzzer,
-            preferencesManager.settings.enableWifi
+            preferencesManager.settings.enableDevMode
         ); });
         ledDisplay.display();
     }
@@ -196,7 +197,7 @@ public:
         const EInkMenuRow rows[] = {
             {Str::CONFIG_ROW_BRIGHTNESS_LABEL, brightnessLevel, -1},
             {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(settings.enableBuzzer ? 1 : 0)},
-            {Str::CONFIG_ROW_WIFI_LABEL, nullptr, static_cast<int8_t>(settings.enableWifi ? 1 : 0)},
+            {Str::CONFIG_ROW_DEV_MODE_LABEL, nullptr, static_cast<int8_t>(settings.enableDevMode ? 1 : 0)},
             {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},
         };

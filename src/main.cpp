@@ -266,7 +266,7 @@ void setup() {
 
     printLn("%s ready. FW version: %s, %s %s\n", Board::NAME, FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");
-    printLn("  enableWifi: %d", preferencesManager.settings.enableWifi);
+    printLn("  enableDevMode: %d", preferencesManager.settings.enableDevMode);
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);

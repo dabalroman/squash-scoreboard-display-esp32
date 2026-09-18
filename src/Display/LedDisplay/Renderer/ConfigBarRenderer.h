@@ -9,7 +9,7 @@ public:
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const uint8_t selectedOption,
         const bool enableBuzzer,
-        const bool enableWifi
+        const bool enableDevMode
     ) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
@@ -19,7 +19,7 @@ public:
         const Color colors[OPTION_COUNT] = {
             Colors::White,                               // Brightness
             enableBuzzer ? Colors::Green : Colors::Red,  // Buzzer
-            enableWifi   ? Colors::Green : Colors::Red,  // WiFi
+            enableDevMode ? Colors::Green : Colors::Red, // Dev Mode
             Colors::Pink,                                // Reboot
             Colors::Aqua,                                // Return
         };

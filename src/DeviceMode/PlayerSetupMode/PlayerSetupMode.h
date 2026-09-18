@@ -7,7 +7,7 @@
 #include "Views/PlayerSetupView.h"
 
 /**
- * The roster editor. Entering forces the setup AP up whatever `enableWifi` says -
+ * The roster editor. Entering forces the setup AP up whatever `enableDevMode` says -
  * it is an explicit user action, not a background service.
  *
  * The AP and the HTTP gate are opened in the constructor and closed in the

@@ -52,7 +52,7 @@ public:
     void disableAP();
 
     /**
-     * Raise the setup AP on demand, whatever `enableWifi` says - an explicit user
+     * Raise the setup AP on demand, whatever `enableDevMode` says - an explicit user
      * action, not a background service, so there is no blocking delay here.
      *
      * STA is torn down and does not come back until the next reboot; the roster

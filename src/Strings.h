@@ -33,14 +33,14 @@ namespace Str {
     constexpr const char *const CONFIG_MENU_TITLE = "OPCJE";
     constexpr const char *const CONFIG_ROW_BRIGHTNESS_LABEL = "LED";
     constexpr const char *const CONFIG_ROW_BUZZER_LABEL = "BUZZER";
-    constexpr const char *const CONFIG_ROW_WIFI_LABEL = "WIFI";
+    constexpr const char *const CONFIG_ROW_DEV_MODE_LABEL = "Dev Mode";
     constexpr const char *const CONFIG_ROW_REBOOT_LABEL = "RESTART";
     constexpr const char *const CONFIG_ROW_RETURN_LABEL = "COFNIJ";
     constexpr const char *const CONFIG_VALUE_ON = "TAK";
     constexpr const char *const CONFIG_VALUE_OFF = "NIE";
     constexpr const char *const CONFIG_OPTION_BRIGHTNESS_OLED = "LED";
     constexpr const char *const CONFIG_OPTION_BUZZER_OLED = "BUZZER";
-    constexpr const char *const CONFIG_OPTION_WIFI_OLED = "WIFI";
+    constexpr const char *const CONFIG_OPTION_DEV_MODE_OLED = "Dev Mode";
     constexpr const char *const CONFIG_OPTION_REBOOT_OLED = " [RESTART]";
     constexpr const char *const CONFIG_OPTION_RETURN_OLED = " [COFNIJ]";
 
@@ -98,7 +98,6 @@ namespace Str {
     // LED_CONFIG_BRIGHTNESS is 3: the view appends the level digit.
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "LEd";
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
-    constexpr const char *const LED_CONFIG_WIFI = "SIEC";
     constexpr const char *const LED_CONFIG_REBOOT = "rESt";
     constexpr const char *const LED_CONFIG_RETURN = "CoFn";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
@@ -117,14 +116,14 @@ namespace Str {
     constexpr const char *const CONFIG_MENU_TITLE = "CONFIG";
     constexpr const char *const CONFIG_ROW_BRIGHTNESS_LABEL = "Bright";
     constexpr const char *const CONFIG_ROW_BUZZER_LABEL = "Buzzer";
-    constexpr const char *const CONFIG_ROW_WIFI_LABEL = "WiFi";
+    constexpr const char *const CONFIG_ROW_DEV_MODE_LABEL = "Dev Mode";
     constexpr const char *const CONFIG_ROW_REBOOT_LABEL = "Reboot";
     constexpr const char *const CONFIG_ROW_RETURN_LABEL = "Return";
     constexpr const char *const CONFIG_VALUE_ON = "ON";
     constexpr const char *const CONFIG_VALUE_OFF = "OFF";
     constexpr const char *const CONFIG_OPTION_BRIGHTNESS_OLED = "Brightness";
     constexpr const char *const CONFIG_OPTION_BUZZER_OLED = "Buzzer";
-    constexpr const char *const CONFIG_OPTION_WIFI_OLED = "WiFi";
+    constexpr const char *const CONFIG_OPTION_DEV_MODE_OLED = "Dev Mode";
     constexpr const char *const CONFIG_OPTION_REBOOT_OLED = " [Reboot]";
     constexpr const char *const CONFIG_OPTION_RETURN_OLED = " [Return]";
 
@@ -171,7 +170,6 @@ namespace Str {
     // LED_CONFIG_BRIGHTNESS is short: the view appends the level digit.
     constexpr const char *const LED_CONFIG_BRIGHTNESS = "br";
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
-    constexpr const char *const LED_CONFIG_WIFI = "conn";
     constexpr const char *const LED_CONFIG_REBOOT = "boot";
     constexpr const char *const LED_CONFIG_RETURN = "rEtu";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
