@@ -18,8 +18,9 @@ Everything is drawn in mode "1", so every glyph is thresholded and no grey ever
 reaches the PNG - eink_image.py rejects anything that is not pure black and white,
 by design, since the panel has no grey either.
 
-The title is PROFILE, matching Str::PLAYER_SETUP_OLED_TITLE - this bitmap cannot
-read src/Strings.h, so the two have to be kept in step by hand.
+There is deliberately no title bar: the two QR codes plus their captions need
+the full 296 px, and the screen is only ever reached from the PROFILE menu entry,
+which has just named itself.
 
 The captions are Polish without diacritics, like every other string the device
 shows: POLACZ, OTWORZ, STRONE. The panel itself could render an accent here, since
@@ -121,10 +122,7 @@ def build():
     image = Image.new('1', (WIDTH, HEIGHT), WHITE)
     draw = ImageDraw.Draw(image)
 
-    y = 3
-    y += draw_centered(draw, font, 'PROFILE', y)
-    y += rule(draw, y) + 4
-
+    y = 4
     y += draw_centered(draw, font, '1. POLACZ Z WIFI', y)
     y += QUIET
     y += draw_qr(image, qr_matrix(WIFI_PAYLOAD), y) + QUIET
