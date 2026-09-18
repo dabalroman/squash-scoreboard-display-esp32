@@ -37,6 +37,15 @@ public:
     virtual void loop() = 0;
 
     /**
+     * Long-press back: step one level up this mode's state machine. false means there is
+     * nowhere to go back to from here, and main.cpp then stays silent - that silence is
+     * how the user is told this screen is a root.
+     */
+    virtual bool goBack() {
+        return false;
+    }
+
+    /**
      * Redraw the active view from scratch after something else owned the displays
      * (a device-level overlay). The mode's state machine is untouched: this only
      * re-applies the view's display setup and marks everything dirty. The e-paper

@@ -105,6 +105,13 @@ void initHardware() {
     FastLED.clear();
     FastLED.show();
 
+    // Explicit, because RemoteInput::poll() now reads these levels for long-press
+    // detection - it must not depend on the post-reset default.
+    pinMode(Board::RF_D0, INPUT);
+    pinMode(Board::RF_D1, INPUT);
+    pinMode(Board::RF_D2, INPUT);
+    pinMode(Board::RF_D3, INPUT);
+
     attachInterrupt(digitalPinToInterrupt(Board::RF_D0), onRemoteReceiverInterrupt_d0, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D1), onRemoteReceiverInterrupt_d1, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D2), onRemoteReceiverInterrupt_d2, RISING);
@@ -313,6 +320,18 @@ void loop() {
 
         if (deviceMode) {
             deviceMode->restoreView();
+        }
+    }
+
+    // After the overlay check, so a long press made while the mode was paused does not
+    // act on it. Silence when goBack() declines is the signal that this screen is a root.
+    if (remoteInputManager.buttonC.takeLongPressIfPossible()) {
+        const bool handled = deviceMode && deviceMode->goBack();
+        printLn("Long press C -> %s", handled ? "back" : "not handled");
+
+        if (handled) {
+            gBuzzer.playBack();
+            remoteInputManager.preventTriggerForMs();
         }
     }
 

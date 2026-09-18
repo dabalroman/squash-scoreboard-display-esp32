@@ -89,6 +89,27 @@ public:
         setState(VolleyballModeState::TournamentChoosePlayers);
     }
 
+    bool goBack() override {
+        switch (state) {
+            case VolleyballModeState::TournamentChoosePlayers:
+                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                return true;
+            case VolleyballModeState::MatchStartGame:
+                setState(VolleyballModeState::TournamentChoosePlayers);
+                return true;
+            case VolleyballModeState::GameOver:
+                // The result is already recorded; back cannot undo it, so it lands where
+                // the forward action would.
+                setState(VolleyballModeState::MatchStartGame);
+                return true;
+            case VolleyballModeState::GamePlaying:
+                // Deliberate, not a missing case: a hold must never discard a live game.
+                return false;
+            default:
+                return false;
+        }
+    }
+
     void loop() override {
         if (state != previousState) {
             handleStateChange();

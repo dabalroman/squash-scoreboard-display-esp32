@@ -24,9 +24,17 @@ public:
 
     RemoteInputManager(const uint8_t gpioA, const uint8_t gpioB, const uint8_t gpioC, const uint8_t gpioD)
         : buttonA(gpioA), buttonB(gpioB), buttonC(gpioC), buttonD(gpioD) {
+        // Only C carries the long press, so only C pays the release latency.
+        buttonC.setDeferToRelease(true);
     }
 
     void handleInput(volatile uint8_t &triggeredGpio) {
+        const ulong now = millis();
+        buttonA.poll(now);
+        buttonB.poll(now);
+        buttonC.poll(now);
+        buttonD.poll(now);
+
         const uint8_t gpio = triggeredGpio;  // single read
         triggeredGpio = 0;                   // clear before dispatch; new ISR writes are safe from here
 

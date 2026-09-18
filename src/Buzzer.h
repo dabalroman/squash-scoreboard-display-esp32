@@ -37,6 +37,16 @@ class Buzzer {
         return steps;
     }
 
+    // Two medium beeps: distinct from the 40 ms press tick, the celebration's
+    // short-long alternation and the low-battery triple.
+    static const uint16_t *backPattern() {
+        static const uint16_t steps[] = {
+            150, 80,
+            150, 0
+        };
+        return steps;
+    }
+
     void playPattern(const uint16_t *steps) {
         if (!enabled) {
             return;
@@ -77,6 +87,10 @@ public:
 
     void playLowBattery() {
         playPattern(lowBatteryPattern());
+    }
+
+    void playBack() {
+        playPattern(backPattern());
     }
 
     void loop() {

@@ -30,6 +30,13 @@ public:
         activeView->initEInkDisplay(einkDisplay);
     }
 
+    bool goBack() override {
+        // Same contract as ConfigView's exit option: settings are saved, not discarded.
+        preferencesManager.save();
+        onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+        return true;
+    }
+
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);

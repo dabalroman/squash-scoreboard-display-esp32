@@ -89,6 +89,27 @@ public:
         setState(PadelModeState::TournamentChoosePlayers);
     }
 
+    bool goBack() override {
+        switch (state) {
+            case PadelModeState::TournamentChoosePlayers:
+                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                return true;
+            case PadelModeState::MatchStartGame:
+                setState(PadelModeState::TournamentChoosePlayers);
+                return true;
+            case PadelModeState::GameOver:
+                // The result is already recorded; back cannot undo it, so it lands where
+                // the forward action would.
+                setState(PadelModeState::MatchStartGame);
+                return true;
+            case PadelModeState::GamePlaying:
+                // Deliberate, not a missing case: a hold must never discard a live game.
+                return false;
+            default:
+                return false;
+        }
+    }
+
     void loop() override {
         if (state != previousState) {
             handleStateChange();
