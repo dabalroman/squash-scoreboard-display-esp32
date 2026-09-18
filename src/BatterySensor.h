@@ -60,7 +60,7 @@ public:
         index = (index + 1) % SAMPLE_COUNT;
     }
 
-    bool available() const { return true; }
+    static bool available() { return true; }
 
     // Averaged millivolts at the ADC pin (before the divider factor), for calibration.
     uint32_t rawMilliVolts() const { return sum / SAMPLE_COUNT; }

@@ -25,7 +25,6 @@ public:
         return gemsA == GEMS_PER_SET && gemsB == GEMS_PER_SET;
     }
 
-private:
     GameSide checkWinner(const int8_t gemsA, const int8_t gemsB) const override {
         if (gemsA > GEMS_PER_SET || (gemsA >= GEMS_PER_SET && (gemsA - gemsB) >= 2)) return GameSide::a;
         if (gemsB > GEMS_PER_SET || (gemsB >= GEMS_PER_SET && (gemsB - gemsA) >= 2)) return GameSide::b;

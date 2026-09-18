@@ -75,7 +75,7 @@ class RemoteDevelopmentService {
 
     void armOtaRestart();
 
-    void notifyUpdate(FirmwareUpdateStage stage, const char *detail);
+    void notifyUpdate(FirmwareUpdateStage stage, const char *detail) const;
 
     void latchOtaReject(FirmwareImageCheck::Verdict verdict);
 

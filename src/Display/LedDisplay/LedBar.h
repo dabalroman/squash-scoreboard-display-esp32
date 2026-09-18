@@ -36,7 +36,7 @@ private:
     }
 
 public:
-    explicit LedBar(CRGB *pixels) : pixels(pixels), state() {
+    explicit LedBar(CRGB *pixels) : pixels(pixels) {
     }
 
     void setState(std::array<LedBarPixel, PIXEL_COUNT> newState) {

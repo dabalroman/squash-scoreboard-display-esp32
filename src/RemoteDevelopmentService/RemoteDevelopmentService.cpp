@@ -350,7 +350,7 @@ void RemoteDevelopmentService::armOtaRestart() {
     otaRestartArmed = true;
 }
 
-void RemoteDevelopmentService::notifyUpdate(const FirmwareUpdateStage stage, const char *detail) {
+void RemoteDevelopmentService::notifyUpdate(const FirmwareUpdateStage stage, const char *detail) const {
     if (updateStatusHandler) {
         updateStatusHandler(stage, detail);
     }

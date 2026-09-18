@@ -11,8 +11,6 @@
 
 #include <Arduino.h>
 
-#include "../../../Board.h"
-
 #if BOARD_REV == 2
 
 #include "PlayerSetupQrImage.h"

@@ -9,7 +9,6 @@
 #include "Board.h"
 
 #include "DeviceMode/DeviceModeState.h"
-#include "UserProfile.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Animation/LedSweepAnimation.h"
 #include "DeviceMode/DeviceMode.h"
@@ -26,7 +25,6 @@
 #include "BatterySensor.h"
 #include "BatteryMonitor.h"
 #include "Display/Overlay.h"
-#include "Display/LedDisplay/LedBar.h"
 #include "Display/EInk/EInkDisplay.h"
 #include "Display/EInk/PlayerSetupWebUi.h"
 #include "PlayerRoster.h"
@@ -87,33 +85,17 @@ DeviceModeState deviceState = DeviceModeState::Booting;
 DeviceModeState pendingMode = DeviceModeState::ModeSwitchingMode;
 bool modeChangePending = false;
 
-/**
- * The factory roster. Still hardcoded here, as player profiles always have been,
- * but now only as the fallback: PlayerRoster reads the live list from NVS and
- * seeds it from this one when there is nothing valid stored, which is also what
- * the web editor restores. Ids are assigned by roster position, not written here.
- *
- * Colours come from PlayerColors, not Colors: those are UI accents, these belong
- * to people. Picked from the saturated end of the palette, so the nine that ship
- * on a fresh device stay apart on the digits without anyone having to choose.
- */
 const FactoryPlayer FACTORY_PLAYERS[] = {
-    {"Adrian", PlayerColors::Zielony},
-    {"Roman", PlayerColors::Zolty},
+    {"Adrian", PlayerColors::Green},
+    {"Roman", PlayerColors::Yellow},
     {"Basia", PlayerColors::Magenta},
-    {"Krystian", PlayerColors::Niebieski},
-    {"Jola", PlayerColors::Czerwony},
-    {"Cegiel", PlayerColors::Rozowy},
-    {"Szymon", PlayerColors::Cyjan},
-    {"Igor", PlayerColors::Pomaranczowy},
-    {"Damian", PlayerColors::Purpurowy},
+    {"Krystian", PlayerColors::Blue},
+    {"Jola", PlayerColors::Red},
+    {"Cegiel", PlayerColors::Pink}
 };
 constexpr uint8_t FACTORY_PLAYER_COUNT = sizeof(FACTORY_PLAYERS) / sizeof(FACTORY_PLAYERS[0]);
 
 PlayerRoster playerRoster;
-
-// File scope on purpose: its route handlers outlive every mode (WebServer has no
-// removeHandler), so they may capture only objects that live as long as the server.
 PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager);
 
 void initHardware() {
@@ -125,14 +107,11 @@ void initHardware() {
     backDisplay = std::make_unique<BackDisplay>(&display);
 
     FastLED.addLeds<NEOPIXEL, Board::LED_DATA>(pixels, Board::LED_COUNT);
-    // Through the wrapper, never FastLED directly: it applies the low-battery cap.
     ledDisplay.setBrightness(preferencesManager.settings.brightness);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
 
-    // Explicit, because RemoteInput::poll() now reads these levels for long-press
-    // detection - it must not depend on the post-reset default.
     pinMode(Board::RF_D0, INPUT);
     pinMode(Board::RF_D1, INPUT);
     pinMode(Board::RF_D2, INPUT);

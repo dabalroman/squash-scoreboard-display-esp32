@@ -90,14 +90,14 @@ public:
 
     EInkDisplay() : eink(Board::EINK_CS, Board::EINK_DC, Board::EINK_RST, Board::EINK_BUSY) {}
 
-    bool available() const { return true; }
+    static bool available() { return true; }
 
     // Blocking (~3 s, boot only): initial full refresh, then the splash is
     // requested as a normal async refresh.
     void begin() {
         // GxEPD2 writes CS/DC/RST before pinMode on them; core 3.x logs
         // "IO n is not set as GPIO". Claiming them first is harmless on 2.0.17.
-        const uint8_t pins[] = {Board::EINK_CS, Board::EINK_DC, Board::EINK_RST};
+        constexpr uint8_t pins[] = {Board::EINK_CS, Board::EINK_DC, Board::EINK_RST};
         for (const uint8_t pin : pins) {
             pinMode(pin, OUTPUT);
             digitalWrite(pin, HIGH);
@@ -255,7 +255,7 @@ public:
         }
 
         const bool hasFooter = footer.batteryPercent >= 0 || hasText(footer.line1) || extraCount > 0;
-        const int16_t footerHeights[] = {EInkLayout::FOOTER_HEIGHT, EInkLayout::FOOTER_HEIGHT_TWO,
+        constexpr int16_t footerHeights[] = {EInkLayout::FOOTER_HEIGHT, EInkLayout::FOOTER_HEIGHT_TWO,
                                          EInkLayout::FOOTER_HEIGHT_THREE};
         const int16_t footerHeight = hasFooter ? footerHeights[extraCount] : 0;
         const uint8_t visible = visibleRows(footerHeight);
@@ -295,7 +295,7 @@ public:
 
         const int16_t effectiveBatteryPercent = (footer.batteryPercent >= 0) ? displayedBatteryPercent : -1;
 
-        uint32_t h = hashAdd(contentHash, static_cast<uint16_t>(hasFooter ? effectiveBatteryPercent : -1));
+        const uint32_t h = hashAdd(contentHash, static_cast<uint16_t>(hasFooter ? effectiveBatteryPercent : -1));
         if (!commit(h)) {
             return;
         }

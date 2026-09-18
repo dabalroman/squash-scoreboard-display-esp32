@@ -261,8 +261,7 @@ private:
             }
 
             const Color color(data.entries[i].r, data.entries[i].g, data.entries[i].b);
-            storage.push_back(std::unique_ptr<UserProfile>(
-                new UserProfile(i, data.entries[i].uid, name, color)));
+            storage.push_back(std::make_unique<UserProfile>(i, data.entries[i].uid, name, color));
             pointers.push_back(storage.back().get());
         }
     }

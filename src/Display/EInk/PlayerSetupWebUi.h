@@ -45,7 +45,6 @@
 #include <Arduino.h>
 #include <WebServer.h>
 
-#include "Board.h"
 #include "PlayerPalette.h"
 #include "PlayerRoster.h"
 #include "PreferencesManager.h"
@@ -128,12 +127,12 @@ private:
         restartArmed = true;
     }
 
-    void reject(const char *reason) {
+    void reject(const char *reason) const {
         server->send(400, TEXT_PLAIN_PL, reason);
     }
 
     // Escaped for an HTML attribute. The SSID comes back out of NVS, so it is data.
-    void sendHtmlAttr(const char *text) {
+    void sendHtmlAttr(const char *text) const {
         String out;
         for (const char *c = text; *c != '\0'; c++) {
             if (*c == '&') out += F("&amp;");
@@ -171,7 +170,7 @@ private:
      * content length so the rest can be streamed in chunks rather than assembled
      * into one large String.
      */
-    void beginPage(const int status, const char *title, const uint8_t navIndex) {
+    void beginPage(const int status, const char *title, const uint8_t navIndex) const {
         server->sendHeader("Cache-Control", "no-store");
         server->setContentLength(CONTENT_LENGTH_UNKNOWN);
         server->send(status, "text/html; charset=utf-8", "");
@@ -269,7 +268,7 @@ private:
         server->sendContent(F("</nav>"));
     }
 
-    void endPage() {
+    void endPage() const {
         server->sendContent(F("</body></html>"));
         server->sendContent("");
     }
@@ -490,7 +489,7 @@ private:
 
     // ---- data --------------------------------------------------------------
 
-    String buildData() {
+    String buildData() const {
         String out;
         out.reserve(1024);
 

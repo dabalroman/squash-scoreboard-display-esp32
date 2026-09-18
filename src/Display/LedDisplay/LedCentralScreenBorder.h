@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <FastLED.h>
 
-#include "Board.h"
 #include "Color.h"
 
 /**

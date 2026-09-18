@@ -49,26 +49,22 @@
 // Named so main.cpp can spell the factory roster out readably. The trailing
 // number is the index in the source set, kept so the list can be checked against it.
 namespace PlayerColors {
-    static constexpr auto Czerwony = Color(0xE6194B);      //  1 red
-    static constexpr auto Zielony = Color(0x00FF00);       //  2 green, pushed to full
-                                                           //    saturation: the source set's
-                                                           //    3CB44B reads washed out on LEDs
-    static constexpr auto Zolty = Color(0xFFE119);         //  3 yellow
-    static constexpr auto Niebieski = Color(0x4363D8);     //  4 blue
-    static constexpr auto Pomaranczowy = Color(0xF58231);  //  5 orange
-    static constexpr auto Purpurowy = Color(0x911EB4);     //  6 purple
-    static constexpr auto Cyjan = Color(0x42D4F4);         //  7 cyan
-    static constexpr auto Magenta = Color(0xF032E6);       //  8 magenta
-    static constexpr auto Rozowy = Color(0xFABED4);        // 10 pink
-    static constexpr auto Ciemnozielony = Color(0x3CB44B); // 11 was teal, which was almost
-                                                           //    indistinguishable from Cyjan;
-                                                           //    reused for the old green
-    static constexpr auto Lawendowy = Color(0xDCBEFF);     // 12 lavender
-    static constexpr auto Brazowy = Color(0x9A6324);       // 13 brown
-    static constexpr auto Bezowy = Color(0xFFFAC8);        // 14 beige
-    static constexpr auto Bordowy = Color(0x800000);       // 15 maroon
-    static constexpr auto Mietowy = Color(0xAAFFC3);       // 16 mint
-    static constexpr auto Granatowy = Color(0x000075);     // 19 navy
+    static constexpr auto Red = Color(0xE6194B);
+    static constexpr auto Green = Color(0x00FF00);
+    static constexpr auto Yellow = Color(0xFFE119);
+    static constexpr auto Blue = Color(0x4363D8);
+    static constexpr auto Orange = Color(0xF58231);
+    static constexpr auto Purple = Color(0x911EB4);
+    static constexpr auto Cyan = Color(0x42D4F4);
+    static constexpr auto Magenta = Color(0xF032E6);
+    static constexpr auto Pink = Color(0xFABED4);
+    static constexpr auto DarkGreen = Color(0x3CB44B);
+    static constexpr auto Lavender = Color(0xDCBEFF);
+    static constexpr auto Brown = Color(0x9A6324);
+    static constexpr auto Beige = Color(0xFFFAC8);
+    static constexpr auto Burgundy = Color(0x800000);
+    static constexpr auto Mint = Color(0xAAFFC3);
+    static constexpr auto NavyBlue = Color(0x000075);
 }
 
 namespace PlayerPalette {
@@ -79,22 +75,22 @@ namespace PlayerPalette {
 
     inline const PaletteEntry *table(uint8_t &count) {
         static const PaletteEntry TABLE[] = {
-            {"Czerwony", PlayerColors::Czerwony},
-            {"Zielony", PlayerColors::Zielony},
-            {"Żółty", PlayerColors::Zolty},
-            {"Niebieski", PlayerColors::Niebieski},
-            {"Pomarańczowy", PlayerColors::Pomaranczowy},
-            {"Purpurowy", PlayerColors::Purpurowy},
-            {"Cyjan", PlayerColors::Cyjan},
+            {"Czerwony", PlayerColors::Red},
+            {"Zielony", PlayerColors::Green},
+            {"Żółty", PlayerColors::Yellow},
+            {"Niebieski", PlayerColors::Blue},
+            {"Pomarańczowy", PlayerColors::Orange},
+            {"Purpurowy", PlayerColors::Purple},
+            {"Cyjan", PlayerColors::Cyan},
             {"Magenta", PlayerColors::Magenta},
-            {"Różowy", PlayerColors::Rozowy},
-            {"Ciemnozielony", PlayerColors::Ciemnozielony},
-            {"Lawendowy", PlayerColors::Lawendowy},
-            {"Brązowy", PlayerColors::Brazowy},
-            {"Beżowy", PlayerColors::Bezowy},
-            {"Bordowy", PlayerColors::Bordowy},
-            {"Miętowy", PlayerColors::Mietowy},
-            {"Granatowy", PlayerColors::Granatowy},
+            {"Różowy", PlayerColors::Pink},
+            {"Ciemnozielony", PlayerColors::DarkGreen},
+            {"Lawendowy", PlayerColors::Lavender},
+            {"Brązowy", PlayerColors::Brown},
+            {"Beżowy", PlayerColors::Beige},
+            {"Bordowy", PlayerColors::Burgundy},
+            {"Miętowy", PlayerColors::Mint},
+            {"Granatowy", PlayerColors::NavyBlue},
         };
 
         count = static_cast<uint8_t>(sizeof(TABLE) / sizeof(TABLE[0]));

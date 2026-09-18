@@ -40,7 +40,7 @@ class Buzzer {
     // Two medium beeps: distinct from the 40 ms press tick, the celebration's
     // short-long alternation and the low-battery triple.
     static const uint16_t *backPattern() {
-        static const uint16_t steps[] = {
+        static constexpr uint16_t steps[] = {
             150, 80,
             150, 0
         };
