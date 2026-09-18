@@ -152,6 +152,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
     const String savedPassword = preferencesManager->settings.wifiPassword;
 
     if (!preferencesManager->settings.enableWifi) {
+        preferencesManager->wifiIpAddress = "";
         return;
     }
 
@@ -190,6 +191,8 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 void RemoteDevelopmentService::enableAP() {
     WiFi.softAP("Scoreboard", "19092026");
 
+    preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
+
     backDisplay->clear();
     backDisplay->setCursorToLine();
     backDisplay->println(F("Scoreboard"));
@@ -204,6 +207,7 @@ void RemoteDevelopmentService::enableAP() {
 
 void RemoteDevelopmentService::disableAP() {
     WiFi.softAPdisconnect();
+    preferencesManager->wifiIpAddress = "";
     isAPActive = false;
 }
 
@@ -224,6 +228,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP("Scoreboard", "19092026");
 
+    preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
     isAPActive = true;
 
     // Load-bearing: with enableWifi off (the default on a fresh device) init()
@@ -233,6 +238,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
 
 void RemoteDevelopmentService::disablePlayerSetupAp() {
     WiFi.softAPdisconnect(true);
+    preferencesManager->wifiIpAddress = "";
     isAPActive = false;
 }
 

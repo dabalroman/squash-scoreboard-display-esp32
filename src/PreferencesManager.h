@@ -22,7 +22,9 @@ class PreferencesManager {
 
 public:
     PrefsData settings;
-    String wifiIpAddress = "[ip unknown]";
+    // Empty until something actually brings an interface up; the CONFIG footer
+    // omits its IP line while it is. Never persisted - it is live state.
+    String wifiIpAddress = "";
 
     PreferencesManager() {
     }
