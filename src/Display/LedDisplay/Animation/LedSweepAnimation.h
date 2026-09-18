@@ -14,7 +14,7 @@
  *
  *   boot()         rainbow, one 1 s cycle, driven blocking from setup() so it
  *                  plays against the e-paper splash.
- *   celebration()  the winner's colour, three 1 s cycles, stepped from loop()
+ *   celebration()  the winner's colour, three 800 ms cycles, stepped from loop()
  *                  at ~20 fps while the GameOver view holds the screen. Its origin
  *                  is the winner's half, so the wave breaks from their side.
  *
@@ -50,7 +50,7 @@ public:
 
     /** Colour is set per win, so the caller fills `solid` before starting. */
     static Params celebrationParams() {
-        return Params{1000, 300, 3, false, CRGB::Black};
+        return Params{800, 300, 3, false, CRGB::Black};
     }
 
 private:
