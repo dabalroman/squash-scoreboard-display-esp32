@@ -5,6 +5,7 @@
 #include <Adafruit_SSD1306.h>
 #include <FastLED.h>
 
+#include "Strings.h"
 #include "Board.h"
 
 #include "DeviceMode/DeviceModeState.h"
@@ -250,9 +251,9 @@ void showLowBatteryOverlay() {
     snprintf(line, sizeof(line), "%u%%", batteryMonitor.percent());
 
     const OverlayContent content = {
-        "LOW BATTERY",
+        Str::OVERLAY_LOW_BATTERY_TITLE,
         line,
-        {Glyph::b, Glyph::A, Glyph::t, Glyph::t},
+        LedText::toWord(Str::LED_OVERLAY_LOW_BATTERY),
         Colors::Red,
         LOW_BATTERY_OVERLAY_MS
     };

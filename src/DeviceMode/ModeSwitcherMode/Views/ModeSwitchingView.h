@@ -2,6 +2,7 @@
 #define MODE_SWITCHING_VIEW_H
 
 #include "BatteryMonitor.h"
+#include "Strings.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -23,11 +24,11 @@ class ModeSwitchingView final : public View {
     int16_t shownBatteryPercent = -1;
 
     const std::vector<String> optionsList = {
-        "  Squash  ",
-        "Volleyball",
-        "Volleyb 15",
-        "Padel Adv.",
-        " [Config] ",
+        Str::MODE_OPTION_SQUASH_OLED,
+        Str::MODE_OPTION_VOLLEYBALL_OLED,
+        Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED,
+        Str::MODE_OPTION_PADEL_OLED,
+        Str::MODE_OPTION_CONFIG_OLED,
     };
 
     Scrollable scrollable;
@@ -96,23 +97,23 @@ public:
             default:
             case Options::Squash:
                 color = Colors::Green;
-                ledDisplay.setGlyphsGlyph(Glyph::S, Glyph::D0, Glyph::U, Glyph::A);
+                ledDisplay.setGlyphsText(Str::LED_MODE_SQUASH);
                 break;
             case Options::Volleyball:
                 color = Colors::Yellow;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::A, Glyph::L, Glyph::L);
+                ledDisplay.setGlyphsText(Str::LED_MODE_VOLLEYBALL);
                 break;
             case Options::ShortVolleyball:
                 color = Colors::Orange;
-                ledDisplay.setGlyphsGlyph(Glyph::S, Glyph::h, Glyph::o, Glyph::r);
+                ledDisplay.setGlyphsText(Str::LED_MODE_SHORT_VOLLEYBALL);
                 break;
             case Options::Padel:
                 color = Colors::Blue;
-                ledDisplay.setGlyphsGlyph(Glyph::P, Glyph::A, Glyph::d, Glyph::E);
+                ledDisplay.setGlyphsText(Str::LED_MODE_PADEL);
                 break;
             case Options::Config:
                 color = Colors::White;
-                ledDisplay.setGlyphsGlyph(Glyph::C, Glyph::F, Glyph::G, Glyph::Empty);
+                ledDisplay.setGlyphsText(Str::LED_MODE_CONFIG);
                 break;
         }
 
@@ -131,7 +132,10 @@ public:
         }
 
         // E-paper labels, index-aligned with `Options` / optionsList.
-        static const char *const labels[] = {"Squash", "Volleyball", "Volley 15", "Padel Adv.", "Config"};
+        static const char *const labels[] = {
+            Str::MODE_OPTION_SQUASH, Str::MODE_OPTION_VOLLEYBALL, Str::MODE_OPTION_SHORT_VOLLEYBALL,
+            Str::MODE_OPTION_PADEL, Str::MODE_OPTION_CONFIG,
+        };
         constexpr uint8_t count = sizeof(labels) / sizeof(labels[0]);
 
         EInkMenuRow rows[count];
@@ -140,9 +144,10 @@ public:
         }
 
         // The battery percent rides in the title; without a sensor the title is plain.
-        char title[16] = "MODE";
+        char title[16];
+        snprintf(title, sizeof(title), "%s", Str::MODE_MENU_TITLE);
         if (batteryMonitor.available()) {
-            snprintf(title, sizeof(title), "MODE  %u%%", batteryMonitor.percent());
+            snprintf(title, sizeof(title), Str::MODE_MENU_TITLE_BATTERY_FMT, batteryMonitor.percent());
         }
 
         einkDisplay.showMenu(title, rows, count, scrollable.getSelectedOptionId());

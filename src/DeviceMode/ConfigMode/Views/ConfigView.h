@@ -4,6 +4,7 @@
 #include <version.h>
 
 #include "BatteryMonitor.h"
+#include "Strings.h"
 #include "SafeRestart.h"
 #include "DeviceMode/View.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -28,12 +29,12 @@ class ConfigView final : public View {
     int16_t shownBatteryPercent = -1;
 
     const std::vector<String> optionsList = {
-        "Brightness",
-        "Buzzer",
-        "WiFi",
+        Str::CONFIG_OPTION_BRIGHTNESS_OLED,
+        Str::CONFIG_OPTION_BUZZER_OLED,
+        Str::CONFIG_OPTION_WIFI_OLED,
         preferencesManager.wifiIpAddress,
-        " [Reboot]",
-        " [Return]",
+        Str::CONFIG_OPTION_REBOOT_OLED,
+        Str::CONFIG_OPTION_RETURN_OLED,
     };
 
     Scrollable scrollable;
@@ -142,31 +143,35 @@ public:
         switch (scrollable.getSelectedOptionId()) {
             case Settings::brightness:
                 color = Colors::White;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::r, Glyph::Empty,
-                    LedDisplay::digitToGlyph(preferencesManager.settings.brightness / 32 + 1));
+                {
+                    // The word carries the label; the last position is the level.
+                    LedWord word = LedText::toWord(Str::LED_CONFIG_BRIGHTNESS);
+                    word.d = LedDisplay::digitToGlyph(preferencesManager.settings.brightness / 32 + 1);
+                    ledDisplay.setGlyphsGlyph(word);
+                }
                 break;
             case Settings::enableBuzzer:
                 value = preferencesManager.settings.enableBuzzer;
                 color = value ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::u, Glyph::Z, Glyph::Z);
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_BUZZER);
                 break;
             case Settings::enableWifi:
                 value = preferencesManager.settings.enableWifi;
                 color = value ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsGlyph(Glyph::c, Glyph::o, Glyph::n, Glyph::n);
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_WIFI);
                 break;
             case Settings::ipAddress:
                 color = Colors::White;
-                ledDisplay.setGlyphsGlyph(Glyph::I, Glyph::P, Glyph::Empty, Glyph::Empty);
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_IP);
                 break;
             case Settings::reboot:
                 color = Colors::Pink;
-                ledDisplay.setGlyphsGlyph(Glyph::b, Glyph::o, Glyph::o, Glyph::t);
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_REBOOT);
                 break;
             default:
             case Settings::goBack:
                 color = Colors::Aqua;
-                ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::u);
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_RETURN);
                 break;
         }
 
@@ -194,12 +199,12 @@ public:
 
         // Index-aligned with `Settings` / optionsList.
         const EInkMenuRow rows[] = {
-            {"Bright", brightnessLevel, -1},
-            {"Buzzer", settings.enableBuzzer ? "ON" : "OFF", -1},
-            {"WiFi", settings.enableWifi ? "ON" : "OFF", -1},
+            {Str::CONFIG_ROW_BRIGHTNESS_LABEL, brightnessLevel, -1},
+            {Str::CONFIG_ROW_BUZZER_LABEL, settings.enableBuzzer ? Str::CONFIG_VALUE_ON : Str::CONFIG_VALUE_OFF, -1},
+            {Str::CONFIG_ROW_WIFI_LABEL, settings.enableWifi ? Str::CONFIG_VALUE_ON : Str::CONFIG_VALUE_OFF, -1},
             {preferencesManager.wifiIpAddress.c_str(), nullptr, -1},
-            {"Reboot", nullptr, -1},
-            {"Return", nullptr, -1},
+            {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
+            {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},
         };
 
         char footer[16] = "";
@@ -215,7 +220,7 @@ public:
         // Without a battery reading the version takes the single footer line instead.
         const bool hasBattery = footer[0] != '\0';
 
-        einkDisplay.showMenu("CONFIG", rows, sizeof(rows) / sizeof(rows[0]),
+        einkDisplay.showMenu(Str::CONFIG_MENU_TITLE, rows, sizeof(rows) / sizeof(rows[0]),
                              scrollable.getSelectedOptionId(),
                              hasBattery ? footer : version, hasBattery ? version : nullptr);
     }

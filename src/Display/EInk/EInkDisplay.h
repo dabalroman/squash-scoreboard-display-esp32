@@ -27,6 +27,7 @@
 #include <Adafruit_GFX.h>
 
 #include "../../Board.h"
+#include "../../Strings.h"
 
 /**
  * One menu row. `value` is drawn right-aligned (nullptr = none). `check` draws a
@@ -466,7 +467,7 @@ private:
 
         if (sets >= 0) {
             char line[12];
-            snprintf(line, sizeof(line), "SETS %d", sets);
+            snprintf(line, sizeof(line), Str::MATCH_SCORE_SETS_LINE_FMT, sets);
             printCentered(g, line, y + 124, &FreeMonoBold9pt7b);
         }
     }

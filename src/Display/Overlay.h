@@ -15,7 +15,7 @@
 struct OverlayContent {
     const char *title;      // e-paper title bar, first OLED line
     const char *line;       // big e-paper line, second OLED line
-    Glyph glyphs[4];        // front LED digits
+    LedWord glyphs;         // front LED digits
     Color color;            // LED colour, blinking
     uint32_t durationMs;
 };
@@ -39,7 +39,7 @@ class Overlay {
 
     char title[TITLE_LEN] = "";
     char line[LINE_LEN] = "";
-    Glyph glyphs[4] = {Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty};
+    LedWord glyphs = {Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty};
     Color color = Colors::White;
 
 public:
@@ -47,9 +47,7 @@ public:
         snprintf(title, sizeof(title), "%s", content.title != nullptr ? content.title : "");
         snprintf(line, sizeof(line), "%s", content.line != nullptr ? content.line : "");
 
-        for (uint8_t i = 0; i < 4; i++) {
-            glyphs[i] = content.glyphs[i];
-        }
+        glyphs = content.glyphs;
 
         color = content.color;
         endsAtMs = nowMs + content.durationMs;
@@ -87,7 +85,7 @@ public:
     void render(LedDisplay &ledDisplay, BackDisplay &backDisplay, EInkDisplay &einkDisplay) {
         ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();
-        ledDisplay.setGlyphsGlyph(glyphs[0], glyphs[1], glyphs[2], glyphs[3]);
+        ledDisplay.setGlyphsGlyph(glyphs);
         ledDisplay.setGlyphsColor(color, color);
         ledDisplay.setGlyphBlinking(true, true);
         ledDisplay.setPlayersIndicatorsState(true);

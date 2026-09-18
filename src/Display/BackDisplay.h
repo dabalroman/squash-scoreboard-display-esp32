@@ -1,6 +1,7 @@
 #ifndef BACK_DISPLAY_H
 #define BACK_DISPLAY_H
 
+#include "Strings.h"
 #include "Adafruit_SSD1306.h"
 #include "Board.h"
 #include "Fonts/FreeMono9pt7b.h"
@@ -37,7 +38,7 @@ public:
         screen->setTextSize(1);
         screen->setTextColor(SSD1306_WHITE);
         screen->setCursor(0, VERTICAL_CURSOR_OFFSET_9pt7b);
-        screen->println("Initializing...");
+        screen->println(Str::BOOT_OLED_INITIALIZING);
         screen->display();
     }
 

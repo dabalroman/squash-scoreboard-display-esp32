@@ -1,6 +1,7 @@
 #ifndef VOLLEYBALL_MODE__GAME_OVER_VIEW_H
 #define VOLLEYBALL_MODE__GAME_OVER_VIEW_H
 
+#include "Strings.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -88,7 +89,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), result.scoreOf(playerLeft->getId()),
             playerRight->getName(), result.scoreOf(playerRight->getId()),
-            "GAMES"
+            Str::MATCH_SCORE_LABEL_VOLLEYBALL_SETS
         );
     }
 

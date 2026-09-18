@@ -2,6 +2,7 @@
 
 #include <Update.h>
 
+#include "Strings.h"
 #include "SafeRestart.h"
 #include "Utils.h"
 #include "Display/BackDisplay.h"
@@ -39,7 +40,7 @@ void RemoteDevelopmentService::setupOTA() {
 
             backDisplay->clear();
             backDisplay->setCursorToLine();
-            backDisplay->print("Credentials saved! Rebooting...");
+            backDisplay->print(Str::BOOT_OLED_CREDENTIALS_SAVED);
             backDisplay->display();
 
             OTAServer->send(200, "text/html", "Credentials saved! Rebooting...");
@@ -143,7 +144,7 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 
     backDisplay->clear();
     backDisplay->setCursorToLine();
-    backDisplay->print("Connecting to " + savedSSID);
+    backDisplay->print(Str::BOOT_OLED_WIFI_CONNECTING_PREFIX + savedSSID);
     backDisplay->display();
 
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {

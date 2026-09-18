@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "Strings.h"
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
@@ -36,12 +37,12 @@ public:
           onStateChange(std::move(onStateChange)) {
 
         menuOptions.reserve(players.size() + 2);
-        menuOptions.push_back(F(" [Start] "));
+        menuOptions.push_back(Str::PLAYERS_OPTION_START_OLED);
 
         for (const UserProfile *user: players) {
             menuOptions.push_back(user->getName());
         }
-        menuOptions.push_back(F("  [Exit]  "));
+        menuOptions.push_back(Str::PLAYERS_OPTION_EXIT_OLED);
 
         startOptionId = 0;
         exitOptionId = menuOptions.size() - 1;
@@ -126,11 +127,11 @@ public:
         if (optionId == startOptionId) {
             const Color color = tournament.getPlayers().size() < 2 ? Colors::Red : Colors::Green;
             ledDisplay.setGlyphsColor(color, color);
-            ledDisplay.setGlyphsGlyph(Glyph::P, Glyph::L, Glyph::A, Glyph::Y);
+            ledDisplay.setGlyphsText(Str::LED_PLAYERS_START);
             ledDisplay.setIndicatorAppearancePlayerA(color);
             ledDisplay.setIndicatorAppearancePlayerB(color);
         } else if (optionId == exitOptionId) {
-            ledDisplay.setGlyphsGlyph(Glyph::r, Glyph::E, Glyph::t, Glyph::u);
+            ledDisplay.setGlyphsText(Str::LED_PLAYERS_EXIT);
             ledDisplay.setGlyphsColor(Colors::White, Colors::White);
             ledDisplay.setIndicatorAppearancePlayerA(Colors::White);
             ledDisplay.setIndicatorAppearancePlayerB(Colors::White);
@@ -162,19 +163,19 @@ public:
         uint8_t count = 0;
 
         const size_t playersIn = tournament.getPlayers().size();
-        rows[count++] = {"Start", nullptr, static_cast<int8_t>(playersIn >= 2 ? 1 : 0)};
+        rows[count++] = {Str::PLAYERS_ROW_START, nullptr, static_cast<int8_t>(playersIn >= 2 ? 1 : 0)};
         for (const UserProfile *user : users) {
             if (count >= MAX_ROWS - 1) {
                 break;
             }
             rows[count++] = {user->getName(), nullptr, static_cast<int8_t>(tournament.isPlayerIn(*user) ? 1 : 0)};
         }
-        rows[count++] = {"Exit", nullptr, -1};
+        rows[count++] = {Str::PLAYERS_ROW_EXIT, nullptr, -1};
 
         char footer[12];
-        snprintf(footer, sizeof(footer), "%u in", static_cast<unsigned>(playersIn));
+        snprintf(footer, sizeof(footer), Str::PLAYERS_FOOTER_COUNT_FMT, static_cast<unsigned>(playersIn));
 
-        einkDisplay.showMenu("PLAYERS", rows, count, scrollable->getSelectedOptionId(), footer);
+        einkDisplay.showMenu(Str::PLAYERS_MENU_TITLE, rows, count, scrollable->getSelectedOptionId(), footer);
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {

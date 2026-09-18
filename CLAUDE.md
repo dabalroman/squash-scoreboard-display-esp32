@@ -177,6 +177,7 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   only forced if V2's LED output misbehaves (V2 shares the pinned platform, so it
   also runs RMT4; the S3 fallback is `FASTLED_USES_ESP32S3_I2S`).
 - **Glyph layer:** `GlyphMasks.h` is the one 9-bit mask table for both boards (46 glyphs; indices 0..36 frozen, append only). `LedGlyph` is `LedGlyphT<ActiveGlyphProfile>` (`DisplayProfile.h`): `SevenSegmentProfile` (V1 hand-written zig-zag tables, `mask & 0x7F`) or `NineSegmentProfile` (one per-module table + module offset). To add a character: `Glyph` enum + mask, then `python helpers/preview_glyphs.py`.
+  - `LedText::toWord()` (`LedText.h`) maps a string to the 4 digit glyphs, so LED words live in `Strings.h` as text. Case-sensitive where the table has both forms (C/c, H/h, I/i, L/l, U/u), case-folding where it has one; write the word as it lights up (`"buZZ"`, `"oPCJ"`). Unmapped letters render blank. Call sites use `LedDisplay::setGlyphsText()`.
   - The 7-segment collapse keeps bit 3 (`CENTER`) and drops `MID_LEFT`/`MID_RIGHT`; never OR (renders `0` as `8`) or AND them.
   - Segment loops are bounded by `SegmentTable.count` (0 for V2's colon, 1 for indicators), **never** by a widest segment count.
   - Blink: `tickMs % 500 < 250` is the dark phase, shared by glyphs and border.
@@ -225,6 +226,17 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
   With those in place the firmware builds clean on core 3.3.11 for **both**
   `lolin_s2_mini` and `esp32-s3-devkitc-1`. It is the LED driver, not the
   networking code, that blocks the upgrade.
+
+### Strings (UI language)
+Every user-visible string is a `constexpr const char* const` in `src/Strings.h`, chosen by `#if LANG_PL` / `#else`. **One language per build**: `-DLANG_PL` is in `build_flags` for both envs (`lolin_s2_mini_ota` inherits via `extends`), so the unselected branch never reaches the preprocessor. Never index a two-row table at runtime - that ships both languages.
+
+- The device is Polish. The English table stays as the unbuilt `#else` branch for reference; **edit both sides** or the other language silently rots.
+- **No diacritics anywhere.** Every GFX font declares range `0x20-0x7E` and `GlyphMasks.h` has no accented glyphs, so words that would need one were *replaced*, not stripped: `SIATKA` (not siatkowka), `NISKA` (not slaba).
+- LED words are constrained further, to the 46-glyph table - **no W, K, M or V**. Return is `COFNIJ`, not `WSTECZ`, because the LEDs, OLED and e-paper are readable at once and must agree.
+- Polish numerals decline (1 gracz / 2-4 gracze / 5+ graczy), so a `"%u <noun>"` format string is wrong for some counts. Use a label-colon form (`"W GRZE: %u"`).
+- The `_OLED` variants exist because the OLED list is space-padded for centring at a fixed x (10 chars max, `FreeMono9pt7b`), while the e-paper rows are not.
+- Out of scope: `printLn`/telnet/serial logs, the WiFi config web page, player names, the AP SSID/password, and the `BAT` / `FW` abbreviations.
+- Verify a language change with `grep -ac "<english word>" .pio/build/esp32s3_devkitc/firmware.bin` - it must return 0.
 
 ### Players
 Player profiles (`UserProfile`) are hardcoded in `main.cpp` with names and assigned colors. To add/change players, edit the `userA`–`userI` declarations and the `users` vector there.

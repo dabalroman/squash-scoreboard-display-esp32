@@ -140,6 +140,18 @@ struct SegmentTable {
     uint16_t base;
 };
 
+/**
+ * The four digit glyphs as one value, so a whole LED word can live in the string
+ * table (src/Strings.h) next to the text that has to match it. Words with a
+ * varying position copy the constant and overwrite that field.
+ */
+struct LedWord {
+    Glyph a;
+    Glyph b;
+    Glyph c;
+    Glyph d;
+};
+
 enum class GlyphId : uint8_t {
     A = 0,
     B = 1,

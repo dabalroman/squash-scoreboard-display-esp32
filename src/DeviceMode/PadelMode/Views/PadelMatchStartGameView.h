@@ -1,6 +1,7 @@
 #ifndef PADEL_MODE__MATCH_START_GAME_VIEW_H
 #define PADEL_MODE__MATCH_START_GAME_VIEW_H
 
+#include "Strings.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
@@ -187,7 +188,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), gemsOf(playerLeft),
             playerRight->getName(), gemsOf(playerRight),
-            "GEMS",
+            Str::MATCH_SCORE_LABEL_PADEL_GEMS,
             sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
         );
     }

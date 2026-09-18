@@ -8,6 +8,7 @@
 #include "LedBar.h"
 #include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
+#include "LedText.h"
 #include "Animation/LedSweepAnimation.h"
 
 class LedDisplay {
@@ -52,6 +53,15 @@ public:
         glyphB.setGlyph(b);
         glyphC.setGlyph(c);
         glyphD.setGlyph(d);
+    }
+
+    void setGlyphsGlyph(const LedWord &word) {
+        setGlyphsGlyph(word.a, word.b, word.c, word.d);
+    }
+
+    // Words come from src/Strings.h as text - see LedText.h for the mapping.
+    void setGlyphsText(const char *text) {
+        setGlyphsGlyph(LedText::toWord(text));
     }
 
     void setGlyphsColor(const Color colorA, const Color colorB, const Color colorC, const Color colorD) {

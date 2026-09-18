@@ -3,6 +3,7 @@
 
 #include <vector>
 
+#include "Strings.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -298,7 +299,7 @@ public:
         einkDisplay.showMatchScore(
             playerLeft->getName(), game->getRealScore(GameSide::a),
             playerRight->getName(), game->getRealScore(GameSide::b),
-            scorer.isTiebreak() ? "TIE" : "GEMS",
+            scorer.isTiebreak() ? Str::MATCH_SCORE_LABEL_PADEL_TIEBREAK : Str::MATCH_SCORE_LABEL_PADEL_GEMS,
             sets.scoreOf(playerLeft->getId()), sets.scoreOf(playerRight->getId())
         );
     }
