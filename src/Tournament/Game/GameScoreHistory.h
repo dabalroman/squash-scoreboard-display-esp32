@@ -12,9 +12,15 @@ struct GameScoreHistoryEntry {
 
 class GameScoreHistory {
     std::vector<GameScoreHistoryEntry> history;
+    size_t maxEntries;
 
 public:
-    explicit GameScoreHistory(const size_t reserveCount = 32) {
+    // maxEntries=64 keeps Game (real int8_t counters, history only drives the
+    // LED bar) bit-for-bit unchanged. PadelGemScorer derives its score BY
+    // COUNTING entries, so an eviction there deletes a point someone won -
+    // it must pass a cap its longest realistic history can never reach.
+    explicit GameScoreHistory(const size_t reserveCount = 32, const size_t maxEntries = 64)
+        : maxEntries(maxEntries) {
         history.reserve(reserveCount);
     }
 
@@ -46,7 +52,7 @@ public:
             }
         }
 
-        if (history.size() >= 64) {
+        if (history.size() >= maxEntries) {
             history.erase(history.begin());
         }
 

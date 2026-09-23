@@ -41,6 +41,14 @@ class PadelGemScorer {
     static constexpr size_t GEM_RALLY_RESERVE = 16;
     static constexpr size_t TIEBREAK_RALLY_RESERVE = 32;
 
+    // GameScoreHistory's default 64-entry eviction cap is fine for Game's real
+    // counters but not here: temporaryPoints()/committedPoints() derive the score
+    // by counting entries, so an eviction silently deletes a point someone won.
+    // A tiebreak is uncapped (win by 2), so it needs a cap it cannot realistically
+    // reach. 254, not 256: both counters return uint8_t, and a history of 256
+    // entries all on one side would wrap that count to 0.
+    static constexpr size_t TIEBREAK_RALLY_MAX = 254;
+
     // Points that take a gem, win by 2: the ladder's 40 is the 4th point, a
     // tiebreak runs to 7.
     static constexpr uint8_t GEM_TARGET = 4;
@@ -180,7 +188,9 @@ public:
     /** Clears the gem for a fresh start, as a normal gem or as the tiebreak. */
     void reset(const bool asTiebreak = false) {
         tiebreak = asTiebreak;
-        history = GameScoreHistory(asTiebreak ? TIEBREAK_RALLY_RESERVE : GEM_RALLY_RESERVE);
+        history = asTiebreak
+            ? GameScoreHistory(TIEBREAK_RALLY_RESERVE, TIEBREAK_RALLY_MAX)
+            : GameScoreHistory(GEM_RALLY_RESERVE);
     }
 };
 
