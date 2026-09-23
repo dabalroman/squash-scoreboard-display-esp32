@@ -374,9 +374,11 @@ def build_v1():
     cd_flips, cd_margin = solve_chain_flips(cd_groups)
     ab_flips, ab_margin = solve_chain_flips(ab_groups)
     for label, margin in (("C/D", cd_margin), ("A/B", ab_margin)):
+        # Fatal, not a warning: a coin-flip orientation would be committed as ground
+        # truth, and --check can only ever confirm it afterwards.
         if margin < DIE_PITCH:
-            print("WARNING: %s chain flip margin %.0f is under one die pitch (%.0f) - orientation may be unreliable"
-                  % (label, margin, DIE_PITCH), file=sys.stderr)
+            sys.exit("%s chain flip margin %.0f is under one die pitch (%.0f) - orientation is ambiguous"
+                     % (label, margin, DIE_PITCH))
 
     pos = {}
     # Colon: both dies equidistant from the origin (their own midpoint), so which
@@ -439,18 +441,41 @@ def preview_v1(pos, out_path):
 
 # ---------------------------------------------------------------------- CLI ---
 
+def header_rows(header, board):
+    """The table rows of one board's branch, in array order."""
+    lines = header.splitlines()
+    marks = {}
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "#if BOARD_REV == 2":
+            marks["if"] = i
+        elif stripped == "#else" and "if" in marks and "else" not in marks:
+            marks["else"] = i
+        elif stripped.startswith("#endif") and "else" in marks and "endif" not in marks:
+            marks["endif"] = i
+    if len(marks) != 3:
+        sys.exit("%s: cannot find the BOARD_REV #if/#else/#endif around the tables" % os.path.basename(HEADER))
+    lo, hi = (marks["if"], marks["else"]) if board == "v2" else (marks["else"], marks["endif"])
+    return [line.strip() for line in lines[lo + 1:hi] if line.lstrip().startswith("{")]
+
+
 def check(board, table, led_count):
     with open(HEADER, "r", encoding="utf-8") as fh:
         header = fh.read()
-    # Each row's slot number + label make it unique per board, so a plain substring
-    # check (as before) is enough - no need to isolate the #if/#else branch text.
-    missing = [line for line in table if line not in header]
-    if missing:
-        print("MISMATCH (%s): %d of %d table rows are not in %s" % (board, len(missing), led_count, os.path.basename(HEADER)))
-        for line in missing[:10]:
-            print("  " + line.strip())
+    # Positional, within this board's own branch: POS[] is filled by initializer
+    # order, so a transposed row or one pasted under the other board would still be
+    # "somewhere in the file" while putting a slot at the wrong place.
+    rows = header_rows(header, board)
+    bad = [i for i in range(max(len(rows), len(table)))
+           if i >= len(rows) or i >= len(table) or rows[i] != table[i].strip()]
+    if bad:
+        print("MISMATCH (%s): %d of %d rows differ from %s (header has %d rows)"
+              % (board, len(bad), led_count, os.path.basename(HEADER), len(rows)))
+        for i in bad[:10]:
+            print("  slot %d: header %r" % (i, rows[i].strip() if i < len(rows) else None))
+            print("  slot %d: wanted %r" % (i, table[i].strip() if i < len(table) else None))
         return False
-    print("OK (%s): all %d rows match %s" % (board, len(table), os.path.basename(HEADER)))
+    print("OK (%s): all %d rows match %s, in order" % (board, len(table), os.path.basename(HEADER)))
     return True
 
 
