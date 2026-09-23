@@ -22,14 +22,27 @@ without flashing hardware.
 
 ```sh
 wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-esp32/helpers/led_dump && ./run.sh"
-# against the live tree:
-wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-esp32/helpers/led_dump && ./run.sh --root ../../src --defines '-DBOARD_REV=1 -DLEDBAR_LAMBDA'"
+# harness self-test only (frozen v1_snapshot vs its own goldens - proves the harness
+# works, proves NOTHING about the current src/ tree):
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-esp32/helpers/led_dump && ./run.sh --snapshot"
 ```
 
-With no `--golden` flag, the script exits non-zero if the output differs from the
-goldens. `--golden` regenerates them; only use it with the default `v1_snapshot` root.
-Extra defines such as `-DCONFIG_IDF_TARGET_ESP32S2=1` are passed straight through.
-`DUMP_ROOT` / `DUMP_DEFINES` env vars work too.
+The bare form checks the **live `../../src` tree** - that is the default `--root` and
+`--defines` now (`-DBOARD_REV=1 -DLEDBAR_LAMBDA -DCONFIG_IDF_TARGET_ESP32S2=1
+-DCURRENT_LEDDISPLAY_API`), because that combination is the one that actually compiles and
+means something: a mismatch here is a real behaviour change in `src/Display/LedDisplay/`.
+`v1_snapshot` predates both `LEDBAR_LAMBDA` (`setLedBarState` took an array, not a lambda)
+and `CURRENT_LEDDISPLAY_API` (`resetHistoryBar()`/single-arg `startCelebration()`), so
+`--snapshot` switches to `v1_snapshot` **and** drops to no defines at all - a bare
+`--root v1_snapshot` on its own still carries the live `--defines` default and will not
+compile; use `--snapshot`, or pass `--defines ""` alongside an explicit `--root v1_snapshot`.
+
+With no `--golden` flag, the script exits non-zero if the output differs from the goldens.
+`--golden` regenerates them and refuses to run unless the root is `v1_snapshot` (pass
+`--root v1_snapshot` or `--snapshot`) - the goldens are that frozen snapshot's baseline, not
+the live tree's, and writing them from `../../src` would silently turn the check back into a
+tautology. `--root <path> --defines "..."` (or the `DUMP_ROOT` / `DUMP_DEFINES` env vars)
+override either independently, e.g. to point at a different tree or add extra defines.
 
 ## V1 build fingerprint (unmodified tree, commit 902928f)
 

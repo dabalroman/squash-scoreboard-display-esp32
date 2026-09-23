@@ -1,25 +1,45 @@
 #!/usr/bin/env bash
 # Build the LED dump harness and compare against (or regenerate) the V1 goldens.
-#   ./run.sh                    check v1_snapshot against the goldens
-#   ./run.sh --golden           regenerate goldens (only ever from v1_snapshot)
-#   ./run.sh --root ../../src --defines "-DBOARD_REV=1 -DLEDBAR_LAMBDA"
+#   ./run.sh                    check the LIVE src/ tree against the goldens (default)
+#   ./run.sh --snapshot         harness self-test: frozen v1_snapshot vs its own goldens -
+#                                proves the harness works, proves NOTHING about src/
+#   ./run.sh --golden --root v1_snapshot   regenerate goldens (only ever from v1_snapshot)
+#   ./run.sh --root <path> --defines "..."  override root/defines explicitly
 # Env equivalents: DUMP_ROOT, DUMP_DEFINES.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-ROOT="${DUMP_ROOT:-v1_snapshot}"
-DEFINES="${DUMP_DEFINES:-}"
+# The set that actually compiles against the live tree: see CLAUDE.md's "READ FIRST" /
+# helpers/led_dump/README.md. LEDBAR_LAMBDA/CURRENT_LEDDISPLAY_API select the post-refactor
+# LedDisplay API (setLedBarState(lambda), resetAnimations()/startCelebration(c,bool));
+# v1_snapshot predates both, so --snapshot below passes no defines at all, on purpose.
+DEFAULT_DEFINES="-DBOARD_REV=1 -DLEDBAR_LAMBDA -DCONFIG_IDF_TARGET_ESP32S2=1 -DCURRENT_LEDDISPLAY_API"
+
+ROOT="${DUMP_ROOT:-../../src}"
+DEFINES="${DUMP_DEFINES:-$DEFAULT_DEFINES}"
 GOLDEN=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --golden) GOLDEN=1 ;;
+        --snapshot) ROOT="v1_snapshot"; DEFINES="" ;;
         --root) ROOT="$2"; shift ;;
         --defines) DEFINES="$2"; shift ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+if [ "$ROOT" = "v1_snapshot" ]; then
+    echo "NOTE: root is v1_snapshot - this is a harness SELF-TEST (frozen copy vs its own"
+    echo "      goldens). It does not check the current src/ tree."
+fi
+
+if [ "$GOLDEN" = 1 ] && [ "$ROOT" != "v1_snapshot" ]; then
+    echo "refusing to write goldens from root '$ROOT': the goldens are v1_snapshot's" >&2
+    echo "baseline, not the live tree's. Pass --root v1_snapshot (or --snapshot) to regenerate." >&2
+    exit 2
+fi
 
 echo "include root: $ROOT"
 echo "defines:      ${DEFINES:-(none)}"
