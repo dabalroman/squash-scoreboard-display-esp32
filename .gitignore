@@ -4,3 +4,6 @@
 /.mcp.json
 # Splash artwork stays local; the header it generates is what gets committed.
 /assets/eink/
+
+# Editor backup files (e.g. Emacs ~ backups left in src/ and lib/)
+*~
