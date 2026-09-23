@@ -26,7 +26,7 @@
 #include "BatteryMonitor.h"
 #include "Display/Overlay.h"
 #include "Display/EInk/EInkDisplay.h"
-#include "Display/EInk/PlayerSetupWebUi.h"
+#include "Web/PlayerSetupWebUi.h"
 #include "PlayerRoster.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"

@@ -21,9 +21,11 @@ namespace Board {
     constexpr const char *NAME = "V1 ESP32-S2";
     constexpr bool SERIAL_LOG = false;   // logs go to telnet only
 
-    // No e-paper to show the QR placard on, and the HTML payload would eat into a
-    // 1280 KB app slot that is flashed over OTA. V1 keeps its factory roster.
-    constexpr bool HAS_PLAYER_SETUP = false;
+    // The roster editor: shared with V2 (PlayerSetupWebUi carries no #if, ~33 KB
+    // of source, no measurable dent in the 1280 KB OTA app slot). No e-paper here,
+    // so no QR placard - the OLED discovery screen (AP name, password, IP) is
+    // what V1 has instead.
+    constexpr bool HAS_PLAYER_SETUP = true;
 
     constexpr uint8_t OLED_SDA = 33;
     constexpr uint8_t OLED_SCL = 34;

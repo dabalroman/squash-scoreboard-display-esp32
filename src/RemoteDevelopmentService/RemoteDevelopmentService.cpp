@@ -154,22 +154,9 @@ void RemoteDevelopmentService::setupOTA() {
         extraRoutes(*OTAServer);
     }
 
-    // Registered LAST, and that ordering is the whole design: WebServer dispatches
-    // to the first handler that matches, so on V2 the web UI's own "/" (registered
-    // just above) wins and this never runs. On V1 there is no web UI at all, and
-    // this stays the only way to type WiFi credentials into a board whose stored
-    // ones are wrong - which matters more there, because V1 is flashed over OTA.
-    // A fallback by ordering, rather than by `#if BOARD_REV`, which belongs in
-    // Board.h and the hardware wrappers only.
-    OTAServer->on("/", HTTP_GET, [this] {
-        const String html = "<html><body><h1>Squash Scoreboard Display</h1><form action=\"/connect\" method=\"POST\">"
-                "SSID:<br><input type=\"text\" name=\"ssid\"><br>"
-                "Password:<br><input type=\"password\" name=\"password\"><br><br>"
-                "<input type=\"submit\" value=\"Connect\">"
-                "</form></body></html>";
-        OTAServer->send(200, "text/html", html);
-    });
-
+    // "/" is registered by extraRoutes above (PlayerSetupWebUi, identical on both
+    // boards). The WiFi credentials form lives only on GET /update now, which that
+    // same registration adds and which carries no `active` gate.
     OTAServer->begin();
 
     isOTAActive = true;
@@ -262,14 +249,14 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
 }
 
 void RemoteDevelopmentService::enableAP() {
-    WiFi.softAP("Scoreboard", "19092026");
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
 
     preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
 
     backDisplay->clear();
     backDisplay->setCursorToLine();
-    backDisplay->println(F("Scoreboard"));
-    backDisplay->println(F("19092026"));
+    backDisplay->println(AP_SSID);
+    backDisplay->println(AP_PASSWORD);
     backDisplay->println(WiFi.softAPIP().toString());
     backDisplay->display();
 
@@ -285,10 +272,12 @@ void RemoteDevelopmentService::disableAP() {
 }
 
 void RemoteDevelopmentService::enablePlayerSetupAp() {
-    // Clear the flag before tearing STA down: handleTelnet() would otherwise poll a
-    // server whose socket has just gone away.
+    // Clear the flags before tearing STA down: handleTelnet() would otherwise poll
+    // a server whose socket has just gone away, and a reconnect that was still in
+    // flight from a previous visit must not land mid-AP.
     isWifiActive = false;
     isTelnetActive = false;
+    staReconnectPending = false;
 
     if (telnetClient) {
         telnetClient.stop();
@@ -299,7 +288,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
 
     WiFi.disconnect(true, false);
     WiFi.mode(WIFI_AP);
-    WiFi.softAP("Scoreboard", "19092026");
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
 
     preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
     isAPActive = true;
@@ -313,6 +302,18 @@ void RemoteDevelopmentService::disablePlayerSetupAp() {
     WiFi.softAPdisconnect(true);
     preferencesManager->wifiIpAddress = "";
     isAPActive = false;
+
+    if (!preferencesManager->settings.enableDevMode) {
+        // Off by default: end with WiFi off, same as a normal boot with it off.
+        return;
+    }
+
+    // Non-blocking - no delay, no AP fallback. checkStaReconnect(), polled from
+    // loop(), notices WL_CONNECTED and finishes what init() would otherwise have
+    // done (the IP, telnet) - keeping V1 OTA-reachable without a reboot.
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(preferencesManager->settings.wifiSSID, preferencesManager->settings.wifiPassword);
+    staReconnectPending = true;
 }
 
 void RemoteDevelopmentService::handleTelnet() {
@@ -331,6 +332,19 @@ void RemoteDevelopmentService::handleTelnet() {
     }
 }
 
+void RemoteDevelopmentService::checkStaReconnect() {
+    if (!staReconnectPending || WiFi.status() != WL_CONNECTED) {
+        return;
+    }
+
+    staReconnectPending = false;
+    isWifiActive = true;
+    preferencesManager->wifiIpAddress = WiFi.localIP().toString();
+    setupTelnet();
+
+    ::printLn("WiFi: reconnected after roster editor exit, IP %s", preferencesManager->wifiIpAddress.c_str());
+}
+
 void RemoteDevelopmentService::loop() {
     if (isOTAActive) {
         OTAServer->handleClient();
@@ -342,6 +356,7 @@ void RemoteDevelopmentService::loop() {
         safeRestart();
     }
 
+    checkStaReconnect();
     handleTelnet();
 }
 

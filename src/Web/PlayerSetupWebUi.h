@@ -2,10 +2,10 @@
 #define PLAYER_SETUP_WEB_UI_H
 
 /**
- * The device's web UI, served over the setup AP. A hardware-style wrapper: a real
- * body on V2, an empty stub with the identical API on V1, so nothing else has to
- * test the board. Keeping the HTML behind the `#if` is the point - V1 flashes
- * over OTA into a 1280 KB app slot and must not carry a page it can never show.
+ * The device's web UI, served over the setup AP. One implementation on both
+ * boards - no `#if BOARD_REV` - because the page itself is ~33 KB, nowhere near
+ * V1's 1280 KB app slot; the only thing V1 lacks is the e-paper QR placard, and
+ * that already has its own hardware-wrapper stub (EInkDisplay).
  *
  * Two screens, sharing one shell and nav bar:
  *   GET /        the profile (roster) editor - the default screen
@@ -14,8 +14,9 @@
  *
  * `/` used to be the WiFi credentials form. That form now lives on the update
  * screen, because WiFi exists here only to serve OTA: the profile editor always
- * runs on the AP, never on the house network, so joining it is always the two QR
- * codes on the placard and never an IP address nobody can guess.
+ * runs on the AP, never on the house network, so joining it is always the AP's
+ * fixed name and password - shown on the OLED on both boards, and additionally
+ * as two QR codes on V2's e-paper placard - never an IP address nobody can guess.
  *
  * `POST /connect` (saving the credentials) and `POST /update` (writing the image)
  * both still belong to RemoteDevelopmentService - the latter is what
@@ -49,8 +50,6 @@
 #include "PlayerRoster.h"
 #include "PreferencesManager.h"
 #include "SafeRestart.h"
-
-#if BOARD_REV == 2
 
 class PlayerSetupWebUi {
 public:
@@ -693,22 +692,5 @@ private:
         armRestart();
     }
 };
-
-#else
-
-// V1 has no web UI. Same API, all empty; no HTML is linked in.
-class PlayerSetupWebUi {
-public:
-    PlayerSetupWebUi(PlayerRoster &, PreferencesManager &) {}
-
-    void registerRoutes(WebServer &) {}
-    void open(uint32_t) {}
-    void close() {}
-    uint32_t lastActivityMs() const { return 0; }
-    void noteActivity() {}
-    void loop() {}
-};
-
-#endif
 
 #endif //PLAYER_SETUP_WEB_UI_H

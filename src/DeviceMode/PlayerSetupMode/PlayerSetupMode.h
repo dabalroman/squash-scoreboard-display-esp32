@@ -2,7 +2,7 @@
 #define PLAYER_SETUP_MODE_H
 
 #include "DeviceMode/DeviceMode.h"
-#include "Display/EInk/PlayerSetupWebUi.h"
+#include "Web/PlayerSetupWebUi.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "Views/PlayerSetupView.h"
 
@@ -37,7 +37,7 @@ public:
         remoteDevelopmentService.enablePlayerSetupAp();
         webUi.open(millis());
 
-        activeView = std::make_unique<PlayerSetupView>(webUi, onDeviceModeChange);
+        activeView = std::make_unique<PlayerSetupView>(webUi, remoteDevelopmentService, onDeviceModeChange);
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
         activeView->initEInkDisplay(einkDisplay);

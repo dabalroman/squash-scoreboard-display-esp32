@@ -75,16 +75,21 @@ namespace Str {
     constexpr const char *const MATCH_SCORE_LABEL_GEMS = "GEMY";
     constexpr const char *const MATCH_SCORE_LABEL_TIEBREAK = "TIEBREAK";
 
-    // Roster editor (V2). PROFILE, not GRACZE: the in-match player picker is already
-    // called GRACZE, and two screens under one word is how you open the wrong one.
-    // The e-paper placard is a pre-rendered bitmap and cannot read this table - its
-    // wording lives in helpers/player_setup_qr.py and has to be changed there too.
-    // The web page itself is out of scope, like the WiFi config
-    // page; only what the device's own screens say lives here. The OLED small font
-    // fits 9 characters per line.
+    // Roster editor, shared by both boards. PROFILE, not GRACZE: the in-match
+    // player picker is already called GRACZE, and two screens under one word is
+    // how you open the wrong one. The e-paper placard (V2 only) is a pre-rendered
+    // bitmap and cannot read this table - its wording lives in
+    // helpers/player_setup_qr.py and has to be changed there too. The web page
+    // itself is out of scope, like the WiFi config page; only what the device's
+    // own screens say lives here. FreeMono9pt7b advances 11 px/glyph, so an
+    // 11-character line is the true limit at 128 px (measured from the font's
+    // GFXglyph table, not the width constant used elsewhere for other fonts) -
+    // long enough for "192.168.4.1".
     constexpr const char *const PLAYER_SETUP_OLED_TITLE = "PROFILE";
-    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK =   "Zobacz drugi";
-    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK_2 = "  ekran";
+    constexpr const char *const PLAYER_SETUP_OLED_WIFI_LABEL = "WIFI:";
+    constexpr const char *const PLAYER_SETUP_OLED_PASSWORD_LABEL = "HASLO:";
+    constexpr const char *const PLAYER_SETUP_OLED_IP_LABEL = "IP:";
+    constexpr const char *const PLAYER_SETUP_OLED_EXIT_HINT = "C/D=WYJSCIE";
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "NISKA BATERIA";
@@ -166,11 +171,12 @@ namespace Str {
     constexpr const char *const MATCH_SCORE_LABEL_GEMS = "GEMS";
     constexpr const char *const MATCH_SCORE_LABEL_TIEBREAK = "TIE";
 
-    // Roster editor (V2)
+    // Roster editor, shared by both boards
     constexpr const char *const PLAYER_SETUP_OLED_TITLE = "PROFILES";
-    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK =   " Use front";
-    constexpr const char *const PLAYER_SETUP_OLED_USE_EINK_2 = "  screen";
-
+    constexpr const char *const PLAYER_SETUP_OLED_WIFI_LABEL = "WIFI:";
+    constexpr const char *const PLAYER_SETUP_OLED_PASSWORD_LABEL = "PASS:";
+    constexpr const char *const PLAYER_SETUP_OLED_IP_LABEL = "IP:";
+    constexpr const char *const PLAYER_SETUP_OLED_EXIT_HINT = "C/D=EXIT";
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "LOW BATTERY";

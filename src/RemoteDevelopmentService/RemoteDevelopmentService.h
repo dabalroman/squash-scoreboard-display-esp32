@@ -58,6 +58,11 @@ class RemoteDevelopmentService {
     bool isOTAActive = false;
     bool isNTPActive = false;
 
+    // Set by disablePlayerSetupAp() when it starts a non-blocking WiFi.begin();
+    // cleared by checkStaReconnect() once WL_CONNECTED lands, or by
+    // enablePlayerSetupAp() if the editor is reopened before that happens.
+    bool staReconnectPending = false;
+
     static constexpr uint8_t MAX_LOGS = 10;
     static constexpr uint8_t LOG_ENTRY_SIZE = 128;
 
@@ -70,6 +75,11 @@ class RemoteDevelopmentService {
     void setupTelnet();
 
     void setupNTP();
+
+    // Polled from loop(): notices the STA reconnect disablePlayerSetupAp() starts
+    // and finishes what init() would otherwise have done (isWifiActive, the IP,
+    // telnet) - without blocking loop() for it.
+    void checkStaReconnect();
 
     void handleTelnet();
 
@@ -84,6 +94,12 @@ class RemoteDevelopmentService {
     void closeTelnetForOta();
 
 public:
+    // The setup AP's fixed identity - one pair, used by both AP paths
+    // (enableAP, enablePlayerSetupAp) and read by the OLED discovery screen, so
+    // there is no third copy to drift from the other two.
+    static constexpr const char *AP_SSID = "Scoreboard";
+    static constexpr const char *AP_PASSWORD = "19092026";
+
     void setExtraRouteRegistrar(const std::function<void(WebServer &)> &registrar) {
         extraRoutes = registrar;
     }
@@ -99,14 +115,17 @@ public:
     /**
      * Raise the setup AP on demand, whatever `enableDevMode` says - an explicit user
      * action, not a background service, so there is no blocking delay here.
-     *
-     * STA is torn down and does not come back until the next reboot; the roster
-     * editor always ends in one on save, and the log says so on cancel.
      */
     void enablePlayerSetupAp();
 
-    // Drops the AP only. The port-80 server object stays alive, because WebServer
-    // cannot unregister handlers and re-creating it would register them twice.
+    /**
+     * Drops the AP and, if enableDevMode is on, starts a non-blocking STA
+     * reconnect (WiFi.begin() only - no delay, no AP fallback); loop() notices the
+     * connection and restarts telnet. With enableDevMode off this just leaves
+     * WiFi off, same as a normal boot with it off. The port-80 server object
+     * itself stays alive either way - WebServer cannot unregister handlers and
+     * re-creating it would register every route twice.
+     */
     void disablePlayerSetupAp();
 
     void init(PreferencesManager &_preferencesManager, BackDisplay &_backDisplay);
@@ -119,6 +138,12 @@ public:
 
     bool isAnyNetworkingActive() const {
         return isAPActive || isWifiActive;
+    }
+
+    // Read by the OLED discovery screen; empty while no interface is up (same
+    // string PreferencesManager itself would otherwise expose).
+    const String &currentIpAddress() const {
+        return preferencesManager->wifiIpAddress;
     }
 };
 

@@ -5,13 +5,17 @@
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
 #include "Display/EInk/Images/PlayerSetupQr.h"
-#include "Display/EInk/PlayerSetupWebUi.h"
+#include "Web/PlayerSetupWebUi.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
+#include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 
 /**
- * The screen the roster editor shows while its AP is up: the dual-QR placard on
- * the e-paper, a static word on the front LEDs and the remote hints on the OLED.
+ * The screen the roster editor shows while its AP is up: a static word on the
+ * front LEDs, the dual-QR placard on the e-paper (V2 only - EInkDisplay stubs to
+ * nothing on V1), and an auto-scrolling OLED discovery screen shared by both
+ * boards - the AP name, its password and the current IP, for whoever has no
+ * e-paper (or no QR reader) to fall back on.
  *
  * The AP itself is raised and dropped by PlayerSetupMode, not here, so every exit
  * path - D, C, the idle timeout, or anything added later - tears it down the same
@@ -19,6 +23,7 @@
  */
 class PlayerSetupView final : public View {
     PlayerSetupWebUi &webUi;
+    RemoteDevelopmentService &remoteDevelopmentService;
     std::function<void(DeviceModeState)> onDeviceModeChange;
 
     uint32_t lastRemoteMs;
@@ -27,12 +32,47 @@ class PlayerSetupView final : public View {
     // forgotten screen does not leave an open AP up all evening.
     enum : uint32_t { IDLE_TIMEOUT_MS = 900000 };
 
+    // Title fixed on line 0; lines 1-2 auto-scroll through this list, one item at
+    // a time (a 2-line sliding window, stepping by 1 every SCROLL_STEP_MS) - so
+    // every item spends a turn on each of the two rows rather than jumping in
+    // fixed pairs. Values are read fresh each render, not cached, since the IP is
+    // only known once the AP has actually come up.
+    enum : uint8_t {
+        SCROLL_WIFI_LABEL = 0,
+        SCROLL_SSID,
+        SCROLL_PASSWORD_LABEL,
+        SCROLL_PASSWORD,
+        SCROLL_IP_LABEL,
+        SCROLL_IP,
+        SCROLL_EXIT_HINT,
+        SCROLL_ITEM_COUNT
+    };
+    static constexpr uint32_t SCROLL_STEP_MS = 1500;
+
+    uint8_t scrollIndex = 0;
+    uint32_t lastScrollMs = 0;
+    bool scrollStarted = false;
+
+    String scrollItem(const uint8_t index) const {
+        switch (index % SCROLL_ITEM_COUNT) {
+            case SCROLL_WIFI_LABEL: return Str::PLAYER_SETUP_OLED_WIFI_LABEL;
+            case SCROLL_SSID: return RemoteDevelopmentService::AP_SSID;
+            case SCROLL_PASSWORD_LABEL: return Str::PLAYER_SETUP_OLED_PASSWORD_LABEL;
+            case SCROLL_PASSWORD: return RemoteDevelopmentService::AP_PASSWORD;
+            case SCROLL_IP_LABEL: return Str::PLAYER_SETUP_OLED_IP_LABEL;
+            case SCROLL_IP: return remoteDevelopmentService.currentIpAddress();
+            default: return Str::PLAYER_SETUP_OLED_EXIT_HINT;
+        }
+    }
+
 public:
     PlayerSetupView(
         PlayerSetupWebUi &webUi,
+        RemoteDevelopmentService &remoteDevelopmentService,
         const std::function<void(DeviceModeState)> &onDeviceModeChange
     )
-        : webUi(webUi), onDeviceModeChange(onDeviceModeChange), lastRemoteMs(millis()) {
+        : webUi(webUi), remoteDevelopmentService(remoteDevelopmentService),
+          onDeviceModeChange(onDeviceModeChange), lastRemoteMs(millis()) {
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -96,21 +136,28 @@ public:
         einkDisplay.showImage(PLAYER_SETUP_QR_BITMAP);
     }
 
+    // Per-tick: the scroll advances on its own clock, once per SCROLL_STEP_MS. A
+    // queued render (restoreView() after an Overlay) still redraws at once, or the
+    // overlay's text would linger for up to a whole step.
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        if (!shouldRenderBack) {
+        const uint32_t now = millis();
+        if (!shouldRenderBack && scrollStarted && now - lastScrollMs < SCROLL_STEP_MS) {
             return;
         }
+        lastScrollMs = now;
+        scrollStarted = true;
+        shouldRenderBack = false;
 
         backDisplay.clear();
         backDisplay.setCursorToLine(0, 0);
         backDisplay.print(Str::PLAYER_SETUP_OLED_TITLE);
         backDisplay.setCursorToLine(0, 1);
-        backDisplay.print(Str::PLAYER_SETUP_OLED_USE_EINK);
+        backDisplay.print(scrollItem(scrollIndex));
         backDisplay.setCursorToLine(0, 2);
-        backDisplay.print(Str::PLAYER_SETUP_OLED_USE_EINK_2);
+        backDisplay.print(scrollItem(scrollIndex + 1));
         backDisplay.display();
 
-        shouldRenderBack = false;
+        scrollIndex = (scrollIndex + 1) % SCROLL_ITEM_COUNT;
     }
 };
 
