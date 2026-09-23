@@ -32,11 +32,10 @@ class PlayerSetupView final : public View {
     // forgotten screen does not leave an open AP up all evening.
     enum : uint32_t { IDLE_TIMEOUT_MS = 900000 };
 
-    // Title fixed on line 0; lines 1-2 auto-scroll through this list, one item at
-    // a time (a 2-line sliding window, stepping by 1 every SCROLL_STEP_MS) - so
-    // every item spends a turn on each of the two rows rather than jumping in
-    // fixed pairs. Values are read fresh each render, not cached, since the IP is
-    // only known once the AP has actually come up.
+    // Title fixed on line 0; lines 1-2 show one label/value pair at a time, the
+    // next pair every SCROLL_STEP_MS - stepping a line at a time put a value over
+    // the next pair's label. Values are read fresh each render, not cached, since
+    // the IP is only known once the AP has actually come up.
     enum : uint8_t {
         SCROLL_WIFI_LABEL = 0,
         SCROLL_SSID,
@@ -44,7 +43,6 @@ class PlayerSetupView final : public View {
         SCROLL_PASSWORD,
         SCROLL_IP_LABEL,
         SCROLL_IP,
-        SCROLL_EXIT_HINT,
         SCROLL_ITEM_COUNT
     };
     static constexpr uint32_t SCROLL_STEP_MS = 1500;
@@ -60,8 +58,7 @@ class PlayerSetupView final : public View {
             case SCROLL_PASSWORD_LABEL: return Str::PLAYER_SETUP_OLED_PASSWORD_LABEL;
             case SCROLL_PASSWORD: return RemoteDevelopmentService::AP_PASSWORD;
             case SCROLL_IP_LABEL: return Str::PLAYER_SETUP_OLED_IP_LABEL;
-            case SCROLL_IP: return remoteDevelopmentService.currentIpAddress();
-            default: return Str::PLAYER_SETUP_OLED_EXIT_HINT;
+            default: return remoteDevelopmentService.currentIpAddress();
         }
     }
 
@@ -157,7 +154,7 @@ public:
         backDisplay.print(scrollItem(scrollIndex + 1));
         backDisplay.display();
 
-        scrollIndex = (scrollIndex + 1) % SCROLL_ITEM_COUNT;
+        scrollIndex = (scrollIndex + 2) % SCROLL_ITEM_COUNT;
     }
 };
 

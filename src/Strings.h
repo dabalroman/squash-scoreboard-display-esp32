@@ -89,7 +89,6 @@ namespace Str {
     constexpr const char *const PLAYER_SETUP_OLED_WIFI_LABEL = "WIFI:";
     constexpr const char *const PLAYER_SETUP_OLED_PASSWORD_LABEL = "HASLO:";
     constexpr const char *const PLAYER_SETUP_OLED_IP_LABEL = "IP:";
-    constexpr const char *const PLAYER_SETUP_OLED_EXIT_HINT = "C/D=WYJSCIE";
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "NISKA BATERIA";
@@ -176,7 +175,6 @@ namespace Str {
     constexpr const char *const PLAYER_SETUP_OLED_WIFI_LABEL = "WIFI:";
     constexpr const char *const PLAYER_SETUP_OLED_PASSWORD_LABEL = "PASS:";
     constexpr const char *const PLAYER_SETUP_OLED_IP_LABEL = "IP:";
-    constexpr const char *const PLAYER_SETUP_OLED_EXIT_HINT = "C/D=EXIT";
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "LOW BATTERY";
