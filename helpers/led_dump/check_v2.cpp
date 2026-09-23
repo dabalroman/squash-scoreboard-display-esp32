@@ -7,11 +7,16 @@
 //   - border and back indicators are enabled/coloured independently
 //   - the boot sweep stays on front slots, ends dark, and never blanks a frame
 //   - the celebration takes over the front: digits/colon/border sit out, indicators do not
+//   - per-segment brightness compensation (task #43): the factor table matches the
+//     measured-area formula, indicators/dead slots are untouched, and the worst-case
+//     die-equivalent draw stays under the old flat-0.8 bound
 // Build: ./check_v2.sh
 // Boot-sweep and celebration invariants live in sweep_checks.h, shared with check_v1.cpp.
+#include <cmath>
 #include <cstdio>
 
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/LedDisplay/Profiles/NineSegmentBrightness.h"
 #include "sweep_checks.h"
 
 uint32_t g_fakeMillis = 0;
@@ -176,6 +181,104 @@ int main() {
         /* digit proof range      */ 10, 73,
     };
     failures += runSweepChecks(v2Sweep, writes);
+
+    // Per-segment brightness compensation (task #43): recompute each factor
+    // independently from the measured areas/dies and compare against
+    // NineSegmentBrightness, check indicators/dead slots stay untouched, and
+    // bound the worst-case die-equivalent draw against the old flat-0.8 limit.
+    {
+        struct SegmentFact {
+            const char *name;
+            int moduleSlots[3];
+            int slotCount;
+            int dies;
+            float totalMm2;
+        };
+        static const SegmentFact segments[] = {
+            {"bottom",       {11, 12, 13}, 3, 3, 1103.0f},
+            {"bottom-left",  {10, 0, 0},   1, 2, 374.0f},
+            {"bottom-right", {0, 1, 0},    2, 2, 766.0f},
+            {"center",       {15, 0, 0},   1, 2, 349.0f},
+            {"upper-left",   {8, 0, 0},    1, 2, 345.0f},
+            {"top-right",    {3, 4, 0},    2, 2, 693.0f},
+            {"top",          {5, 6, 7},    3, 3, 1044.0f},
+            {"mid-left",     {9, 0, 0},    1, 2, 331.0f},
+            {"mid-right",    {14, 0, 0},   1, 2, 331.0f},
+        };
+        const float TOLERANCE = 1.2f;
+        const float REFERENCE = 383.0f;   // bottom-right's mm^2/die - the largest measured
+
+        double perModuleDieEquivalents = 0.0;
+
+        for (const auto &seg : segments) {
+            const float mm2PerDie = seg.totalMm2 / static_cast<float>(seg.dies);
+            const float ratio = TOLERANCE * mm2PerDie / REFERENCE;
+            const int expected = ratio >= 1.0f ? 255 : static_cast<int>(std::lround(ratio * 255.0f));
+
+            for (int i = 0; i < seg.slotCount; i++) {
+                const auto moduleSlot = static_cast<uint16_t>(seg.moduleSlots[i]);
+                const int actual = NineSegmentBrightness::moduleFactor(moduleSlot);
+                if (actual != expected) {
+                    printf("FAIL compensation segment=%s moduleSlot=%d factor=%d expected=%d\n",
+                           seg.name, moduleSlot, actual, expected);
+                    failures++;
+                }
+            }
+
+            perModuleDieEquivalents += seg.dies * (expected / 255.0);
+        }
+
+        // Border: same formula, 473 mm^2 across 2 dies per segment, no special case.
+        const float borderMm2PerDie = 473.0f / 2.0f;
+        const float borderRatio = TOLERANCE * borderMm2PerDie / REFERENCE;
+        const int expectedBorder = borderRatio >= 1.0f ? 255 : static_cast<int>(std::lround(borderRatio * 255.0f));
+        const int borderSlots[] = {0, 1, 2, 3, 5, 6, 7, 8};
+        for (const int slot : borderSlots) {
+            const int actual = NineSegmentBrightness::slotScale(static_cast<uint16_t>(slot));
+            if (actual != expectedBorder) {
+                printf("FAIL compensation border slot=%d factor=%d expected=%d\n", slot, actual, expectedBorder);
+                failures++;
+            }
+        }
+        const double borderDieEquivalents = 8 * (expectedBorder / 255.0);   // 8 border slots, 1 die each
+
+        // Back indicators (4, 9) and every module's dead chain position: never
+        // front-facing / never lit, must stay at 255 (identity, untouched).
+        const int untouched[] = {4, 9, 12, 28, 44, 60};
+        for (const int slot : untouched) {
+            const int actual = NineSegmentBrightness::slotScale(static_cast<uint16_t>(slot));
+            if (actual != 255) {
+                printf("FAIL compensation slot=%d expected untouched (255), got %d\n", slot, actual);
+                failures++;
+            }
+        }
+        const double indicatorDieEquivalents = 2 * 1.0;   // both indicators, always full
+
+        // Worst case: four "8" glyphs (every segment lit) + border + indicators, at
+        // brightness level 8, must not exceed the old flat-0.8 bound (72 = 0.8 x 90
+        // dies) - compensation replaces that power guard on V2.
+        const double worstCase = 4 * perModuleDieEquivalents + borderDieEquivalents + indicatorDieEquivalents;
+        if (worstCase > 72.0) {
+            printf("FAIL compensation worst-case %.2f die-equivalents exceeds the 72 bound\n", worstCase);
+            failures++;
+        }
+        printf("compensation: worst-case %.2f die-equivalents (bound 72)\n", worstCase);
+
+        // compensate() applied to an all-white buffer must reproduce scale8(slotScale(i))
+        // per slot, everywhere in the chain - not just at the sampled slots above.
+        CRGB buffer[Board::LED_COUNT];
+        for (int i = 0; i < Board::LED_COUNT; i++) buffer[i] = CRGB(255, 255, 255);
+        NineSegmentBrightness::compensate(buffer);
+        for (int i = 0; i < Board::LED_COUNT; i++) {
+            const uint8_t factor = NineSegmentBrightness::slotScale(static_cast<uint16_t>(i));
+            const CRGB expected = CRGB(255, 255, 255).scale8(factor);
+            if (!(buffer[i] == expected)) {
+                printf("FAIL compensate() slot=%d got (%d,%d,%d) expected (%d,%d,%d)\n",
+                       i, buffer[i].r, buffer[i].g, buffer[i].b, expected.r, expected.g, expected.b);
+                failures++;
+            }
+        }
+    }
 
     printf("%s: %d writes checked, %d failures\n", failures ? "FAIL" : "OK", writes, failures);
     return failures ? 1 : 0;

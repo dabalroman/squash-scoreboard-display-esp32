@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "Color.h"
+#include "DisplayProfile.h"
 #include "LedBar.h"
 #include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
@@ -187,7 +188,7 @@ public:
     void display() {
         FastLED.clear();
         render();
-        FastLED.show();
+        showCompensated(pixels);
     }
 
     void render() {
@@ -217,7 +218,7 @@ public:
     }
 
     void setBrightness(const uint8_t brightness) {
-        requestedBrightness = static_cast<uint8_t>(brightness * 0.8f);
+        requestedBrightness = static_cast<uint8_t>(brightness * Board::GLOBAL_BRIGHTNESS_SCALE);
         applyBrightness();
     }
 

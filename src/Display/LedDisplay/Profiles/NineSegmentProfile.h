@@ -3,6 +3,7 @@
 
 #include "Board.h"
 #include "Display/LedDisplay/GlyphMasks.h"
+#include "Display/LedDisplay/Profiles/NineSegmentBrightness.h"
 
 /**
  * V2 - four 9-segment modules, 16 addressable slots each (21 LEDs, some wired in
@@ -51,6 +52,11 @@ struct NineSegmentProfile {
 
     static uint16_t maskFor(const uint8_t glyph) {
         return GlyphMasks[glyph];
+    }
+
+    /** Per-segment brightness compensation (task #43) - see NineSegmentBrightness.h. */
+    static void compensate(CRGB *pixels) {
+        NineSegmentBrightness::compensate(pixels);
     }
 
     static SegmentTable segmentsFor(const GlyphId id) {

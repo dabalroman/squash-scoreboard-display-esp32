@@ -55,6 +55,11 @@ struct CRGB {
         return out;
     }
 
+    CRGB &nscale8(uint8_t scaledown) {
+        nscale8x3(r, g, b, scaledown);
+        return *this;
+    }
+
     bool operator==(const CRGB &o) const { return r == o.r && g == o.g && b == o.b; }
     bool operator!=(const CRGB &o) const { return !(*this == o); }
 

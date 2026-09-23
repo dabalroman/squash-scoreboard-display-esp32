@@ -40,6 +40,11 @@ namespace Board {
     constexpr uint8_t BUZZER = 3;
 
     constexpr uint16_t LED_COUNT = 112;   // 88 glyph/colon/indicator px + 24 bar px
+
+    // Power-draw limit (user-confirmed, added 2026-09-19 in 3aaa578). V1 has no
+    // nine-segment modules, so #43's per-segment compensation does not apply here -
+    // this stays the permanent guard.
+    constexpr float GLOBAL_BRIGHTNESS_SCALE = 0.8f;
 }
 
 #elif BOARD_REV == 2
@@ -89,6 +94,11 @@ namespace Board {
     constexpr bool pinIsSafe(const uint8_t pin) {
         return !(pin >= 26 && pin <= 37);
     }
+
+    // #43's per-segment compensation (NineSegmentBrightness) is V2's power guard now -
+    // worst case 69.6 die-equivalents vs 72 under the old flat 0.8 limit, so peak draw
+    // does not rise. No blanket cut needed on top of it.
+    constexpr float GLOBAL_BRIGHTNESS_SCALE = 1.0f;
 }
 
 static_assert(Board::pinIsSafe(Board::OLED_SDA) && Board::pinIsSafe(Board::OLED_SCL), "OLED pins hit flash/PSRAM");

@@ -3,6 +3,8 @@
 
 #include "Display/LedDisplay/GlyphMasks.h"
 
+struct CRGB;   // only a pointer parameter below - no member access, no need for the real type
+
 /**
  * V1 - 112-LED 7-segment scoreboard. Every segment is 3 LEDs; the strip zig-zags,
  * so the digit tables are hand-written (absolute pixel indices, base 0).
@@ -75,6 +77,9 @@ struct SevenSegmentProfile {
     static uint16_t maskFor(const uint8_t glyph) {
         return GlyphMasks[glyph] & 0x7F;
     }
+
+    /** V1 has no nine-segment modules - #43's compensation is V2-only. Compiles to nothing. */
+    static void compensate(CRGB *) {}
 
     static SegmentTable segmentsFor(const GlyphId id) {
         using namespace SevenSegment;

@@ -6,6 +6,7 @@
 #include <math.h>
 
 #include "Board.h"
+#include "Display/LedDisplay/DisplayProfile.h"
 #include "LedSlotPositions.h"
 
 /**
@@ -255,13 +256,13 @@ public:
 
         while (active(millis())) {
             render(millis());
-            FastLED.show();
+            showCompensated(pixels);
             delay(FRAME_DELAY_MS);
         }
 
         stop();
         FastLED.clear();
-        FastLED.show();
+        showCompensated(pixels);
     }
 };
 
