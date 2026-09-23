@@ -62,6 +62,10 @@ class RemoteDevelopmentService {
     // cleared by checkStaReconnect() once WL_CONNECTED lands, or by
     // enablePlayerSetupAp() if the editor is reopened before that happens.
     bool staReconnectPending = false;
+    uint32_t staReconnectStartMs = 0;
+    bool staFallbackApUp = false;
+    // Same budget init() gives STA at boot before it falls back to the AP.
+    enum : uint32_t { STA_RECONNECT_TIMEOUT_MS = 10000 };
 
     static constexpr uint8_t MAX_LOGS = 10;
     static constexpr uint8_t LOG_ENTRY_SIZE = 128;

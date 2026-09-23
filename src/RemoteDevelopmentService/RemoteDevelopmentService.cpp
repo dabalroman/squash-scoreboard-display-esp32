@@ -278,6 +278,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
     isWifiActive = false;
     isTelnetActive = false;
     staReconnectPending = false;
+    staFallbackApUp = false;
 
     if (telnetClient) {
         telnetClient.stop();
@@ -314,6 +315,8 @@ void RemoteDevelopmentService::disablePlayerSetupAp() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(preferencesManager->settings.wifiSSID, preferencesManager->settings.wifiPassword);
     staReconnectPending = true;
+    staReconnectStartMs = millis();
+    staFallbackApUp = false;
 }
 
 void RemoteDevelopmentService::handleTelnet() {
@@ -333,7 +336,24 @@ void RemoteDevelopmentService::handleTelnet() {
 }
 
 void RemoteDevelopmentService::checkStaReconnect() {
-    if (!staReconnectPending || WiFi.status() != WL_CONNECTED) {
+    if (!staReconnectPending) {
+        return;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        // Wrong or unreachable stored credentials would otherwise leave the device
+        // with neither STA nor AP - on a sealed, OTA-only V1 that is the one state
+        // to avoid. Boot's fallback, minus enableAP()'s blocking delay; AP_STA keeps
+        // STA retrying, so a late connect still lands below.
+        if (!staFallbackApUp && millis() - staReconnectStartMs >= STA_RECONNECT_TIMEOUT_MS) {
+            WiFi.mode(WIFI_AP_STA);
+            WiFi.softAP(AP_SSID, AP_PASSWORD);
+            preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
+            isAPActive = true;
+            staFallbackApUp = true;
+            ::printLn("WiFi: no STA after roster editor exit, fallback AP up at %s",
+                      preferencesManager->wifiIpAddress.c_str());
+        }
         return;
     }
 
