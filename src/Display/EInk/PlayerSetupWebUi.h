@@ -538,8 +538,8 @@ private:
 
     /**
      * Server-authoritative and atomic. Every field is checked on its own - never
-     * trusted because the posted `count` said so - and the whole 418-byte blob is
-     * staged in RAM before a single putBytes. Any rejection leaves NVS untouched.
+     * trusted because the posted `count` said so - and the whole sizeof(PlayersData)
+     * blob is staged in RAM before a single putBytes. Any rejection leaves NVS untouched.
      */
     void handleSave() {
         if (!active) {
