@@ -1,4 +1,4 @@
-step=0 initial tick=1300 brightness=101
+step=0 initial tick=1300 brightness=127
 idx=4 rgb=255,255,255
 idx=5 rgb=255,255,255
 idx=6 rgb=255,255,255
@@ -71,7 +71,7 @@ idx=84 rgb=255,255,255
 idx=85 rgb=255,255,255
 idx=86 rgb=255,255,255
 idx=87 rgb=255,255,255
-step=1 setNumericValue(7,42) default colours tick=1300 brightness=101
+step=1 setNumericValue(7,42) default colours tick=1300 brightness=127
 idx=4 rgb=255,255,255
 idx=5 rgb=255,255,255
 idx=6 rgb=255,255,255
@@ -126,7 +126,7 @@ idx=75 rgb=255,255,255
 idx=85 rgb=255,255,255
 idx=86 rgb=255,255,255
 idx=87 rgb=255,255,255
-step=2 setGlyphsColor(4) tick=1300 brightness=101
+step=2 setGlyphsColor(4) tick=1300 brightness=127
 idx=4 rgb=0,64,255
 idx=5 rgb=0,64,255
 idx=6 rgb=0,64,255
@@ -181,7 +181,7 @@ idx=75 rgb=255,0,0
 idx=85 rgb=255,0,0
 idx=86 rgb=255,0,0
 idx=87 rgb=255,0,0
-step=3 setGlyphsColor(2) setNumericValue(99,3) tick=1300 brightness=101
+step=3 setGlyphsColor(2) setNumericValue(99,3) tick=1300 brightness=127
 idx=4 rgb=80,255,255
 idx=5 rgb=80,255,255
 idx=6 rgb=80,255,255
@@ -251,7 +251,7 @@ idx=84 rgb=224,32,221
 idx=85 rgb=224,32,221
 idx=86 rgb=224,32,221
 idx=87 rgb=224,32,221
-step=4 setGlyphsGlyph(P,A,d,E) tick=1300 brightness=101
+step=4 setGlyphsGlyph(P,A,d,E) tick=1300 brightness=127
 idx=7 rgb=80,255,255
 idx=8 rgb=80,255,255
 idx=9 rgb=80,255,255
@@ -315,7 +315,7 @@ idx=78 rgb=224,32,221
 idx=79 rgb=224,32,221
 idx=80 rgb=224,32,221
 idx=81 rgb=224,32,221
-step=5 setGlyphsAppearance(Orange,Violet,blinkA) visible tick=1300 brightness=101
+step=5 setGlyphsAppearance(Orange,Violet,blinkA) visible tick=1300 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -379,7 +379,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=6 setGlyphsAppearance(Orange,Violet,blinkA) dark tick=1100 brightness=101
+step=6 setGlyphsAppearance(Orange,Violet,blinkA) dark tick=1100 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -410,7 +410,7 @@ idx=42 rgb=85,0,255
 idx=43 rgb=85,0,255
 idx=44 rgb=85,0,255
 idx=45 rgb=85,0,255
-step=7 setGlyphBlinking(0,1,0,1) visible tick=1300 brightness=101
+step=7 setGlyphBlinking(0,1,0,1) visible tick=1300 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -474,7 +474,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=8 setGlyphBlinking(0,1,0,1) dark tick=1100 brightness=101
+step=8 setGlyphBlinking(0,1,0,1) dark tick=1100 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -505,7 +505,7 @@ idx=75 rgb=255,96,0
 idx=76 rgb=255,96,0
 idx=77 rgb=255,96,0
 idx=78 rgb=255,96,0
-step=9 setGlyphBlinking(0,0) setColonAppearance(White) tick=1100 brightness=101
+step=9 setGlyphBlinking(0,0) setColonAppearance(White) tick=1100 brightness=127
 idx=0 rgb=255,255,255
 idx=1 rgb=255,255,255
 idx=7 rgb=85,0,255
@@ -571,7 +571,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=10 setColonAppearance(Green,blink) visible tick=1300 brightness=101
+step=10 setColonAppearance(Green,blink) visible tick=1300 brightness=127
 idx=0 rgb=61,255,31
 idx=1 rgb=61,255,31
 idx=7 rgb=85,0,255
@@ -637,7 +637,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=11 setColonAppearance(Green,blink) dark tick=1100 brightness=101
+step=11 setColonAppearance(Green,blink) dark tick=1100 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -701,7 +701,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=12 setColonAppearance() setPlayersIndicatorsState(true) default colours tick=1300 brightness=101
+step=12 setColonAppearance() setPlayersIndicatorsState(true) default colours tick=1300 brightness=127
 idx=2 rgb=255,255,255
 idx=3 rgb=255,255,255
 idx=7 rgb=85,0,255
@@ -767,7 +767,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=13 sameSide=false indA(Red) indB(Blue,blink) visible tick=1300 brightness=101
+step=13 sameSide=false indA(Red) indB(Blue,blink) visible tick=1300 brightness=127
 idx=2 rgb=0,64,255
 idx=3 rgb=255,0,0
 idx=7 rgb=85,0,255
@@ -833,7 +833,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=14 sameSide=false indA(Red) indB(Blue,blink) dark tick=1100 brightness=101
+step=14 sameSide=false indA(Red) indB(Blue,blink) dark tick=1100 brightness=127
 idx=3 rgb=255,0,0
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
@@ -898,7 +898,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=15 sameSide=true indA(Yellow,blink) indB(Aqua) visible tick=1300 brightness=101
+step=15 sameSide=true indA(Yellow,blink) indB(Aqua) visible tick=1300 brightness=127
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
@@ -964,7 +964,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=16 sameSide=true indA(Yellow,blink) indB(Aqua) dark tick=1100 brightness=101
+step=16 sameSide=true indA(Yellow,blink) indB(Aqua) dark tick=1100 brightness=127
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
@@ -1029,7 +1029,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=17 setPlayersIndicatorsState(false) tick=1300 brightness=101
+step=17 setPlayersIndicatorsState(false) tick=1300 brightness=127
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
 idx=9 rgb=85,0,255
@@ -1093,7 +1093,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=18 setLedBarState visible tick=1300 brightness=101
+step=18 setLedBarState visible tick=1300 brightness=127
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
@@ -1182,7 +1182,7 @@ idx=108 rgb=255,255,255
 idx=109 rgb=211,108,185
 idx=110 rgb=221,101,228
 idx=111 rgb=231,94,17
-step=19 setLedBarState dark tick=1100 brightness=101
+step=19 setLedBarState dark tick=1100 brightness=127
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
@@ -1262,7 +1262,7 @@ idx=106 rgb=181,129,68
 idx=108 rgb=255,255,255
 idx=109 rgb=211,108,185
 idx=111 rgb=231,94,17
-step=20 startCelebration(Green) t0 tick=0 brightness=101
+step=20 startCelebration(Green) t0 tick=0 brightness=127
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
 idx=8 rgb=85,0,255
@@ -1351,7 +1351,7 @@ idx=108 rgb=19,79,9
 idx=109 rgb=7,32,3
 idx=110 rgb=1,6,0
 idx=111 rgb=2,9,1
-step=21 startCelebration(Green) t1 tick=777 brightness=101
+step=21 startCelebration(Green) t1 tick=777 brightness=127
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
@@ -1441,7 +1441,7 @@ idx=108 rgb=57,241,29
 idx=109 rgb=48,202,24
 idx=110 rgb=35,146,17
 idx=111 rgb=20,86,10
-step=22 startCelebration(Green) t2 tick=123457 brightness=101
+step=22 startCelebration(Green) t2 tick=123457 brightness=127
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
@@ -1531,7 +1531,7 @@ idx=108 rgb=52,218,26
 idx=109 rgb=59,247,30
 idx=110 rgb=59,250,30
 idx=111 rgb=53,224,27
-step=23 resetAnimations tick=1300 brightness=101
+step=23 resetAnimations tick=1300 brightness=127
 idx=2 rgb=255,230,0
 idx=3 rgb=80,255,255
 idx=7 rgb=85,0,255
@@ -1597,7 +1597,7 @@ idx=78 rgb=255,96,0
 idx=79 rgb=255,96,0
 idx=80 rgb=255,96,0
 idx=81 rgb=255,96,0
-step=24 setLedBarState after reset, 00:00 White tick=1100 brightness=101
+step=24 setLedBarState after reset, 00:00 White tick=1100 brightness=127
 idx=3 rgb=80,255,255
 idx=4 rgb=255,255,255
 idx=5 rgb=255,255,255

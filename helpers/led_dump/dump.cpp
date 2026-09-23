@@ -35,6 +35,16 @@ static void fill(CRGB *buf, const CRGB &c) {
     for (int i = 0; i < PIXELS; i++) buf[i] = c;
 }
 
+// GlyphMasks.h's GLYPH_COUNT (Glyph::COUNT) is the real, append-only bound.
+// v1_snapshot predates that split - its Glyph enum has no COUNT sentinel and is
+// frozen at ids 0..36 (37 glyphs) - so it falls back to the literal here. Both
+// numbers must only ever grow; never shrink either without checking the other.
+#ifdef CURRENT_LEDDISPLAY_API
+static const int GLYPH_ID_COUNT = GLYPH_COUNT;
+#else
+static const int GLYPH_ID_COUNT = 37;
+#endif
+
 static void dumpGlyphs() {
     static const char *phaseNames[] = {"off", "on-visible", "on-dark"};
     static const bool phaseBlink[] = {false, true, true};
@@ -44,7 +54,7 @@ static void dumpGlyphs() {
     const CRGB sentinel2(4, 5, 6);
     const Color glyphColor(0x12, 0x34, 0x56);
 
-    for (int g = 0; g <= 36; g++) {
+    for (int g = 0; g < GLYPH_ID_COUNT; g++) {
         for (int id = 0; id < glyphIds; id++) {
             for (int ph = 0; ph < 3; ph++) {
                 CRGB pass1[PIXELS];
@@ -88,7 +98,12 @@ static void renderStep(LedDisplay &d, const char *label, uint32_t tick) {
     g_fakeMillis = tick;
     FastLED.clear();
     d.render();
-    printf("step=%d %s tick=%u\n", stepNo++, label, tick);
+    // FastLED applies brightness at show() time, so it never touched the CRGB
+    // buffer this harness inspects - the getBrightness() call is the only way to
+    // catch a brightness-path regression (see task #47/#46: V1's setBrightness
+    // applies *0.8f live; v1_snapshot predates that and passes the value through
+    // unscaled, which is why the two builds keep separate golden files).
+    printf("step=%d %s tick=%u brightness=%u\n", stepNo++, label, tick, FastLED.getBrightness());
     bool any = false;
     for (int i = 0; i < PIXELS; i++) {
         const CRGB &c = frame[i];
@@ -106,6 +121,12 @@ static const uint32_t DARK = 1100;
 static void dumpFrames() {
     FastLED.registerBuffer(frame, PIXELS);
     LedDisplay d(frame);
+
+    // Exercise setBrightness with PrefsData's real default (src/PreferencesManager.h)
+    // so every step's brightness= field reflects actual startup behaviour, including
+    // V1's *0.8f scaling on the live tree (127 -> 101; v1_snapshot's pre-#46
+    // setBrightness is unscaled, 127 -> 127).
+    d.setBrightness(127);
 
     renderStep(d, "initial", VIS);
 
