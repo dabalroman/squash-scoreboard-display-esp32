@@ -25,13 +25,22 @@ without flashing hardware.
     no such constant - see `dump.cpp`'s `GLYPH_ID_COUNT`. Ids 0..36 are frozen
     byte-identical across both; the table is append-only, so this loop only ever
     grows.
-  - `golden_v1_frames.txt` / `v1_snapshot/golden_frames.txt`: a 25-step script
+  - `golden_v1_frames.txt` / `v1_snapshot/golden_frames.txt`: a 22-step script
     over every public `LedDisplay` method. Each step clears the buffer, calls
     `d.setBrightness(127)` once up front (PrefsData's real default,
     `src/PreferencesManager.h`), renders like `display()`, then lists the
     non-black pixels. Each step header now also prints `brightness=<value>` -
     `FastLED.getBrightness()` right after `render()`.
   - Define `LEDBAR_LAMBDA` once `setLedBarState` takes a lambda.
+  - **Task #45**: `startCelebration()` stopped driving a golden-diffable pixel
+    table once V1 got `LedSweepAnimation` (a geometry-driven ring, not a fixed
+    per-tick table) - the 3 `startCelebration(Green) t0/t1/t2` steps were dropped
+    from `dump.cpp` (25 steps -> 22) and both goldens regenerated to match
+    (`--golden --rebaseline` for the live pair, `--snapshot --golden` for the
+    frozen pair - see "Two golden baselines" below). The celebration's own
+    invariants (front-only, no leaked glyph colour, indicators survive, bar
+    swept) are covered by `check_v1.sh` instead, alongside the boot sweep -
+    both share `sweep_checks.h` with `check_v2.sh`.
 
 ## Two golden baselines (since 2026-09-23, task #47)
 
@@ -82,6 +91,9 @@ wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-e
 # harness self-test only (frozen v1_snapshot vs its own goldens - proves the harness
 # works, proves NOTHING about the current src/ tree):
 wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-esp32/helpers/led_dump && ./run.sh --snapshot"
+# LedSweepAnimation invariants (boot sweep + celebration), not golden-diffable -
+# see check_v2.sh for the V2 equivalent, both built on sweep_checks.h:
+wsl -d Ubuntu-24.04 -- bash -lc "cd /mnt/c/localhost/squash-scoreboard-display-esp32/helpers/led_dump && ./check_v1.sh"
 ```
 
 The bare form checks the **live `../../src` tree** - that is the default `--root` and

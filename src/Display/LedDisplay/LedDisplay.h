@@ -27,10 +27,9 @@ class LedDisplay {
     LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
     LedCentralScreenBorder border = LedCentralScreenBorder(pixels);
 
+    LedSweepAnimation celebration = LedSweepAnimation(pixels, LedSweepAnimation::celebrationParams());
 #if BOARD_REV == 1
     LedBar bar = LedBar(pixels);
-#else
-    LedSweepAnimation celebration = LedSweepAnimation(pixels, LedSweepAnimation::celebrationParams());
 #endif
     // V2 has no history bar. LedBar, LedBarPixel and the renderers stay compiled
     // on both boards (PIXEL_COUNT stays 24) so call-site lambdas still type-check.
@@ -94,7 +93,7 @@ public:
     }
 
     void resetAnimations() {
-        bar.setMode(LedBarMode::state);
+        celebration.stop();
         bar.setState({});
     }
 #else
@@ -170,19 +169,12 @@ public:
         border.setBottom(bottom, isBlinkingBottom);
     }
 
-#if BOARD_REV == 1
-    void startCelebration(const Color color, const bool) {
-        bar.setCelebrationColor(CRGB(color.r, color.g, color.b));
-        bar.setMode(LedBarMode::celebration);
-    }
-#else
     /** `winnerOnLeft` puts the sweep's origin on that player's half of the board. */
     void startCelebration(const Color color, const bool winnerOnLeft) {
         celebration.setSolidColor(CRGB(color.r, color.g, color.b));
         celebration.setOriginToHalf(winnerOnLeft);
         celebration.start(millis());
     }
-#endif
 
     static Glyph digitToGlyph(const uint8_t digit) {
         if (digit > 9) {
@@ -201,17 +193,15 @@ public:
     void render() {
         tickMs = millis();
 
-#if BOARD_REV == 2
-        // Full-screen takeover: the sweep owns the front, so digits, colon and border
-        // sit this out. The indicators face the players and are SKIP slots the sweep
-        // cannot reach, so they keep showing who won.
+        // Full-screen takeover: the sweep owns the front, so digits, colon, border
+        // and (V1) the bar sit this out. The indicators face the players and are
+        // SKIP slots the sweep cannot reach, so they keep showing who won.
         if (celebration.active(tickMs)) {
             glyphIndicatorPlayerA.render(tickMs);
             glyphIndicatorPlayerB.render(tickMs);
             celebration.render(tickMs);
             return;
         }
-#endif
 
         glyphA.render(tickMs);
         glyphB.render(tickMs);

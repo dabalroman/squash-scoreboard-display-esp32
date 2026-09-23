@@ -16,17 +16,15 @@ static const int PIXELS = 112;
 #define SET_LEDBAR_STATE(d, s) (d).setLedBarState(s)
 #endif
 
-// v1_snapshot predates two LedDisplay API changes: resetHistoryBar() became the
-// board-neutral resetAnimations(), and startCelebration() gained the winning side
-// (V1 ignores it). Both shapes must compile, since run.sh builds this file against
-// the snapshot by default and against live src/ with -DCURRENT_LEDDISPLAY_API.
-// Neither changes a V1 pixel, so the goldens do not care which side is taken.
+// v1_snapshot predates resetHistoryBar() becoming the board-neutral resetAnimations().
+// Both shapes must compile, since run.sh builds this file against the snapshot by
+// default and against live src/ with -DCURRENT_LEDDISPLAY_API. Neither changes a V1
+// pixel, so the goldens do not care which side is taken. (startCelebration() is no
+// longer exercised here - see the note by RESET_ANIMATIONS below.)
 #ifdef CURRENT_LEDDISPLAY_API
 #define RESET_ANIMATIONS(d) (d).resetAnimations()
-#define START_CELEBRATION(d, c) (d).startCelebration((c), true)
 #else
 #define RESET_ANIMATIONS(d) (d).resetHistoryBar()
-#define START_CELEBRATION(d, c) (d).startCelebration(c)
 #endif
 
 // ---------------------------------------------------------------- Dump A ---
@@ -191,11 +189,8 @@ static void dumpFrames() {
     renderStep(d, "setLedBarState visible", VIS);
     renderStep(d, "setLedBarState dark", DARK);
 
-    START_CELEBRATION(d, Colors::Green);
-    renderStep(d, "startCelebration(Green) t0", 0);
-    renderStep(d, "startCelebration(Green) t1", 777);
-    renderStep(d, "startCelebration(Green) t2", 123457);
-
+    // The celebration is now LedSweepAnimation, covered by check_v1/check_v2 (physical
+    // geometry, not a golden-diffable pixel table) - no startCelebration steps here.
     RESET_ANIMATIONS(d);
     renderStep(d, "resetAnimations", VIS);
 

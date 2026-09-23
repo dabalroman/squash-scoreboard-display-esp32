@@ -9,11 +9,12 @@
 #include "LedSlotPositions.h"
 
 /**
- * V2: a thin ring that grows from the centre of the e-paper outward across the
- * front LEDs. Two callers, one state machine:
+ * A thin ring that grows from an origin outward across the front LEDs. Two
+ * callers, one state machine, on both boards:
  *
  *   boot()         rainbow, one 1 s cycle, driven blocking from setup() so it
- *                  plays against the e-paper splash.
+ *                  plays against the e-paper splash (V2) or straight after init
+ *                  (V1, no e-paper).
  *   celebration()  the winner's colour, three 800 ms cycles, stepped from loop()
  *                  at ~20 fps while the GameOver view holds the screen. Its origin
  *                  is the winner's half, so the wave breaks from their side.
@@ -24,13 +25,9 @@
  *
  * The animation owns every non-SKIP slot: it writes black where the ring is not,
  * so a frame never inherits the previous one. Slots marked SKIP in
- * LedSlotPositions.h (back indicators 4/9, dead slots 12/28/44/60) are left
- * untouched, so whatever else drew them survives.
- *
- * V1 has no sweep: an empty stub with the same API.
+ * LedSlotPositions.h (V2: back indicators 4/9, dead slots 12/28/44/60; V1: back
+ * indicators 2/3) are left untouched, so whatever else drew them survives.
  */
-
-#if BOARD_REV == 2
 
 class LedSweepAnimation {
 public:
@@ -62,12 +59,16 @@ private:
     float originY = 0.0f;
     float maxRadius = 0.0f;   ///< farthest live slot from the origin; set with it
 
-    /** Two LED pitches. The ring lights a slot while |distance - radius| < BAND, so it
-     *  clears a radial gap of G only while BAND > G/2. The worst gap is 254 units from
-     *  the panel centre but 595 from a half origin (the far side's dies bunch up at
-     *  similar radii), needing BAND > 298 - so 394 covers both. A thinner ring falls into
-     *  a gap and blanks whole frames; check_v2 guards it. Function-local at every use:
-     *  a static constexpr member is an ODR link error on GCC 8.4. */
+    /** Shared by both boards - V1 and V2 use the same ~197-unit die pitch, so one
+     *  constant covers both maps (do not split this per board). The ring lights a
+     *  slot while |distance - radius| < BAND, so it clears a radial gap of G only
+     *  while BAND > G/2. Worst gaps measured: V2 254 units from the panel centre,
+     *  595 from a half origin (the far side's dies bunch up at similar radii); V1
+     *  354 from the colon midpoint, 189 from a half centroid. The largest, 595,
+     *  needs BAND > 298 - so 394 covers every case with margin. A thinner ring
+     *  falls into a gap and blanks whole frames; check_v2/check_v1 guard it.
+     *  Function-local at every use: a static constexpr member is an ODR link
+     *  error on GCC 8.4. */
     static float band() { return 394.0f; }
 
     void recomputeMaxRadius() {
@@ -129,6 +130,8 @@ public:
      * Put the origin at the centroid of one half's live slots, so the wave breaks
      * from that player's side rather than the panel centre. Left is x < 0: the
      * border's left column plus digits A and B, which carry the left player's score.
+     * x == 0 belongs to neither half - V1's colon dies sit exactly there (V2 has no
+     * slot at x == 0, so this is a no-op for it).
      */
     void setOriginToHalf(const bool left) {
         float sumX = 0.0f;
@@ -140,12 +143,12 @@ public:
                 continue;
             }
 
-            const bool onLeft = LedSlots::POS[slot][0] < 0;
-            if (onLeft != left) {
+            const int16_t x = LedSlots::POS[slot][0];
+            if (left ? (x >= 0) : (x <= 0)) {
                 continue;
             }
 
-            sumX += static_cast<float>(LedSlots::POS[slot][0]);
+            sumX += static_cast<float>(x);
             sumY += static_cast<float>(LedSlots::POS[slot][1]);
             count++;
         }
@@ -261,57 +264,5 @@ public:
         FastLED.show();
     }
 };
-
-#else
-
-class LedSweepAnimation {
-public:
-    struct Params {
-        uint16_t durationMs;
-        uint16_t gapMs;
-        uint8_t repeats;
-        bool rainbow;
-        CRGB solid;
-    };
-
-    enum : uint16_t { FRAME_DELAY_MS = 0 };
-
-    static Params bootParams() { return Params{0, 0, 0, false, CRGB::Black}; }
-    static Params celebrationParams() { return Params{0, 0, 0, false, CRGB::Black}; }
-
-    LedSweepAnimation(CRGB *, const Params) {
-    }
-
-    void setSolidColor(const CRGB) {
-    }
-
-    void setOrigin(const float, const float) {
-    }
-
-    void setOriginToHalf(const bool) {
-    }
-
-    void start(const uint32_t) {
-    }
-
-    void stop() {
-    }
-
-    bool active(const uint32_t) const { return false; }
-
-    void blank() const {
-    }
-
-    void render(const uint32_t) const {
-    }
-
-    void renderFrame(const uint32_t) const {
-    }
-
-    void play() {
-    }
-};
-
-#endif
 
 #endif //LED_SWEEP_ANIMATION_H
