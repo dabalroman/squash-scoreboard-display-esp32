@@ -199,11 +199,11 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   - `TournamentPlayersBarRenderer` clamps instead of blanking: from 13 selected players the segment width hit 0 and the whole V1 bar went dark, which a 32-profile roster makes easy to reach.
 
 ### Mode selector
-One `ModeMenuEntry` table in `ModeSwitchingView.h` drives every row: OLED label, e-paper label, LED word, target `DeviceModeState`, colour and V1 bar slot. They used to be four hand-aligned lists plus an enum, which drifted; add a row, do not add a list. `enabled` hides a row at runtime (`Board::HAS_PLAYER_SETUP`) - never an `#if` here.
+One `ModeMenuEntry` table in `ModeSwitchingView.h` drives every row: OLED label, e-paper label, LED word, target `DeviceModeState` and colour. They used to be four hand-aligned lists plus an enum, which drifted; add a row, do not add a list. `enabled` hides a row at runtime (`Board::HAS_PLAYER_SETUP`) - never an `#if` here.
 
 Member declaration order in that view is load-bearing: `entryIds` feeds `optionsList`, which `Scrollable` binds **by reference** and whose size it snapshots at construction. Both are `const` and never resized afterwards.
 
-`ModeSwitchingBarRenderer` takes a slot index and a colour rather than the menu index, so reordering the menu cannot leave the V1 bar showing another sport's colour.
+The V1 bar is split into one segment per **visible** row, left to right in menu order, and lights the selected row's segment in its colour: `ModeSwitchingBarRenderer` takes the row's position among visible rows and their count, never a hand-kept slot. A slot column used to live in the table, drifted from the menu order (PADEL lit the rightmost segment) and left PROFILE and CONFIG without one.
 
 ### Pinout
 All pins live in `src/Board.h` (per `BOARD_REV`).

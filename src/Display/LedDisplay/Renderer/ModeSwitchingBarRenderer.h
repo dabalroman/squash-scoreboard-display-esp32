@@ -5,39 +5,32 @@
 #include "../LedBar.h"
 
 /**
- * V1 history bar under the mode selector: one segment per sport, lit for the
- * selected one. The slot and the colour both come from the caller's menu table -
- * the renderer holds no idea of what a mode is, so reordering or adding a menu
- * entry cannot leave the bar showing a different sport's colour than the glyphs.
+ * V1 history bar under the mode selector: the bar is split into one segment per
+ * visible menu row, left to right in menu order, and the selected row's segment
+ * is lit in its colour - so scrolling reads as a position along the bar.
+ *
+ * The caller passes the row's position among the visible rows and how many there
+ * are, never a hand-assigned slot: a slot column kept in the menu table drifted
+ * from the menu order and left some rows without a segment.
  */
 class ModeSwitchingBarRenderer {
-    struct Segment {
-        uint8_t start;
-        uint8_t length;
-    };
-
 public:
-    static constexpr uint8_t SLOT_COUNT = 4;
-
-    // barSlot < 0 (a non-sport entry, e.g. Config) leaves the bar dark.
-    static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(const int8_t barSlot, const Color color) {
+    static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
+        const uint8_t slot, const uint8_t slotCount, const Color color
+    ) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
-        if (barSlot < 0 || barSlot >= static_cast<int8_t>(SLOT_COUNT)) return pixels;
+        if (slotCount == 0 || slot >= slotCount) return pixels;
 
-        // 4 segments across 24px
-        constexpr Segment segments[SLOT_COUNT] = {
-            {0,  5},
-            {6,  5},
-            {12, 5},
-            {18, 6},
-        };
-
-        const Segment &seg = segments[barSlot];
+        // Equal widths; the last pixel of each is left dark as a gap so adjacent
+        // segments read as separate. Any remainder stays dark at the right end.
+        const uint8_t width = LedBar::PIXEL_COUNT / slotCount;
+        const uint8_t length = width > 1 ? width - 1 : 1;
+        const uint8_t start = slot * width;
         const CRGB crgb(color.r, color.g, color.b);
 
-        for (uint8_t i = 0; i < seg.length; i++) {
-            pixels[seg.start + i].color = crgb;
+        for (uint8_t i = 0; i < length && start + i < LedBar::PIXEL_COUNT; i++) {
+            pixels[start + i].color = crgb;
         }
 
         return pixels;

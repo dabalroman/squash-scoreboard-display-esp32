@@ -28,7 +28,6 @@ struct ModeMenuEntry {
     const char *ledWord;
     DeviceModeState target;
     Color color;
-    int8_t barSlot;              // V1 history bar segment; -1 = no segment
     bool enabled;
 };
 
@@ -92,7 +91,8 @@ public:
         ledDisplay.setIndicatorAppearancePlayerA(entry.color);
         ledDisplay.setIndicatorAppearancePlayerB(entry.color);
         ledDisplay.setLedBarState([&] {
-            return ModeSwitchingBarRenderer::toLedBarPixels(entry.barSlot, entry.color);
+            return ModeSwitchingBarRenderer::toLedBarPixels(
+                scrollable.getSelectedOptionId(), static_cast<uint8_t>(entryIds.size()), entry.color);
         });
         ledDisplay.display();
 
@@ -144,17 +144,17 @@ private:
     static const ModeMenuEntry *table(uint8_t &count) {
         static const ModeMenuEntry TABLE[] = {
             {Str::MODE_OPTION_PADEL_OLED, Str::MODE_OPTION_PADEL, Str::LED_MODE_PADEL,
-             DeviceModeState::PadelMode, Colors::Blue, 3, true},
+             DeviceModeState::PadelMode, Colors::Blue, true},
             {Str::MODE_OPTION_SQUASH_OLED, Str::MODE_OPTION_SQUASH, Str::LED_MODE_SQUASH,
-             DeviceModeState::SquashMode, Colors::Green, 0, true},
+             DeviceModeState::SquashMode, Colors::Green, true},
             {Str::MODE_OPTION_VOLLEYBALL_OLED, Str::MODE_OPTION_VOLLEYBALL, Str::LED_MODE_VOLLEYBALL,
-             DeviceModeState::VolleyballMode, Colors::Yellow, 1, true},
+             DeviceModeState::VolleyballMode, Colors::Yellow, true},
             {Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED, Str::MODE_OPTION_SHORT_VOLLEYBALL,
-             Str::LED_MODE_SHORT_VOLLEYBALL, DeviceModeState::ShortVolleyballMode, Colors::Orange, 2, true},
+             Str::LED_MODE_SHORT_VOLLEYBALL, DeviceModeState::ShortVolleyballMode, Colors::Orange, true},
             {Str::MODE_OPTION_PLAYERS_OLED, Str::MODE_OPTION_PLAYERS, Str::LED_MODE_PLAYERS,
-             DeviceModeState::PlayerSetupMode, Colors::Aqua, -1, Board::HAS_PLAYER_SETUP},
+             DeviceModeState::PlayerSetupMode, Colors::Aqua, Board::HAS_PLAYER_SETUP},
             {Str::MODE_OPTION_CONFIG_OLED, Str::MODE_OPTION_CONFIG, Str::LED_MODE_CONFIG,
-             DeviceModeState::ConfigMode, Colors::White, -1, true},
+             DeviceModeState::ConfigMode, Colors::White, true},
         };
 
         count = static_cast<uint8_t>(sizeof(TABLE) / sizeof(TABLE[0]));
