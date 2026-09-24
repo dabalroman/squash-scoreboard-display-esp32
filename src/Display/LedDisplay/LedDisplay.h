@@ -10,6 +10,10 @@
 #include "LedGlyph.h"
 #include "LedText.h"
 #include "Animation/LedSweepAnimation.h"
+#include "Layers/LedBlend.h"
+#include "Layers/LedBreathingAnimation.h"
+#include "Layers/LedLayerStack.h"
+#include "Layers/LedTarget.h"
 
 class LedDisplay {
     CRGB *pixels;
@@ -28,16 +32,44 @@ class LedDisplay {
     LedGlyph glyphIndicatorPlayerB = LedGlyph(pixels, GlyphId::IndicatorPlayerB);
     LedCentralScreenBorder border = LedCentralScreenBorder(pixels);
 
-    LedSweepAnimation celebration = LedSweepAnimation(pixels, LedSweepAnimation::celebrationParams());
 #if BOARD_REV == 1
     LedBar bar = LedBar(pixels);
 #endif
     // V2 has no history bar. LedBar, LedBarPixel and the renderers stay compiled
     // on both boards (PIXEL_COUNT stays 24) so call-site lambdas still type-check.
 
+    // Slot -> LedTarget bits, from the components' own segment tables.
+    uint16_t elementMap[Board::LED_COUNT] = {};
+    // Boot and celebration share the sweep; it only ever draws into a layer.
+    LedSweepAnimation sweep = LedSweepAnimation(LedSweepAnimation::celebrationParams());
+    LedBreathingAnimation breathing;
+    LedLayerStack layers{elementMap};
+    BlendMode celebrationBlend = BlendMode::Screen;
+
+    void buildElementMap() {
+        glyphA.markSlots(elementMap, LedTarget::DigitA);
+        glyphB.markSlots(elementMap, LedTarget::DigitB);
+        glyphC.markSlots(elementMap, LedTarget::DigitC);
+        glyphD.markSlots(elementMap, LedTarget::DigitD);
+        glyphColon.markSlots(elementMap, LedTarget::Colon);
+        glyphIndicatorPlayerA.markSlots(elementMap, LedTarget::IndicatorA);
+        glyphIndicatorPlayerB.markSlots(elementMap, LedTarget::IndicatorB);
+        border.markSlots(elementMap, LedTarget::BorderTop, LedTarget::BorderBottom);
+#if BOARD_REV == 1
+        bar.markSlots(elementMap, LedTarget::Bar);
+#endif
+    }
+
+    void stopLayers() {
+        sweep.stop();
+        breathing.stop();
+        layers.clearAll();
+    }
+
 public:
 
     explicit LedDisplay(CRGB *pixels) : pixels(pixels) {
+        buildElementMap();
         setColonAppearance();
         setPlayersIndicatorsState(false);
         setBorderEnabled(false);
@@ -93,8 +125,9 @@ public:
         bar.setState(makePixels());
     }
 
+    /** Detaches both layers; V1 also clears the bar. */
     void resetAnimations() {
-        celebration.stop();
+        stopLayers();
         bar.setState({});
     }
 #else
@@ -106,7 +139,7 @@ public:
     }
 
     void resetAnimations() {
-        celebration.stop();
+        stopLayers();
     }
 #endif
 
@@ -170,11 +203,72 @@ public:
         border.setBottom(bottom, isBlinkingBottom);
     }
 
-    /** `winnerOnLeft` puts the sweep's origin on that player's half of the board. */
+    /**
+     * The sweep on layer 2 over the whole front, so the result stays readable
+     * under it. `winnerOnLeft` puts its origin on that player's half.
+     */
     void startCelebration(const Color color, const bool winnerOnLeft) {
-        celebration.setSolidColor(CRGB(color.r, color.g, color.b));
-        celebration.setOriginToHalf(winnerOnLeft);
-        celebration.start(millis());
+        sweep.setParams(LedSweepAnimation::celebrationParams());
+        sweep.setSolidColor(CRGB(color.r, color.g, color.b));
+        sweep.setOriginToHalf(winnerOnLeft);
+        sweep.start(millis());
+        layers.set(LedLayerStack::LAYER_2, &sweep, celebrationBlend, LedTarget::Front, LayerMask::AllSlots);
+    }
+
+    // Demo-only (#52 layer demo): removed once the celebration blend is chosen.
+    void setCelebrationBlend(const BlendMode mode) {
+        celebrationBlend = mode;
+    }
+
+    // Demo-only (#52 layer demo): dims the lit front on layer 1.
+    void setBreathing(const bool enabled) {
+        if (enabled) {
+            breathing.start(millis());
+            layers.set(LedLayerStack::LAYER_1, &breathing, BlendMode::Multiply, LedTarget::Front, LayerMask::LitOnly);
+            return;
+        }
+
+        breathing.stop();
+        layers.clear(LedLayerStack::LAYER_1);
+    }
+
+    /**
+     * One boot-sweep frame at `elapsedMs`: the sweep screened over a black base,
+     * which is exactly the sweep alone (check_boot.sh holds it byte-identical to
+     * the pre-layer frames). Clock-free for the host checks.
+     */
+    void renderBootFrame(const uint32_t elapsedMs) {
+        for (uint16_t i = 0; i < Board::LED_COUNT; i++) {
+            pixels[i] = CRGB(0, 0, 0);
+        }
+
+        sweep.setParams(LedSweepAnimation::bootParams());
+        sweep.setOrigin(0.0f, 0.0f);
+        sweep.start(0);
+        layers.clearAll();
+        layers.set(LedLayerStack::LAYER_2, &sweep, BlendMode::Screen, LedTarget::Front, LayerMask::AllSlots);
+        layers.compose(pixels, elapsedMs);
+    }
+
+    /** Blocking. setup() only - never from loop(). */
+    void playBootSweep() {
+        const uint32_t durationMs = LedSweepAnimation::bootParams().durationMs;
+        const uint32_t startedMs = millis();
+
+        for (uint32_t elapsed = 0; elapsed < durationMs; elapsed = millis() - startedMs) {
+            renderBootFrame(elapsed);
+            showCompensated(pixels);
+            delay(LedSweepAnimation::FRAME_DELAY_MS);
+        }
+
+        resetAnimations();
+        FastLED.clear();
+        showCompensated(pixels);
+    }
+
+    /** LedTarget bits of one slot - for the host checks. */
+    uint16_t elementsAt(const uint16_t slot) const {
+        return elementMap[slot];
     }
 
     static Glyph digitToGlyph(const uint8_t digit) {
@@ -194,16 +288,6 @@ public:
     void render() {
         tickMs = millis();
 
-        // Full-screen takeover: the sweep owns the front, so digits, colon, border
-        // and (V1) the bar sit this out. The indicators face the players and are
-        // SKIP slots the sweep cannot reach, so they keep showing who won.
-        if (celebration.active(tickMs)) {
-            glyphIndicatorPlayerA.render(tickMs);
-            glyphIndicatorPlayerB.render(tickMs);
-            celebration.render(tickMs);
-            return;
-        }
-
         glyphA.render(tickMs);
         glyphB.render(tickMs);
         glyphC.render(tickMs);
@@ -215,6 +299,9 @@ public:
 #if BOARD_REV == 1
         bar.render(tickMs);
 #endif
+
+        // Layers blend onto the finished base; blink's dark phase is simply unlit.
+        layers.compose(pixels, tickMs);
     }
 
     void setBrightness(const uint8_t brightness) {

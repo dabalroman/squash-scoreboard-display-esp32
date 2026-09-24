@@ -8,8 +8,8 @@ struct LedBarPixel {
     bool isBlinking = false;
 };
 
-// V1 only. The celebration is now LedSweepAnimation (see LedDisplay::render()'s
-// takeover) - this class only ever shows the caller-supplied state.
+// V1 only. The celebration is LedSweepAnimation on a layer over the whole front
+// (LedDisplay's LedLayerStack) - this class only ever shows the caller-supplied state.
 class LedBar {
     constexpr static uint16_t BLINK_INTERVAL_MS = 500;
     constexpr static uint8_t FIRST_PIXEL_INDEX = 88;
@@ -27,6 +27,12 @@ public:
 
     void setState(std::array<LedBarPixel, PIXEL_COUNT> newState) {
         state = std::move(newState);
+    }
+
+    void markSlots(uint16_t *map, const uint16_t bit) const {
+        for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
+            map[FIRST_PIXEL_INDEX + i] |= bit;
+        }
     }
 
     void render(const uint32_t &tickMs) const {

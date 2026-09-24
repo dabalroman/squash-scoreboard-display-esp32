@@ -57,6 +57,18 @@ public:
         this->isBlinking = isBlinking;
     }
 
+    /** Tags every slot this position can light, blink or not - for the layer targets. */
+    void markSlots(uint16_t *map, const uint16_t bit) const {
+        const SegmentTable table = Profile::segmentsFor(glyphId);
+
+        for (uint8_t segment = 0; segment < table.count; segment++) {
+            const Segment &pixelsOfSegment = table.segments[segment];
+            for (uint8_t i = 0; i < pixelsOfSegment.count; i++) {
+                map[table.base + pixelsOfSegment.pixels[i]] |= bit;
+            }
+        }
+    }
+
     void render(const uint32_t &tickMs) const {
         if (isBlinking && tickMs % BLINK_INTERVAL_MS < BLINK_INTERVAL_MS / 2) {
             return;

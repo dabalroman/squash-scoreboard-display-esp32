@@ -6,7 +6,9 @@
 //   - indicator A writes only slot 9, B only slot 4; the colon writes nothing
 //   - border and back indicators are enabled/coloured independently
 //   - the boot sweep stays on front slots, ends dark, and never blanks a frame
-//   - the celebration takes over the front: digits/colon/border sit out, indicators do not
+//   - the celebration is a layer over the front: off the ring the frame equals the
+//     plain screen, under every blend; indicators untouched
+//   - the layer engine (task #52): blend maths, element map, compose, breathing
 //   - per-segment brightness compensation (task #43): the factor table matches the
 //     measured-area formula, indicators/dead slots are untouched, and the worst-case
 //     die-equivalent draw stays under the old flat-0.8 bound
@@ -17,6 +19,7 @@
 
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Profiles/NineSegmentBrightness.h"
+#include "layer_checks.h"
 #include "sweep_checks.h"
 
 uint32_t g_fakeMillis = 0;
@@ -178,9 +181,14 @@ int main() {
         /* near (border)          */ 0, 9,
         /* far A (digit A)        */ 58, 73,
         /* far B (digit D)        */ 10, 25,
-        /* digit proof range      */ 10, 73,
     };
     failures += runSweepChecks(v2Sweep, writes);
+
+    const LayerCheckConfig v2Layers{
+        "v2", /* indicatorA, indicatorB */ 9, 4,
+        /* colon, bar, border top/bottom slots */ 0, 0, 4, 4,
+    };
+    failures += runLayerChecks(v2Layers);
 
     // Per-segment brightness compensation (task #43): recompute each factor
     // independently from the measured areas/dies and compare against

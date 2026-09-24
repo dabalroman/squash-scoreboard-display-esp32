@@ -1,7 +1,8 @@
-// Board-agnostic LedSweepAnimation invariants (boot sweep + celebration takeover),
+// Board-agnostic LedSweepAnimation invariants (boot sweep + layered celebration),
 // parameterised by a small per-board descriptor so check_v2.cpp and check_v1.cpp
-// share one implementation. Extracted from check_v2.cpp (task #45); its own output
-// is unchanged by the extraction.
+// share one implementation. Task #52 turned the celebration from a front takeover
+// into layer 2 over the GameOver screen, so these checks now prove the base shows
+// through: every slot off the ring equals a celebration-free reference frame.
 #ifndef LED_DUMP_SWEEP_CHECKS_H
 #define LED_DUMP_SWEEP_CHECKS_H
 
@@ -9,9 +10,6 @@
 
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Animation/LedSweepAnimation.h"
-
-// Oversized so an out-of-range write is caught rather than corrupting the stack.
-static const int SWEEP_CHECK_GUARD = 256;
 
 struct SweepCheckConfig {
     const char *boardName;
@@ -28,50 +26,60 @@ struct SweepCheckConfig {
     int nearLo, nearHi;
     int farALo, farAHi;
     int farBLo, farBHi;
-
-    // Post-celebration / post-reset proof: a range that shows the caller's blue
-    // digit colour again once the takeover ends (digits only - excludes the
-    // border/indicator block and, on V1, the colon and history bar).
-    int digitProofLo, digitProofHi;
 };
 
 static bool sweepCheckSwept(const SweepCheckConfig &cfg, const int slot) {
     return slot >= 0 && slot < cfg.ledCount && !cfg.isReserved(slot);
 }
 
+static void sweepCheckSetUp(LedDisplay &display) {
+    display.setSameSideMode(false);
+    display.setNumericValue(11, 7);
+    display.setGlyphsAppearance(Colors::Blue, Colors::Blue);
+    display.setColonAppearance(Colors::Blue);
+    display.setBorderEnabled(true);
+    display.setBorderAppearance(Colors::Blue, Colors::Blue);
+    display.setPlayersIndicatorsState(true);
+    display.setIndicatorAppearancePlayerA(Colors::Red);
+    display.setIndicatorAppearancePlayerB(Colors::Red);
+#if BOARD_REV == 1
+    display.setLedBarState([] {
+        std::array<LedBarPixel, LedBar::PIXEL_COUNT> bar;
+        for (uint8_t i = 0; i < LedBar::PIXEL_COUNT; i += 3) bar[i].color = CRGB(0, 0, 255);
+        return bar;
+    });
+#endif
+}
+
 static int runSweepChecks(const SweepCheckConfig &cfg, int &writes) {
     int failures = 0;
-    const CRGB sentinel(1, 2, 3);
     const CRGB off(0, 0, 0);
 
-    // Boot sweep: front slots only, no blank frame, ends dark, reaches both
-    // digit corners and the near ring.
+    // Boot sweep through LedDisplay::renderBootFrame: front slots only, no blank
+    // frame, ends dark, reaches both digit corners and the near ring.
     {
-        const LedSweepAnimation::Params boot = LedSweepAnimation::bootParams();
-        const uint32_t duration = boot.durationMs;
+        const uint32_t duration = LedSweepAnimation::bootParams().durationMs;
         bool litNear = false;
         bool litFarA = false;
         bool litFarB = false;
 
-        for (uint32_t t = 0; t <= duration + 50; t += 5) {
-            CRGB buffer[SWEEP_CHECK_GUARD];
-            for (int i = 0; i < SWEEP_CHECK_GUARD; i++) buffer[i] = sentinel;
+        CRGB buffer[Board::LED_COUNT];
+        LedDisplay display(buffer);
 
-            LedSweepAnimation(buffer, boot).renderFrame(t);
+        for (uint32_t t = 0; t <= duration + 50; t += 5) {
+            display.renderBootFrame(t);
 
             int lit = 0;
-            for (int i = 0; i < SWEEP_CHECK_GUARD; i++) {
-                if (buffer[i] == sentinel) continue;
+            for (int i = 0; i < Board::LED_COUNT; i++) {
+                if (buffer[i] == off) continue;
 
                 if (!sweepCheckSwept(cfg, i)) {
-                    printf("FAIL %s sweep t=%u wrote slot %d\n", cfg.boardName, t, i);
+                    printf("FAIL %s sweep t=%u lit slot %d\n", cfg.boardName, t, i);
                     failures++;
                     continue;
                 }
 
                 writes++;
-                if (buffer[i] == off) continue;
-
                 lit++;
                 if (i >= cfg.nearLo && i <= cfg.nearHi) litNear = true;
                 if (i >= cfg.farALo && i <= cfg.farAHi) litFarA = true;
@@ -99,128 +107,133 @@ static int runSweepChecks(const SweepCheckConfig &cfg, int &writes) {
         }
     }
 
-    // Celebration, driven through LedDisplay::render(): the sweep paints pure
-    // green, the glyphs and border pure blue, the indicators pure red - so a blue
-    // channel on any swept slot means the glyph layer leaked through the
-    // takeover, and a missing red on the indicators means they were wrongly
-    // suppressed. Both sides are swept: the origin sits on the winner's half,
-    // which changes every slot's radius and so the radial gaps the ring has to
-    // clear.
-    for (int leftWon = 0; leftWon <= 1; leftWon++) {
-        const CRGB red(255, 0, 0);
-        const Color win(0, 255, 0);
+    // Celebration as layer 2, for every blend the demo offers and both sides (the
+    // origin sits on the winner's half, which moves every slot's radius and so the
+    // radial gaps the ring has to clear). The ring is taken from a standalone
+    // sweep with the same params, so each slot is either off the ring (must equal
+    // the celebration-free reference exactly) or on it (must equal the blend of
+    // the reference with the ring colour).
+    const BlendMode modes[] = {BlendMode::Normal, BlendMode::Screen, BlendMode::Add, BlendMode::Lighten};
+    const CRGB red(255, 0, 0);
+    const Color win(0, 255, 0);
+    const LedSweepAnimation::Params p = LedSweepAnimation::celebrationParams();
+    const uint32_t cycle = static_cast<uint32_t>(p.durationMs) + p.gapMs;
+    const uint32_t total = cycle * p.repeats - p.gapMs;
+    const uint32_t start = 5000;
 
-        CRGB buffer[SWEEP_CHECK_GUARD];
-        LedDisplay display(buffer);
+    for (const BlendMode mode : modes) {
+        for (int leftWon = 0; leftWon <= 1; leftWon++) {
+            CRGB buffer[Board::LED_COUNT];
+            CRGB reference[Board::LED_COUNT];
+            CRGB ring[Board::LED_COUNT];
+            LedDisplay display(buffer);
+            LedDisplay plain(reference);
+            sweepCheckSetUp(display);
+            sweepCheckSetUp(plain);
 
-        auto renderAt = [&](const uint32_t ms) {
-            for (int i = 0; i < SWEEP_CHECK_GUARD; i++) buffer[i] = sentinel;
-            g_fakeMillis = ms;
-            display.render();
-        };
+            LedSweepAnimation::Params ringParams = p;
+            ringParams.solid = CRGB(0, 255, 0);
+            LedSweepAnimation ringSweep(ringParams);
+            ringSweep.setOriginToHalf(leftWon == 1);
+            ringSweep.start(start);
 
-        display.setSameSideMode(false);
-        display.setNumericValue(11, 9);
-        display.setGlyphsAppearance(Colors::Blue, Colors::Blue);
-        display.setBorderEnabled(true);
-        display.setBorderAppearance(Colors::Blue, Colors::Blue);
-        display.setPlayersIndicatorsState(true);
-        display.setIndicatorAppearancePlayerA(Colors::Red);
-        display.setIndicatorAppearancePlayerB(Colors::Red);
+            auto renderAt = [&](const uint32_t ms) {
+                for (int i = 0; i < Board::LED_COUNT; i++) {
+                    buffer[i] = off;
+                    reference[i] = off;
+                    ring[i] = off;
+                }
+                g_fakeMillis = ms;
+                display.render();
+                plain.render();
+                ringSweep.render(ms, ring);
+            };
+            auto matchesReference = [&]() {
+                for (int i = 0; i < Board::LED_COUNT; i++) {
+                    if (!(buffer[i] == reference[i])) return false;
+                }
+                return true;
+            };
 
-        const LedSweepAnimation::Params p = LedSweepAnimation::celebrationParams();
-        const uint32_t cycle = static_cast<uint32_t>(p.durationMs) + p.gapMs;
-        const uint32_t total = cycle * p.repeats - p.gapMs;
-        const uint32_t base = 5000;
+            display.setCelebrationBlend(mode);
+            g_fakeMillis = start;
+            display.startCelebration(win, leftWon == 1);
 
-        g_fakeMillis = base;
-        display.startCelebration(win, leftWon == 1);
+            for (uint32_t t = 0; t < total; t += 10) {
+                renderAt(start + t);
 
-        for (uint32_t t = 0; t < total; t += 50) {
-            renderAt(base + t);
+                const bool inGap = t % cycle >= p.durationMs;
+                int lit = 0;
 
-            const uint32_t within = t % cycle;
-            const bool inGap = within >= p.durationMs;
-            int lit = 0;
+                for (int i = 0; i < Board::LED_COUNT; i++) {
+                    writes++;
 
-            for (int i = 0; i < SWEEP_CHECK_GUARD; i++) {
-                if (sweepCheckSwept(cfg, i)) {
-                    if (buffer[i] == sentinel) {
-                        printf("FAIL %s celebration leftWon=%d t=%u slot %d never written\n",
-                               cfg.boardName, leftWon, t, i);
+                    if (!(ring[i] == off)) {
+                        lit++;
+                        if (!sweepCheckSwept(cfg, i) || inGap) {
+                            printf("FAIL %s %s leftWon=%d t=%u ring on slot %d (gap=%d)\n",
+                                   cfg.boardName, blendName(mode), leftWon, t, i, inGap);
+                            failures++;
+                        }
+                        if (ring[i].r != 0 || ring[i].b != 0 || ring[i].g == 0) {
+                            printf("FAIL %s ring slot %d not solid green\n", cfg.boardName, i);
+                            failures++;
+                        }
+                    }
+
+                    const CRGB expected = blendPixel(reference[i], ring[i], mode);
+                    if (!(buffer[i] == expected)) {
+                        printf("FAIL %s %s leftWon=%d t=%u slot %d (%d,%d,%d) expected (%d,%d,%d)\n",
+                               cfg.boardName, blendName(mode), leftWon, t, i,
+                               buffer[i].r, buffer[i].g, buffer[i].b, expected.r, expected.g, expected.b);
                         failures++;
                         continue;
                     }
 
-                    writes++;
-
-                    // Sweep output is the solid colour scaled: green only, never r or b.
-                    if (buffer[i].r != 0 || buffer[i].b != 0) {
-                        printf("FAIL %s celebration leftWon=%d t=%u slot %d not sweep-only (%d,%d,%d)\n",
-                               cfg.boardName, leftWon, t, i, buffer[i].r, buffer[i].g, buffer[i].b);
+                    if (!(ring[i] == off) && buffer[i].g == 0) {
+                        printf("FAIL %s %s slot %d ring invisible\n", cfg.boardName, blendName(mode), i);
                         failures++;
                     }
-
-                    if (!(buffer[i] == off)) {
-                        lit++;
-                        if (inGap) {
-                            printf("FAIL %s celebration leftWon=%d t=%u slot %d lit during the gap\n",
-                                   cfg.boardName, leftWon, t, i);
-                            failures++;
-                        }
-                    }
-                    continue;
-                }
-
-                // Indicators face the players and must survive the takeover.
-                if (i == cfg.indicatorA || i == cfg.indicatorB) {
-                    if (!(buffer[i] == red)) {
-                        printf("FAIL %s celebration leftWon=%d t=%u indicator slot %d not lit\n",
-                               cfg.boardName, leftWon, t, i);
+                    if (mode != BlendMode::Normal
+                        && (buffer[i].r < reference[i].r || buffer[i].g < reference[i].g || buffer[i].b < reference[i].b)) {
+                        printf("FAIL %s %s slot %d darker than the base\n", cfg.boardName, blendName(mode), i);
                         failures++;
                     }
-                    continue;
                 }
 
-                // Dead slots and anything past the chain: nobody may touch them.
-                if (!(buffer[i] == sentinel)) {
-                    printf("FAIL %s celebration leftWon=%d t=%u wrote reserved slot %d\n",
-                           cfg.boardName, leftWon, t, i);
+                // Indicators face the players and stay exactly as the base drew them.
+                if (!(buffer[cfg.indicatorA] == red) || !(buffer[cfg.indicatorB] == red)) {
+                    printf("FAIL %s %s leftWon=%d t=%u indicators not red\n", cfg.boardName, blendName(mode), leftWon, t);
+                    failures++;
+                }
+
+                if (lit == 0 && !inGap) {
+                    printf("FAIL %s %s leftWon=%d t=%u ring lit nothing\n", cfg.boardName, blendName(mode), leftWon, t);
                     failures++;
                 }
             }
 
-            if (lit == 0 && !inGap) {
-                printf("FAIL %s celebration leftWon=%d t=%u lit nothing\n", cfg.boardName, leftWon, t);
+            // Past the last cycle the frame is the plain screen, byte for byte.
+            renderAt(start + total);
+            if (!matchesReference()) {
+                printf("FAIL %s %s leftWon=%d frame differs from the base after %u ms\n",
+                       cfg.boardName, blendName(mode), leftWon, total);
                 failures++;
             }
-        }
 
-        // Past the last cycle the normal screen is back: the blue digits render again.
-        renderAt(base + total);
-        bool blueDigit = false;
-        for (int i = cfg.digitProofLo; i <= cfg.digitProofHi; i++) {
-            if (buffer[i] != sentinel && buffer[i].b != 0) blueDigit = true;
-        }
-        if (!blueDigit) {
-            printf("FAIL %s celebration leftWon=%d did not hand the screen back after %u ms\n",
-                   cfg.boardName, leftWon, total);
-            failures++;
-        }
-
-        // resetAnimations() mid-cycle ends it on the very next frame.
-        g_fakeMillis = base;
-        display.startCelebration(win, leftWon == 1);
-        renderAt(base + 500);
-        display.resetAnimations();
-        renderAt(base + 550);
-        blueDigit = false;
-        for (int i = cfg.digitProofLo; i <= cfg.digitProofHi; i++) {
-            if (buffer[i] != sentinel && buffer[i].b != 0) blueDigit = true;
-        }
-        if (!blueDigit) {
-            printf("FAIL %s celebration leftWon=%d survived resetAnimations()\n", cfg.boardName, leftWon);
-            failures++;
+            // resetAnimations() mid-cycle ends it on the very next frame. It also
+            // clears V1's bar, so the reference gets the same call.
+            g_fakeMillis = start;
+            display.startCelebration(win, leftWon == 1);
+            renderAt(start + 500);
+            display.resetAnimations();
+            plain.resetAnimations();
+            renderAt(start + 550);
+            if (!matchesReference()) {
+                printf("FAIL %s %s leftWon=%d celebration survived resetAnimations()\n",
+                       cfg.boardName, blendName(mode), leftWon);
+                failures++;
+            }
         }
     }
 

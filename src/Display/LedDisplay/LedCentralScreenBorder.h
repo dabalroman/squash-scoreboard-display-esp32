@@ -69,6 +69,18 @@ public:
         enabled = isEnabled;
     }
 
+    void markSlots(uint16_t *map, const uint16_t topBit, const uint16_t bottomBit) const {
+        const uint8_t *top[2] = {BorderSlots::TOP_LEFT, BorderSlots::TOP_RIGHT};
+        const uint8_t *bottom[2] = {BorderSlots::BOTTOM_LEFT, BorderSlots::BOTTOM_RIGHT};
+
+        for (uint8_t side = 0; side < 2; side++) {
+            for (uint8_t i = 0; i < 2; i++) {
+                map[top[side][i]] |= topBit;
+                map[bottom[side][i]] |= bottomBit;
+            }
+        }
+    }
+
     /** Must run every frame: LedDisplay::display() clears the strip first. */
     void render(const uint32_t tickMs) const {
         if (!enabled) {
@@ -101,6 +113,9 @@ public:
     }
 
     void setEnabled(const bool) {
+    }
+
+    void markSlots(uint16_t *, const uint16_t, const uint16_t) const {
     }
 
     void render(const uint32_t) const {

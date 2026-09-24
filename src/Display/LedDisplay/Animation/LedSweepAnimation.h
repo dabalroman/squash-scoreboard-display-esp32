@@ -6,31 +6,26 @@
 #include <math.h>
 
 #include "Board.h"
-#include "Display/LedDisplay/DisplayProfile.h"
+#include "Display/LedDisplay/Layers/LedAnimation.h"
 #include "LedSlotPositions.h"
 
 /**
  * A thin ring that grows from an origin outward across the front LEDs. Two
  * callers, one state machine, on both boards:
  *
- *   boot()         rainbow, one 1 s cycle, driven blocking from setup() so it
- *                  plays against the e-paper splash (V2) or straight after init
- *                  (V1, no e-paper).
- *   celebration()  the winner's colour, three 800 ms cycles, stepped from loop()
- *                  at ~20 fps while the GameOver view holds the screen. Its origin
- *                  is the winner's half, so the wave breaks from their side.
+ *   boot()         rainbow, one 1 s cycle, driven blocking from setup() by
+ *                  LedDisplay::playBootSweep(), screened over a black base.
+ *   celebration()  the winner's colour, three 800 ms cycles, a layer over the
+ *                  GameOver screen stepped from loop() at ~20 fps. Its origin is
+ *                  the winner's half, so the wave breaks from their side.
  *
- * play() is only a blocking driver over start()/active()/render() - there is no
- * second copy of the cycle logic. renderFrame() stays clock-free so the host
- * checks can step it.
- *
- * The animation owns every non-SKIP slot: it writes black where the ring is not,
- * so a frame never inherits the previous one. Slots marked SKIP in
- * LedSlotPositions.h (V2: back indicators 4/9, dead slots 12/28/44/60; V1: back
- * indicators 2/3) are left untouched, so whatever else drew them survives.
+ * An LedAnimation: it writes only the ring's lit slots into the layer buffer
+ * (black, the buffer's fill, is transparent), never into pixels[]. SKIP slots in
+ * LedSlotPositions.h are never written. renderFrame() stays clock-free so the
+ * host checks can step it.
  */
 
-class LedSweepAnimation {
+class LedSweepAnimation : public LedAnimation {
 public:
     struct Params {
         uint16_t durationMs;   ///< one cycle, centre -> outer edge
@@ -40,7 +35,7 @@ public:
         CRGB solid;
     };
 
-    enum : uint16_t { FRAME_DELAY_MS = 10 };
+    enum : uint16_t { FRAME_DELAY_MS = 10 };   ///< playBootSweep's frame pacing
 
     static Params bootParams() {
         return Params{1000, 300, 1, true, CRGB::Black};
@@ -52,7 +47,6 @@ public:
     }
 
 private:
-    CRGB *pixels;
     Params params;
     uint32_t startedMs = 0;
     bool running = false;
@@ -116,7 +110,7 @@ private:
     }
 
 public:
-    LedSweepAnimation(CRGB *pixels, const Params params) : pixels(pixels), params(params) {
+    explicit LedSweepAnimation(const Params params) : params(params) {
         recomputeMaxRadius();
     }
 
@@ -162,6 +156,11 @@ public:
         setOrigin(sumX / count, sumY / count);
     }
 
+    /** Keeps the origin: boot and celebration share one instance. */
+    void setParams(const Params newParams) {
+        params = newParams;
+    }
+
     void setSolidColor(const CRGB color) {
         params.solid = color;
     }
@@ -175,46 +174,27 @@ public:
         running = false;
     }
 
-    bool active(const uint32_t nowMs) const {
+    bool active(const uint32_t nowMs) const override {
         return running && (nowMs - startedMs) < totalMs();
     }
 
-    /** Black on every non-SKIP slot. Used for the gap between cycles. */
-    void blank() const {
-        for (uint16_t slot = 0; slot < Board::LED_COUNT; slot++) {
-            if (LedSlots::POS[slot][0] == LedSlots::SKIP) {
-                continue;
-            }
-
-            pixels[slot] = CRGB::Black;
-        }
-    }
-
-    /** One frame at wall-clock `nowMs`, picking the cycle and the offset within it. */
-    void render(const uint32_t nowMs) const {
-        if (!running) {
+    /** One frame at wall-clock `nowMs`; the gap between cycles writes nothing. */
+    void render(const uint32_t nowMs, CRGB *out) const override {
+        if (!active(nowMs)) {
             return;
         }
 
-        const uint32_t elapsed = nowMs - startedMs;
-
-        if (elapsed >= totalMs()) {
-            blank();
-            return;
-        }
-
-        const uint32_t within = elapsed % cycleMs();
+        const uint32_t within = (nowMs - startedMs) % cycleMs();
 
         if (within >= params.durationMs) {
-            blank();
             return;
         }
 
-        renderFrame(within);
+        renderFrame(within, out);
     }
 
     /** Clock-free, so the host checks can step it frame by frame. */
-    void renderFrame(const uint32_t elapsedMs) const {
+    void renderFrame(const uint32_t elapsedMs, CRGB *out) const {
         // The ring must still clear the farthest slot, so the sweep runs one band past it.
         constexpr float HUE_SPAN = 200.0f;   // not 255: the edge must not wrap back to red
         const float BAND = band();
@@ -234,7 +214,6 @@ public:
             const float intensity = 1.0f - fabsf(distance - radius) / BAND;
 
             if (intensity <= 0.0f) {
-                pixels[slot] = CRGB::Black;
                 continue;
             }
 
@@ -242,27 +221,12 @@ public:
                                   ? hueToRgb(static_cast<uint8_t>(distance / maxRadius * HUE_SPAN))
                                   : params.solid;
 
-            pixels[slot] = CRGB(
+            out[slot] = CRGB(
                 static_cast<uint8_t>(tint.r * intensity),
                 static_cast<uint8_t>(tint.g * intensity),
                 static_cast<uint8_t>(tint.b * intensity)
             );
         }
-    }
-
-    /** Blocking driver over the same state machine. Boot only - never call it from loop(). */
-    void play() {
-        start(millis());
-
-        while (active(millis())) {
-            render(millis());
-            showCompensated(pixels);
-            delay(FRAME_DELAY_MS);
-        }
-
-        stop();
-        FastLED.clear();
-        showCompensated(pixels);
     }
 };
 
