@@ -34,9 +34,10 @@
  * battery as well. Keep a pair apart when both players are on court at once, and
  * prefer the saturated entries while the pack is low.
  *
- * The wire format between the web editor and NVS is the palette *index*, not a
- * hex string: validating a saved colour is then `index < count()`, with no hex
- * parser to get wrong, and the page still draws real swatches through toHex().
+ * The wire format between the web editor and NVS is the palette *index* for a
+ * preset colour, validated as `index < count()`; a custom colour (task #51,
+ * picked outside this table) instead travels as #RRGGBB, parsed by fromHex().
+ * Either way the page draws real swatches through toHex().
  *
  * The names appear only in the web editor, which is Polish-only and rendered by a
  * phone browser, so they carry real diacritics - this header is UTF-8. They never
@@ -141,6 +142,49 @@ namespace PlayerPalette {
 
     inline void toHex(const Color color, char out[8]) {
         snprintf(out, 8, "#%02X%02X%02X", color.r, color.g, color.b);
+    }
+
+    // -1 for anything but 0-9/a-f/A-F, so fromHex can reject in one comparison.
+    inline int8_t hexNibble(const char c) {
+        if (c >= '0' && c <= '9') return static_cast<int8_t>(c - '0');
+        if (c >= 'a' && c <= 'f') return static_cast<int8_t>(c - 'a' + 10);
+        if (c >= 'A' && c <= 'F') return static_cast<int8_t>(c - 'A' + 10);
+        return -1;
+    }
+
+    /**
+     * Parses "#RRGGBB" (either case), the wire format /preview and /save's custom
+     * path both use. Exactly 7 characters; anything else is false and `out` is
+     * left untouched, matching the index path's all-or-nothing validation.
+     */
+    inline bool fromHex(const String &text, Color &out) {
+        if (text.length() != 7 || text[0] != '#') {
+            return false;
+        }
+
+        uint8_t channel[3];
+        for (uint8_t i = 0; i < 3; i++) {
+            const int8_t hi = hexNibble(text[1 + i * 2]);
+            const int8_t lo = hexNibble(text[2 + i * 2]);
+            if (hi < 0 || lo < 0) {
+                return false;
+            }
+            channel[i] = static_cast<uint8_t>((hi << 4) | lo);
+        }
+
+        out = Color(channel[0], channel[1], channel[2]);
+        return true;
+    }
+
+    /**
+     * True when `c` is exactly a table entry (not merely its nearest one), with
+     * that entry's index written to `index` either way - the page uses it to
+     * decide whether a stored colour renders as a preset swatch or a custom one.
+     */
+    inline bool isPreset(const Color c, uint8_t &index) {
+        index = nearestIndex(c);
+        const PaletteEntry &entry = at(index);
+        return entry.color.r == c.r && entry.color.g == c.g && entry.color.b == c.b;
     }
 }
 

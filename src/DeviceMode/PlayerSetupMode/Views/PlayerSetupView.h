@@ -11,11 +11,13 @@
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 
 /**
- * The screen the roster editor shows while its AP is up: a static word on the
- * front LEDs, the dual-QR placard on the e-paper (V2 only - EInkDisplay stubs to
- * nothing on V1), and an auto-scrolling OLED discovery screen shared by both
- * boards - the AP name, its password and the current IP, for whoever has no
- * e-paper (or no QR reader) to fall back on.
+ * The screen the roster editor shows while its AP is up: the front LEDs show a
+ * static word until a colour is previewed from the web editor (POST /preview,
+ * task #51), then P<left><right> in the two players' colours until PROFILE
+ * closes; the e-paper carries the dual-QR placard (V2 only - EInkDisplay stubs
+ * to nothing on V1); the OLED auto-scrolls the AP name, its password and the
+ * current IP, shared by both boards, for whoever has no e-paper (or no QR
+ * reader) to fall back on.
  *
  * The AP itself is raised and dropped by PlayerSetupMode, not here, so every exit
  * path - D, C, the idle timeout, or anything added later - tears it down the same
@@ -108,14 +110,39 @@ public:
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
+        // A preview POST can land between ticks; the dirty flag makes sure the
+        // frame it changed on actually redraws, on top of the existing guard.
+        if (webUi.takePreviewDirty()) {
+            shouldRenderLedDisplay = true;
+        }
+
         if (!shouldRenderLedDisplay) {
             return;
         }
 
-        ledDisplay.setGlyphsText(Str::LED_PLAYER_SETUP);
-        ledDisplay.setGlyphsColor(Colors::Aqua, Colors::Aqua);
-        ledDisplay.setIndicatorAppearancePlayerA(Colors::Aqua);
-        ledDisplay.setIndicatorAppearancePlayerB(Colors::Aqua);
+        if (webUi.hasPreview()) {
+            const PlayerSetupWebUi::PreviewSlot &left = webUi.previewSlot(0);
+            const PlayerSetupWebUi::PreviewSlot &right = webUi.previewSlot(1);
+            const Color leftColor = left.used ? left.color : Colors::Black;
+            const Color rightColor = right.used ? right.color : Colors::Black;
+
+            // Same P<id%10>P<id%10> layout as *MatchStartGameView - "as at a match".
+            ledDisplay.setGlyphsGlyph(
+                Glyph::P,
+                left.used ? LedDisplay::digitToGlyph(left.id % 10) : Glyph::Empty,
+                Glyph::P,
+                right.used ? LedDisplay::digitToGlyph(right.id % 10) : Glyph::Empty
+            );
+            ledDisplay.setGlyphsAppearance(leftColor, rightColor);
+            ledDisplay.setIndicatorAppearancePlayerA(leftColor);
+            ledDisplay.setIndicatorAppearancePlayerB(rightColor);
+        } else {
+            ledDisplay.setGlyphsText(Str::LED_PLAYER_SETUP);
+            ledDisplay.setGlyphsColor(Colors::Aqua, Colors::Aqua);
+            ledDisplay.setIndicatorAppearancePlayerA(Colors::Aqua);
+            ledDisplay.setIndicatorAppearancePlayerB(Colors::Aqua);
+        }
+
         ledDisplay.display();
 
         shouldRenderLedDisplay = false;

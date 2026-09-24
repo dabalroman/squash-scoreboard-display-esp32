@@ -10,6 +10,8 @@
  * Two screens, sharing one shell and nav bar:
  *   GET /        the profile (roster) editor - the default screen
  *   POST /save   its save endpoint
+ *   POST /preview  live LED colour preview while a dialog is open - state only,
+ *                   never NVS, never a draw; see the "LED preview" section below
  *   GET /update  the firmware upload screen, which posts to POST /update
  *
  * `/` used to be the WiFi credentials form. That form now lives on the update
@@ -53,6 +55,22 @@
 
 class PlayerSetupWebUi {
 public:
+    // One side of the LED preview pair. Public so PlayerSetupView can read it;
+    // the array itself stays private, reached only through previewSlot().
+    // Constructors, not member initialisers: under gnu++11 those make it a
+    // non-aggregate and PreviewSlot{id, color, used} would not compile.
+    struct PreviewSlot {
+        uint8_t id;
+        Color color;
+        bool used;
+
+        PreviewSlot() : id(0), color(), used(false) {
+        }
+
+        PreviewSlot(const uint8_t id, const Color color, const bool used) : id(id), color(color), used(used) {
+        }
+    };
+
     PlayerSetupWebUi(PlayerRoster &roster, PreferencesManager &preferencesManager)
         : roster(roster), preferencesManager(preferencesManager) {
     }
@@ -63,6 +81,7 @@ public:
 
         server->on("/", HTTP_GET, [this] { handleRoot(); });
         server->on("/save", HTTP_POST, [this] { handleSave(); });
+        server->on("/preview", HTTP_POST, [this] { handlePreview(); });
         // GET only. The matching POST /update - the one that actually writes the
         // image - is registered by RemoteDevelopmentService and is not touched here.
         server->on("/update", HTTP_GET, [this] { handleUpdatePage(); });
@@ -72,10 +91,31 @@ public:
         active = true;
         lastActivity = nowMs;
         restartArmed = false;
+        resetPreview();
     }
 
     void close() {
         active = false;
+        resetPreview();
+    }
+
+    // ---- LED preview state, read by PlayerSetupView ------------------------
+
+    // Returns whether the preview state changed since the last call, and clears
+    // the flag - the view's one dirty-check per render, so a slot update that
+    // lands between renders is never missed nor rendered twice.
+    bool takePreviewDirty() {
+        const bool wasDirty = previewDirty;
+        previewDirty = false;
+        return wasDirty;
+    }
+
+    bool hasPreview() const {
+        return previewActive;
+    }
+
+    const PreviewSlot &previewSlot(const uint8_t side) const {
+        return previewSlots[side < 2 ? side : 0];
     }
 
     uint32_t lastActivityMs() const {
@@ -121,9 +161,27 @@ private:
     bool restartArmed = false;
     uint32_t restartAtMs = 0;
 
+    // side 0 = left, 1 = right (matches the P<l>P<r> glyph layout). No per-id
+    // memory beyond these two: every POST carries the colour to show.
+    PreviewSlot previewSlots[2];
+    uint8_t previewLatest = 0;
+    bool previewActive = false;
+    bool previewDirty = false;
+
     void armRestart() {
         restartAtMs = millis() + RESTART_DELAY_MS;
         restartArmed = true;
+    }
+
+    // Called on open() and close() so a leftover pair from the previous PROFILE
+    // visit never survives into the next one. previewDirty=true so the view's
+    // next render falls back to the static word.
+    void resetPreview() {
+        previewSlots[0] = PreviewSlot{};
+        previewSlots[1] = PreviewSlot{};
+        previewLatest = 0;
+        previewActive = false;
+        previewDirty = true;
     }
 
     void reject(const char *reason) const {
@@ -255,8 +313,16 @@ private:
             ".pc.on i{border-color:var(--accent)}"
             ".pc span{display:block;font-size:11px;color:var(--muted);margin-top:5px;overflow:hidden;"
             "text-overflow:ellipsis;white-space:nowrap}"
-            "#palclose{width:100%;padding:13px;color:var(--muted);background:transparent;"
-            "border:1px solid var(--line);border-radius:14px;cursor:pointer}"
+            "#palcustom{width:100%;padding:13px;margin-bottom:10px;color:var(--muted);"
+            "background:transparent;border:1px solid var(--line);border-radius:14px;cursor:pointer}"
+            // .on marks a custom (non-preset) selection: the button itself becomes
+            // the swatch, same idea as .pc.on's accent ring on a grid entry.
+            "#palcustom.on{color:#fff;border-color:transparent}"
+            ".palbtns{display:flex;gap:10px}"
+            ".palbtns button{flex:1;padding:13px;border-radius:14px;cursor:pointer;"
+            "border:1px solid var(--line)}"
+            "#palclose{color:var(--muted);background:transparent}"
+            "#palok{color:#fff;background:var(--accent);border-color:var(--accent);font-weight:600}"
             "</style></head><body><nav>"));
 
         server->sendContent(navIndex == NAV_PROFILE
@@ -300,7 +366,11 @@ private:
             "<button type=\"button\" id=\"save\" class=\"primary\">Zapisz i zrestartuj</button>"
             "<button type=\"button\" id=\"reset\">Przywróć profile fabryczne</button></main>"
             "<div id=\"pal\"><div id=\"palbox\"><h2>Wybierz kolor</h2><div id=\"palgrid\"></div>"
-            "<button type=\"button\" id=\"palclose\">Anuluj</button></div></div>"
+            "<button type=\"button\" id=\"palcustom\">Własny kolor</button>"
+            "<input type=\"color\" id=\"palpick\" style=\"display:none\">"
+            "<div class=\"palbtns\"><button type=\"button\" id=\"palclose\">Anuluj</button>"
+            "<button type=\"button\" id=\"palok\">Wybierz</button></div>"
+            "</div></div>"
             "<script>"));
 
         server->sendContent(buildData());
@@ -308,9 +378,12 @@ private:
         server->sendContent(F(
             "function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')"
             ".replace(/>/g,'&gt;').replace(/\"/g,'&quot;');}"
+            // R[i][1] is a palette index (number) for a preset colour, or a
+            // '#RRGGBB' string for a custom one - see buildData()/isPreset().
+            "function hx(c){return typeof c=='number'?PAL[c][1]:c;}"
             "function render(){var h='';for(var i=0;i<R.length;i++){"
             "h+='<div class=\"row\">'"
-            "+'<button type=\"button\" class=\"sw\" id=\"sw'+i+'\" style=\"background:'+PAL[R[i][1]][1]+'\""
+            "+'<button type=\"button\" class=\"sw\" id=\"sw'+i+'\" style=\"background:'+hx(R[i][1])+'\""
             " onclick=\"pick('+i+')\"></button>'"
             "+'<input maxlength=\"9\" value=\"'+esc(R[i][0])+'\" oninput=\"setName('+i+',this.value)\">'"
             "+'<button type=\"button\" class=\"ic\" onclick=\"mv('+i+',-1)\">&#9650;</button>'"
@@ -320,18 +393,45 @@ private:
             "document.getElementById('cnt').textContent=R.length+' / '+MAX;}"
             // No re-render on keystroke: that would drop focus mid-word.
             "function setName(i,v){R[i][0]=v;}"
-            "var cur=-1;"
-            "function pick(i){cur=i;var h='';"
+            // cur = row being edited; orig = its colour when the dialog opened
+            // (Anuluj target); sel = the pending selection (Wybierz target).
+            "var cur=-1,orig=0,sel=0;"
+            "function pick(i){cur=i;orig=sel=R[i][1];renderPal();"
+            "document.getElementById('pal').style.display='flex';}"
+            "function renderPal(){var h='';"
             "for(var k=0;k<PAL.length;k++){"
-            "h+='<button type=\"button\" class=\"pc'+(k==R[i][1]?' on':'')+'\" onclick=\"choose('+k+')\">'"
+            "h+='<button type=\"button\" class=\"pc'+(typeof sel=='number'&&sel==k?' on':'')+'\""
+            " onclick=\"swatchClick('+k+')\">'"
             "+'<i style=\"background:'+PAL[k][1]+'\"></i><span>'+esc(PAL[k][0])+'</span></button>';}"
             "document.getElementById('palgrid').innerHTML=h;"
-            "document.getElementById('pal').style.display='flex';}"
-            "function choose(k){if(cur>=0){R[cur][1]=k;"
-            "document.getElementById('sw'+cur).style.background=PAL[k][1];}closePal();}"
+            "var cb=document.getElementById('palcustom');"
+            "if(typeof sel=='string'){cb.style.background=sel;cb.classList.add('on');}"
+            "else{cb.style.background='';cb.classList.remove('on');}}"
+            "function swatchClick(k){sel=k;renderPal();preview(cur,PAL[k][1]);}"
+            "function pickChanged(){sel=document.getElementById('palpick').value.toUpperCase();"
+            "renderPal();preview(cur,sel);}"
+            "document.getElementById('palcustom').onclick=function(){"
+            "var p=document.getElementById('palpick');p.value=hx(sel).toLowerCase();p.click();};"
+            // 'change' too: iOS Safari's native picker fires only on close, not per drag.
+            "document.getElementById('palpick').oninput=pickChanged;"
+            "document.getElementById('palpick').onchange=pickChanged;"
             "function closePal(){document.getElementById('pal').style.display='none';cur=-1;}"
-            "document.getElementById('palclose').onclick=closePal;"
-            "document.getElementById('pal').onclick=function(e){if(e.target.id=='pal')closePal();};"
+            "document.getElementById('palok').onclick=function(){"
+            "R[cur][1]=sel;document.getElementById('sw'+cur).style.background=hx(sel);closePal();};"
+            "document.getElementById('palclose').onclick=function(){preview(cur,hx(orig));closePal();};"
+            "document.getElementById('pal').onclick=function(e){"
+            "if(e.target.id=='pal'){preview(cur,hx(orig));closePal();}};"
+            // One /preview in flight; a colour arriving mid-request replaces
+            // whatever was pending rather than queuing, so drag events never pile up.
+            "var pvBusy=false,pvNext=null;"
+            "function preview(i,h){pvNext=[i,h];if(!pvBusy)pvSend();}"
+            "function pvSend(){if(!pvNext)return;var n=pvNext;pvNext=null;pvBusy=true;"
+            "var x=new XMLHttpRequest();x.open('POST','/preview',true);x.timeout=3000;"
+            "x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');"
+            "x.onloadend=function(){pvBusy=false;pvSend();};"
+            // Best effort: a dropped preview leaves the LEDs one frame behind,
+            // never the page - so failures are silent by design.
+            "x.send('playerId='+n[0]+'&color='+encodeURIComponent(n[1]));}"
             "function mv(i,d){var j=i+d;if(j<0||j>=R.length)return;var t=R[i];R[i]=R[j];R[j]=t;render();}"
             "function del(i){if(R.length<2){msg('Musi zosta\\u0107 co najmniej jeden profil.');return;}"
             "R.splice(i,1);render();}"
@@ -350,7 +450,8 @@ private:
             "if(!confirm('Zapisa\\u0107 list\\u0119. Liczba pozycji: '+R.length"
             "+'. Tablica zostanie zrestartowana.'))return;"
             "var b='count='+R.length;"
-            "for(var i=0;i<R.length;i++){b+='&n'+i+'='+encodeURIComponent(R[i][0].trim())+'&c'+i+'='+R[i][1]+'&u'+i+'='+R[i][2];}"
+            "for(var i=0;i<R.length;i++){b+='&n'+i+'='+encodeURIComponent(R[i][0].trim())"
+            "+'&c'+i+'='+encodeURIComponent(R[i][1])+'&u'+i+'='+R[i][2];}"
             "msg('Zapisywanie...');post(b);};"
             "document.getElementById('reset').onclick=function(){"
             "if(!confirm('Przywr\\u00f3ci\\u0107 profile fabryczne? Tablica zostanie zrestartowana.'))return;"
@@ -486,6 +587,101 @@ private:
             "</form>"));
     }
 
+    // ---- LED preview ---------------------------------------------------------
+
+    /**
+     * State only - never NVS, never a draw. PlayerSetupView polls
+     * takePreviewDirty() on its own cadence and renders from previewSlots. Same
+     * `active` gate and 503 as /save: the preview must not work with the AP
+     * closed, since that means nobody has the roster editor open to receive it.
+     */
+    void handlePreview() {
+        if (!active) {
+            server->send(503, TEXT_PLAIN_PL, "Ekran profili nie jest otwarty na tablicy.");
+            return;
+        }
+
+        lastActivity = millis();
+
+        if (!server->hasArg("playerId") || !server->hasArg("color")) {
+            reject("Brak pola playerId lub color.");
+            return;
+        }
+
+        const String idArg = server->arg("playerId");
+        if (idArg.length() < 1 || idArg.length() > 2) {
+            reject("Błędny playerId.");
+            return;
+        }
+
+        for (size_t c = 0; c < idArg.length(); c++) {
+            if (idArg[c] < '0' || idArg[c] > '9') {
+                reject("Błędny playerId.");
+                return;
+            }
+        }
+
+        const long playerId = idArg.toInt();
+        if (playerId < 0 || playerId >= PlayerRosterLimits::MAX_PLAYERS) {
+            reject("Błędny playerId.");
+            return;
+        }
+
+        Color color;
+        if (!PlayerPalette::fromHex(server->arg("color"), color)) {
+            reject("Błędny kolor.");
+            return;
+        }
+
+        applyPreview(static_cast<uint8_t>(playerId), color);
+        previewDirty = true;
+
+        server->send(204, TEXT_PLAIN_PL, "");
+    }
+
+    /**
+     * Slot logic locked in task #51. An id already shown updates in place and
+     * becomes latest; a first preview since open() pairs the clicked id with the
+     * lowest other roster id (in its stored colour); otherwise the non-latest
+     * slot is replaced.
+     */
+    void applyPreview(const uint8_t playerId, const Color color) {
+        for (uint8_t side = 0; side < 2; side++) {
+            if (previewSlots[side].used && previewSlots[side].id == playerId) {
+                previewSlots[side].color = color;
+                previewLatest = side;
+                previewActive = true;
+                return;
+            }
+        }
+
+        if (!previewActive) {
+            previewSlots[0] = PreviewSlot{playerId, color, true};
+
+            // Lowest other roster id, in its own stored colour - even if that
+            // happens to match `color`, per the locked spec.
+            PreviewSlot right;
+            const std::vector<UserProfile *> &players = roster.profiles();
+            for (size_t i = 0; i < players.size(); i++) {
+                if (players[i]->getId() != playerId) {
+                    right = PreviewSlot{players[i]->getId(), players[i]->getColor(), true};
+                    break;
+                }
+            }
+            previewSlots[1] = right;
+
+            // Right counts as latest even when no other player exists, so the
+            // next distinct id replaces the left slot rather than the empty right.
+            previewLatest = 1;
+            previewActive = true;
+            return;
+        }
+
+        const uint8_t target = static_cast<uint8_t>(1 - previewLatest);
+        previewSlots[target] = PreviewSlot{playerId, color, true};
+        previewLatest = target;
+    }
+
     // ---- data --------------------------------------------------------------
 
     String buildData() const {
@@ -514,16 +710,25 @@ private:
 
         const std::vector<UserProfile *> &players = roster.profiles();
         for (size_t i = 0; i < players.size(); i++) {
-            // Nearest, not exact: a roster stored before the palette was reworked
-            // holds colours that are no longer presets, and they must come back as
-            // the closest match rather than all collapsing onto the first entry.
-            const uint8_t index = PlayerPalette::nearestIndex(players[i]->getColor());
+            uint8_t index = 0;
+            // Exact, not nearest: a stored colour that is still a preset renders
+            // and re-saves as that preset's index; anything else - including a
+            // roster stored before the palette changed - is now a custom swatch,
+            // shown and re-saved as its own hex rather than snapped onto the
+            // closest entry.
+            const bool preset = PlayerPalette::isPreset(players[i]->getColor(), index);
 
             if (i > 0) out += ',';
             out += '[';
             appendJsString(out, players[i]->getName());
             out += ',';
-            out += index;
+            if (preset) {
+                out += index;
+            } else {
+                char hex[8];
+                PlayerPalette::toHex(players[i]->getColor(), hex);
+                appendJsString(out, hex);
+            }
             // Third field is the identity, carried out to the page and back so a
             // reorder or a rename moves the row without changing who it is.
             out += ',';
@@ -618,28 +823,40 @@ private:
             }
 
             const String colorArg = server->arg(key);
-            if (colorArg.length() < 1 || colorArg.length() > 2) {
-                reject("Błędny kolor.");
-                return;
-            }
+            Color color;
 
-            for (size_t c = 0; c < colorArg.length(); c++) {
-                if (colorArg[c] < '0' || colorArg[c] > '9') {
+            // Two wire formats: a palette index (unchanged), or #RRGGBB for a
+            // colour previewed via the native picker - see PlayerPalette::fromHex.
+            if (colorArg.length() > 0 && colorArg[0] == '#') {
+                if (!PlayerPalette::fromHex(colorArg, color)) {
                     reject("Błędny kolor.");
                     return;
                 }
-            }
+            } else {
+                if (colorArg.length() < 1 || colorArg.length() > 2) {
+                    reject("Błędny kolor.");
+                    return;
+                }
 
-            const long colorIndex = colorArg.toInt();
-            if (colorIndex < 0 || colorIndex >= paletteCount) {
-                reject("Błędny kolor.");
-                return;
+                for (size_t c = 0; c < colorArg.length(); c++) {
+                    if (colorArg[c] < '0' || colorArg[c] > '9') {
+                        reject("Błędny kolor.");
+                        return;
+                    }
+                }
+
+                const long colorIndex = colorArg.toInt();
+                if (colorIndex < 0 || colorIndex >= paletteCount) {
+                    reject("Błędny kolor.");
+                    return;
+                }
+
+                color = PlayerPalette::at(static_cast<uint8_t>(colorIndex)).color;
             }
 
             strncpy(staged.entries[i].name, name.c_str(), PlayerRosterLimits::NAME_SIZE - 1);
             staged.entries[i].name[PlayerRosterLimits::NAME_SIZE - 1] = '\0';
 
-            const Color color = PlayerPalette::at(static_cast<uint8_t>(colorIndex)).color;
             staged.entries[i].r = color.r;
             staged.entries[i].g = color.g;
             staged.entries[i].b = color.b;
