@@ -313,11 +313,12 @@ private:
             ".pc.on i{border-color:var(--accent)}"
             ".pc span{display:block;font-size:11px;color:var(--muted);margin-top:5px;overflow:hidden;"
             "text-overflow:ellipsis;white-space:nowrap}"
-            "#palcustom{width:100%;padding:13px;margin-bottom:10px;color:var(--muted);"
-            "background:transparent;border:1px solid var(--line);border-radius:14px;cursor:pointer}"
-            // .on marks a custom (non-preset) selection: the button itself becomes
-            // the swatch, same idea as .pc.on's accent ring on a grid entry.
-            "#palcustom.on{color:#fff;border-color:transparent}"
+            // One view at a time: the grid and the sliders stacked no longer fit a phone.
+            ".seg{display:flex;gap:4px;padding:4px;margin-bottom:14px;border:1px solid var(--line);"
+            "border-radius:14px}"
+            ".seg button{flex:1;padding:11px 6px;border:0;border-radius:10px;background:transparent;"
+            "color:var(--muted);font-size:14px;cursor:pointer}"
+            ".seg button.on{background:var(--accent);color:#fff;font-weight:600}"
             // Own picker: Android's native <input type=color> only opens a fixed
             // swatch dialog, no free choice - so HSV lives inline instead.
             // Phone-only, and not <input type=range>: a finger drifting off a native
@@ -388,8 +389,10 @@ private:
             "<div id=\"pal\"><div id=\"palbox\">"
             "<div class=\"pw\" id=\"palwarn\">Ten kolor jest bardzo jasny, użycie go skróci czas pracy urządzenia.</div>"
             "<div class=\"pw\" id=\"paldark\">Ten kolor jest bardzo ciemny, nie będzie go widać!</div>"
-            "<h2>Wybierz kolor</h2><div id=\"palgrid\"></div>"
-            "<button type=\"button\" id=\"palcustom\">Własny kolor</button>"
+            "<h2>Wybierz kolor</h2>"
+            "<div class=\"seg\"><button type=\"button\" id=\"tabpal\">Paleta kolorów</button>"
+            "<button type=\"button\" id=\"tabcus\">Własny kolor</button></div>"
+            "<div id=\"palgrid\"></div>"
             "<div id=\"hsvbox\" style=\"display:none\">"
             "<div class=\"hsvrow\"><label>Odcień</label>"
             "<div class=\"sl\"><i id=\"hh\"></i><b></b></div></div>"
@@ -427,7 +430,8 @@ private:
             // (Anuluj target); sel = the pending selection (Wybierz target).
             "var cur=-1,orig=0,sel=0;"
             // Preview on open: tapping a row's colour shows that player on the LEDs at once.
-            "function pick(i){cur=i;orig=sel=R[i][1];renderPal();"
+            // Opens on the tab that matches the stored colour: custom hex -> sliders.
+            "function pick(i){cur=i;orig=sel=R[i][1];renderPal();tab(typeof sel=='string');"
             "document.getElementById('pal').style.display='flex';preview(i,hx(sel));}"
             "function renderPal(){var h='';"
             "for(var k=0;k<PAL.length;k++){"
@@ -435,17 +439,13 @@ private:
             " onclick=\"swatchClick('+k+')\">'"
             "+'<i style=\"background:'+PAL[k][1]+'\"></i><span>'+esc(PAL[k][0])+'</span></button>';}"
             "document.getElementById('palgrid').innerHTML=h;"
-            "var cb=document.getElementById('palcustom');"
-            "if(typeof sel=='string'){cb.style.background=sel;cb.classList.add('on');}"
-            "else{cb.style.background='';cb.classList.remove('on');}"
             // 75 % of full white (765): near-white draws the most current per LED;
             // saturated two-channel colours like #00FFFF (510) stay below it.
             "var x=hx(sel),t=parseInt(x.substr(1,2),16)+parseInt(x.substr(3,2),16)+parseInt(x.substr(5,2),16);"
             "document.getElementById('palwarn').style.display=t>=574?'block':'none';"
             // Under 10 % of full white a WS2812 is barely lit at all.
             "document.getElementById('paldark').style.display=t<77?'block':'none';}"
-            "function swatchClick(k){sel=k;renderPal();"
-            "document.getElementById('hsvbox').style.display='none';preview(cur,PAL[k][1]);}"
+            "function swatchClick(k){sel=k;renderPal();preview(cur,PAL[k][1]);}"
             // Exact-inverse pair, no rounding of h/s/v before the reverse math - only the
             // final byte gets Math.round - or hex2hsv(hsv2hex(x)) drifts off x by 1 LSB.
             "function hsv2hex(h,s,v){s=s/100;v=v/100;"
@@ -484,13 +484,15 @@ private:
             "e.preventDefault();at(e);});"
             "el.addEventListener('pointermove',function(e){if(el.hasPointerCapture(e.pointerId))at(e);});}"
             "slide('hh');slide('hs');slide('hv');"
-            "document.getElementById('palcustom').onclick=function(){"
-            "var b=document.getElementById('hsvbox');"
-            "if(b.style.display=='none'){var c=hex2hsv(hx(sel));"
-            "HV.hh=c[0];HV.hs=c[1];HV.hv=c[2];syncHsv();b.style.display='block';}"
-            "else{b.style.display='none';}};"
-            "function closePal(){document.getElementById('pal').style.display='none';"
-            "document.getElementById('hsvbox').style.display='none';cur=-1;}"
+            // Switching to the sliders seeds them from the current selection.
+            "function tab(c){if(c){var v=hex2hsv(hx(sel));HV.hh=v[0];HV.hs=v[1];HV.hv=v[2];syncHsv();}"
+            "document.getElementById('palgrid').style.display=c?'none':'grid';"
+            "document.getElementById('hsvbox').style.display=c?'block':'none';"
+            "document.getElementById('tabpal').classList.toggle('on',!c);"
+            "document.getElementById('tabcus').classList.toggle('on',!!c);}"
+            "document.getElementById('tabpal').onclick=function(){tab(false);};"
+            "document.getElementById('tabcus').onclick=function(){tab(true);};"
+            "function closePal(){document.getElementById('pal').style.display='none';cur=-1;}"
             "document.getElementById('palok').onclick=function(){"
             "R[cur][1]=sel;document.getElementById('sw'+cur).style.background=hx(sel);closePal();};"
             "document.getElementById('palclose').onclick=function(){preview(cur,hx(orig));closePal();};"
