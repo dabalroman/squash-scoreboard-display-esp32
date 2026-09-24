@@ -304,6 +304,8 @@ private:
             "#palbox{background:var(--card);border-radius:20px 20px 0 0;padding:18px 16px 24px;"
             "width:100%;max-width:520px;box-shadow:0 -4px 24px rgba(60,50,30,.18)}"
             "#palbox h2{font-size:17px;margin:0 0 14px;text-align:center}"
+            "#palwarn{display:none;margin:0 0 12px;padding:10px 12px;border-radius:12px;font-size:13px;"
+            "background:#fff3cd;color:#7a5200;border:1px solid #f0d58a}"
             "#palgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}"
             ".pc{background:none;border:0;padding:0;cursor:pointer}"
             ".pc i{display:block;width:100%;height:56px;border-radius:14px;"
@@ -380,7 +382,9 @@ private:
             "<div id=\"msg\"></div>"
             "<button type=\"button\" id=\"save\" class=\"primary\">Zapisz i zrestartuj</button>"
             "<button type=\"button\" id=\"reset\">Przywróć profile fabryczne</button></main>"
-            "<div id=\"pal\"><div id=\"palbox\"><h2>Wybierz kolor</h2><div id=\"palgrid\"></div>"
+            "<div id=\"pal\"><div id=\"palbox\">"
+            "<div id=\"palwarn\">Ten kolor jest bardzo jasny, użycie go skróci czas pracy urządzenia</div>"
+            "<h2>Wybierz kolor</h2><div id=\"palgrid\"></div>"
             "<button type=\"button\" id=\"palcustom\">Własny kolor</button>"
             "<div id=\"hsvbox\" style=\"display:none\">"
             "<div class=\"hsvrow\"><label>Odcień</label>"
@@ -428,7 +432,11 @@ private:
             "document.getElementById('palgrid').innerHTML=h;"
             "var cb=document.getElementById('palcustom');"
             "if(typeof sel=='string'){cb.style.background=sel;cb.classList.add('on');}"
-            "else{cb.style.background='';cb.classList.remove('on');}}"
+            "else{cb.style.background='';cb.classList.remove('on');}"
+            // Near-white draws the most current per LED; 650 flags white-ish colours
+            // but not saturated two-channel ones like #00FFFF (510).
+            "var x=hx(sel),t=parseInt(x.substr(1,2),16)+parseInt(x.substr(3,2),16)+parseInt(x.substr(5,2),16);"
+            "document.getElementById('palwarn').style.display=t>=650?'block':'none';}"
             "function swatchClick(k){sel=k;renderPal();"
             "document.getElementById('hsvbox').style.display='none';preview(cur,PAL[k][1]);}"
             // Exact-inverse pair, no rounding of h/s/v before the reverse math - only the
