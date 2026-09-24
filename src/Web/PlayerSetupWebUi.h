@@ -164,7 +164,6 @@ private:
     // side 0 = left, 1 = right (matches the P<l>P<r> glyph layout). No per-id
     // memory beyond these two: every POST carries the colour to show.
     PreviewSlot previewSlots[2];
-    uint8_t previewLatest = 0;
     bool previewActive = false;
     bool previewDirty = false;
 
@@ -179,7 +178,6 @@ private:
     void resetPreview() {
         previewSlots[0] = PreviewSlot{};
         previewSlots[1] = PreviewSlot{};
-        previewLatest = 0;
         previewActive = false;
         previewDirty = true;
     }
@@ -318,6 +316,23 @@ private:
             // .on marks a custom (non-preset) selection: the button itself becomes
             // the swatch, same idea as .pc.on's accent ring on a grid entry.
             "#palcustom.on{color:#fff;border-color:transparent}"
+            // Own picker: Android's native <input type=color> only opens a fixed
+            // swatch dialog, no free choice - so HSV lives inline instead.
+            "#hsvbox{margin:4px 0 14px}"
+            ".hsvrow{display:flex;align-items:center;gap:10px;margin-bottom:10px}"
+            ".hsvrow label{width:76px;flex:none;font-size:13px;color:var(--muted)}"
+            ".hsvrow input[type=range]{flex:1;-webkit-appearance:none;appearance:none;"
+            "height:12px;border-radius:7px;background:#000;outline:none}"
+            "#hh{background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}"
+            ".hsvrow input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;"
+            "width:30px;height:30px;border-radius:50%;background:#fff;"
+            "border:2px solid rgba(0,0,0,.25);box-shadow:0 1px 3px rgba(0,0,0,.35)}"
+            ".hsvrow input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;"
+            "background:#fff;border:2px solid rgba(0,0,0,.25);box-shadow:0 1px 3px rgba(0,0,0,.35)}"
+            ".hsvsw{display:flex;align-items:center;gap:10px;margin-bottom:14px}"
+            ".hsvsw i{display:block;width:40px;height:40px;border-radius:12px;flex:none;"
+            "border:2px solid rgba(0,0,0,.14)}"
+            ".hsvsw span{font-size:14px;color:var(--muted);font-family:monospace}"
             ".palbtns{display:flex;gap:10px}"
             ".palbtns button{flex:1;padding:13px;border-radius:14px;cursor:pointer;"
             "border:1px solid var(--line)}"
@@ -367,7 +382,14 @@ private:
             "<button type=\"button\" id=\"reset\">Przywróć profile fabryczne</button></main>"
             "<div id=\"pal\"><div id=\"palbox\"><h2>Wybierz kolor</h2><div id=\"palgrid\"></div>"
             "<button type=\"button\" id=\"palcustom\">Własny kolor</button>"
-            "<input type=\"color\" id=\"palpick\" style=\"display:none\">"
+            "<div id=\"hsvbox\" style=\"display:none\">"
+            "<div class=\"hsvrow\"><label>Odcień</label>"
+            "<input type=\"range\" id=\"hh\" min=\"0\" max=\"359\" value=\"0\"></div>"
+            "<div class=\"hsvrow\"><label>Nasycenie</label>"
+            "<input type=\"range\" id=\"hs\" min=\"0\" max=\"100\" value=\"100\"></div>"
+            "<div class=\"hsvrow\"><label>Jasność</label>"
+            "<input type=\"range\" id=\"hv\" min=\"0\" max=\"100\" value=\"100\"></div>"
+            "<div class=\"hsvsw\"><i id=\"hswi\"></i><span id=\"hswt\"></span></div></div>"
             "<div class=\"palbtns\"><button type=\"button\" id=\"palclose\">Anuluj</button>"
             "<button type=\"button\" id=\"palok\">Wybierz</button></div>"
             "</div></div>"
@@ -407,15 +429,52 @@ private:
             "var cb=document.getElementById('palcustom');"
             "if(typeof sel=='string'){cb.style.background=sel;cb.classList.add('on');}"
             "else{cb.style.background='';cb.classList.remove('on');}}"
-            "function swatchClick(k){sel=k;renderPal();preview(cur,PAL[k][1]);}"
-            "function pickChanged(){sel=document.getElementById('palpick').value.toUpperCase();"
-            "renderPal();preview(cur,sel);}"
+            "function swatchClick(k){sel=k;renderPal();"
+            "document.getElementById('hsvbox').style.display='none';preview(cur,PAL[k][1]);}"
+            // Exact-inverse pair, no rounding of h/s/v before the reverse math - only the
+            // final byte gets Math.round - or hex2hsv(hsv2hex(x)) drifts off x by 1 LSB.
+            "function hsv2hex(h,s,v){s=s/100;v=v/100;"
+            "var c=v*s,x=c*(1-Math.abs((h/60)%2-1)),m=v-c,r,g,b;"
+            "if(h<60){r=c;g=x;b=0;}else if(h<120){r=x;g=c;b=0;}"
+            "else if(h<180){r=0;g=c;b=x;}else if(h<240){r=0;g=x;b=c;}"
+            "else if(h<300){r=x;g=0;b=c;}else{r=c;g=0;b=x;}"
+            "function h2(n){var b2=Math.round((n+m)*255);if(b2<0)b2=0;if(b2>255)b2=255;"
+            "var s2=b2.toString(16);return b2<16?'0'+s2:s2;}"
+            "return('#'+h2(r)+h2(g)+h2(b)).toUpperCase();}"
+            "function hex2hsv(hex){"
+            "var r=parseInt(hex.substr(1,2),16)/255,g=parseInt(hex.substr(3,2),16)/255,"
+            "b=parseInt(hex.substr(5,2),16)/255;"
+            "var mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,h=0;"
+            "if(d!=0){if(mx==r)h=60*(((g-b)/d)%6);"
+            "else if(mx==g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4);}"
+            "if(h<0)h+=360;return[h,mx==0?0:d/mx*100,mx*100];}"
+            // Track gradients show the effect of each slider at the other two's current
+            // values; the swatch mirrors what Wybierz would commit.
+            "function syncHsv(){"
+            "var h=+document.getElementById('hh').value,s=+document.getElementById('hs').value,"
+            "v=+document.getElementById('hv').value;"
+            "document.getElementById('hs').style.background="
+            "'linear-gradient(to right,'+hsv2hex(h,0,v)+','+hsv2hex(h,100,v)+')';"
+            "document.getElementById('hv').style.background="
+            "'linear-gradient(to right,#000,'+hsv2hex(h,s,100)+')';"
+            "var hex=hsv2hex(h,s,v);"
+            "document.getElementById('hswi').style.background=hex;"
+            "document.getElementById('hswt').textContent=hex;}"
+            "function hsvInput(){"
+            "var h=+document.getElementById('hh').value,s=+document.getElementById('hs').value,"
+            "v=+document.getElementById('hv').value;"
+            "sel=hsv2hex(h,s,v);syncHsv();renderPal();preview(cur,sel);}"
+            "document.getElementById('hh').oninput=hsvInput;"
+            "document.getElementById('hs').oninput=hsvInput;"
+            "document.getElementById('hv').oninput=hsvInput;"
             "document.getElementById('palcustom').onclick=function(){"
-            "var p=document.getElementById('palpick');p.value=hx(sel).toLowerCase();p.click();};"
-            // 'change' too: iOS Safari's native picker fires only on close, not per drag.
-            "document.getElementById('palpick').oninput=pickChanged;"
-            "document.getElementById('palpick').onchange=pickChanged;"
-            "function closePal(){document.getElementById('pal').style.display='none';cur=-1;}"
+            "var b=document.getElementById('hsvbox');"
+            "if(b.style.display=='none'){var c=hex2hsv(hx(sel));"
+            "document.getElementById('hh').value=c[0];document.getElementById('hs').value=c[1];"
+            "document.getElementById('hv').value=c[2];syncHsv();b.style.display='block';}"
+            "else{b.style.display='none';}};"
+            "function closePal(){document.getElementById('pal').style.display='none';"
+            "document.getElementById('hsvbox').style.display='none';cur=-1;}"
             "document.getElementById('palok').onclick=function(){"
             "R[cur][1]=sel;document.getElementById('sw'+cur).style.background=hx(sel);closePal();};"
             "document.getElementById('palclose').onclick=function(){preview(cur,hx(orig));closePal();};"
@@ -640,26 +699,18 @@ private:
     }
 
     /**
-     * Slot logic locked in task #51. An id already shown updates in place and
-     * becomes latest; a first preview since open() pairs the clicked id with the
-     * lowest other roster id (in its stored colour); otherwise the non-latest
-     * slot is replaced.
+     * The edited player is always on the left. A different id slides the one
+     * shown on the left over to the right (so an id already on the right swaps
+     * sides); the first preview since open() pairs it with the lowest other
+     * roster id, in that player's stored colour.
      */
     void applyPreview(const uint8_t playerId, const Color color) {
-        for (uint8_t side = 0; side < 2; side++) {
-            if (previewSlots[side].used && previewSlots[side].id == playerId) {
-                previewSlots[side].color = color;
-                previewLatest = side;
-                previewActive = true;
-                return;
-            }
+        if (previewActive && previewSlots[0].used && previewSlots[0].id == playerId) {
+            previewSlots[0].color = color;
+            return;
         }
 
         if (!previewActive) {
-            previewSlots[0] = PreviewSlot{playerId, color, true};
-
-            // Lowest other roster id, in its own stored colour - even if that
-            // happens to match `color`, per the locked spec.
             PreviewSlot right;
             const std::vector<UserProfile *> &players = roster.profiles();
             for (size_t i = 0; i < players.size(); i++) {
@@ -669,24 +720,19 @@ private:
                 }
             }
             previewSlots[1] = right;
-
-            // Right counts as latest even when no other player exists, so the
-            // next distinct id replaces the left slot rather than the empty right.
-            previewLatest = 1;
             previewActive = true;
-            return;
+        } else {
+            previewSlots[1] = previewSlots[0];
         }
 
-        const uint8_t target = static_cast<uint8_t>(1 - previewLatest);
-        previewSlots[target] = PreviewSlot{playerId, color, true};
-        previewLatest = target;
+        previewSlots[0] = PreviewSlot{playerId, color, true};
     }
 
     // ---- data --------------------------------------------------------------
 
     String buildData() const {
         String out;
-        out.reserve(1024);
+        out.reserve(1400);   // 32 custom #RRGGBB colours in one allocation
 
         out += F("var MAX=");
         out += PlayerRosterLimits::MAX_PLAYERS;
