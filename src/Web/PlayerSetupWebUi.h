@@ -433,10 +433,10 @@ private:
             "var cb=document.getElementById('palcustom');"
             "if(typeof sel=='string'){cb.style.background=sel;cb.classList.add('on');}"
             "else{cb.style.background='';cb.classList.remove('on');}"
-            // Near-white draws the most current per LED; 650 flags white-ish colours
-            // but not saturated two-channel ones like #00FFFF (510).
+            // 75 % of full white (765): near-white draws the most current per LED;
+            // saturated two-channel colours like #00FFFF (510) stay below it.
             "var x=hx(sel),t=parseInt(x.substr(1,2),16)+parseInt(x.substr(3,2),16)+parseInt(x.substr(5,2),16);"
-            "document.getElementById('palwarn').style.display=t>=650?'block':'none';}"
+            "document.getElementById('palwarn').style.display=t>=574?'block':'none';}"
             "function swatchClick(k){sel=k;renderPal();"
             "document.getElementById('hsvbox').style.display='none';preview(cur,PAL[k][1]);}"
             // Exact-inverse pair, no rounding of h/s/v before the reverse math - only the
