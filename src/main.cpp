@@ -17,6 +17,7 @@
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
 #include "DeviceMode/PadelMode/PadelMode.h"
 #include "DeviceMode/PlayerSetupMode/PlayerSetupMode.h"
+#include "DeviceMode/LayerDemoMode/LayerDemoMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "Tournament/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
@@ -208,6 +209,16 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 *gRemoteDevelopmentService,
                 playerSetupWebUi
+            );
+            break;
+
+        case DeviceModeState::LayerDemoMode:
+            deviceMode = std::make_unique<LayerDemoMode>(
+                ledDisplay,
+                *backDisplay,
+                einkDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { requestDeviceMode(state); }
             );
             break;
 

@@ -155,6 +155,9 @@ private:
              DeviceModeState::PlayerSetupMode, Colors::Aqua, Board::HAS_PLAYER_SETUP},
             {Str::MODE_OPTION_CONFIG_OLED, Str::MODE_OPTION_CONFIG, Str::LED_MODE_CONFIG,
              DeviceModeState::ConfigMode, Colors::White, true},
+            // Temporary (#52): removed once the celebration blend is chosen.
+            {Str::MODE_OPTION_LAYER_DEMO_OLED, Str::MODE_OPTION_LAYER_DEMO, Str::LED_MODE_LAYER_DEMO,
+             DeviceModeState::LayerDemoMode, Colors::Violet, Board::HAS_LAYER_DEMO},
         };
 
         count = static_cast<uint8_t>(sizeof(TABLE) / sizeof(TABLE[0]));
