@@ -20,7 +20,7 @@ class LedBreathingAnimation : public LedAnimation {
     bool running = false;
 
 public:
-    explicit LedBreathingAnimation(const uint16_t periodMs = 2000, const uint8_t minLevel = 102)
+    explicit LedBreathingAnimation(const uint16_t periodMs = 1400, const uint8_t minLevel = 102)
         : periodMs(periodMs), minLevel(minLevel) {
     }
 

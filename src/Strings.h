@@ -58,11 +58,6 @@ namespace Str {
     constexpr const char *const MODE_OPTION_PLAYERS = "PROFILE";
     constexpr const char *const MODE_OPTION_PLAYERS_OLED = " [PROFILE]";
     constexpr const char *const MODE_OPTION_CONFIG_OLED =  " [OPCJE]   ";
-    // Temporary (#52) layer demo.
-    constexpr const char *const MODE_OPTION_LAYER_DEMO = "TEST";
-    constexpr const char *const MODE_OPTION_LAYER_DEMO_OLED = "  [TEST]  ";
-    constexpr const char *const LAYER_DEMO_BREATH_ON = "ODDECH: TAK";
-    constexpr const char *const LAYER_DEMO_BREATH_OFF = "ODDECH: NIE";
 
     // Player picker
     constexpr const char *const PLAYERS_ROW_START = "START";
@@ -127,7 +122,6 @@ namespace Str {
     constexpr const char *const LED_MODE_CONFIG = "oPCJ";
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
-    constexpr const char *const LED_MODE_LAYER_DEMO = "tESt";   // temporary (#52)
     constexpr const char *const LED_PLAYERS_START = "StAr";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
     // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".
@@ -165,11 +159,6 @@ namespace Str {
     constexpr const char *const MODE_OPTION_PLAYERS = "Profiles";
     constexpr const char *const MODE_OPTION_PLAYERS_OLED = "[Profiles]";
     constexpr const char *const MODE_OPTION_CONFIG_OLED = " [Config] ";
-    // Temporary (#52) layer demo.
-    constexpr const char *const MODE_OPTION_LAYER_DEMO = "Test";
-    constexpr const char *const MODE_OPTION_LAYER_DEMO_OLED = "  [Test]  ";
-    constexpr const char *const LAYER_DEMO_BREATH_ON = "BREATH: ON";
-    constexpr const char *const LAYER_DEMO_BREATH_OFF = "BREATH: OFF";
 
     // Player picker
     constexpr const char *const PLAYERS_ROW_START = "Start";
@@ -219,7 +208,6 @@ namespace Str {
     constexpr const char *const LED_MODE_CONFIG = "CFG";
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
-    constexpr const char *const LED_MODE_LAYER_DEMO = "tESt";   // temporary (#52)
     constexpr const char *const LED_PLAYERS_START = "PLAY";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
     // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".

@@ -27,9 +27,6 @@ namespace Board {
     // what V1 has instead.
     constexpr bool HAS_PLAYER_SETUP = true;
 
-    // Temporary (#52): picks the celebration blend on V1; deleted with the demo.
-    constexpr bool HAS_LAYER_DEMO = true;
-
     constexpr uint8_t OLED_SDA = 33;
     constexpr uint8_t OLED_SCL = 34;
     constexpr uint8_t OLED_ROTATION = 2;   // mounted upside down
@@ -62,8 +59,6 @@ namespace Board {
 
     // The roster editor: an AP, a web page and the dual-QR placard on the e-paper.
     constexpr bool HAS_PLAYER_SETUP = true;
-
-    constexpr bool HAS_LAYER_DEMO = false;   // #52's temporary V1-only demo
 
     constexpr uint8_t OLED_SDA = 4;    // V1: 33 (33-37 are octal PSRAM here)
     constexpr uint8_t OLED_SCL = 5;    // V1: 34

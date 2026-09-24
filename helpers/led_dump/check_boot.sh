@@ -2,7 +2,9 @@
 # Boot sweep byte-identity (task #52): V1 and V2 frames vs golden_boot_v{1,2}.txt.
 #   ./check_boot.sh           diff against the goldens
 #   ./check_boot.sh --golden  write the goldens - refuses if they already exist;
-#                             they were taken once from the pre-layer sweep.
+#                             taken from the pre-layer sweep, then re-baselined
+#                             once for the ring band 394 -> 690 (2026-09-24), proven equal
+#                             to the pre-layer sweep with only that constant changed.
 set -euo pipefail
 cd "$(dirname "$0")"
 

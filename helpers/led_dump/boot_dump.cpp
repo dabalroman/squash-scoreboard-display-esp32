@@ -1,6 +1,7 @@
 // Boot sweep frame dump (task #52): one hex line per 5 ms step over a black
 // buffer via LedDisplay::renderBootFrame, compared by check_boot.sh against
-// goldens taken once from the pre-layer LedSweepAnimation::renderFrame. Permanent
+// goldens equal to the pre-layer LedSweepAnimation::renderFrame (re-baselined
+// once, for the ring band 394 -> 690, with that equality re-proven). Permanent
 // guard that the boot sweep stays byte-identical.
 #include <cstdio>
 

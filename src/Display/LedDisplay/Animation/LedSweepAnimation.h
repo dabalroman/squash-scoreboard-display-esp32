@@ -33,17 +33,18 @@ public:
         uint8_t repeats;
         bool rainbow;          ///< true: hue by radius. false: `solid`, varied by brightness only.
         CRGB solid;
+        uint16_t band;         ///< ring half-width in map units - see the Params::band note below
     };
 
     enum : uint16_t { FRAME_DELAY_MS = 10 };   ///< playBootSweep's frame pacing
 
     static Params bootParams() {
-        return Params{1000, 300, 1, true, CRGB::Black};
+        return Params{1000, 300, 1, true, CRGB::Black, 690};
     }
 
     /** Colour is set per win, so the caller fills `solid` before starting. */
     static Params celebrationParams() {
-        return Params{800, 300, 3, false, CRGB::Black};
+        return Params{800, 300, 3, false, CRGB::Black, 690};
     }
 
 private:
@@ -54,17 +55,15 @@ private:
     float originY = 0.0f;
     float maxRadius = 0.0f;   ///< farthest live slot from the origin; set with it
 
-    /** Shared by both boards - V1 and V2 use the same ~197-unit die pitch, so one
-     *  constant covers both maps (do not split this per board). The ring lights a
-     *  slot while |distance - radius| < BAND, so it clears a radial gap of G only
-     *  while BAND > G/2. Worst gaps measured: V2 254 units from the panel centre,
-     *  595 from a half origin (the far side's dies bunch up at similar radii); V1
-     *  354 from the colon midpoint, 189 from a half centroid. The largest, 595,
-     *  needs BAND > 298 - so 394 covers every case with margin. A thinner ring
-     *  falls into a gap and blanks whole frames; check_v2/check_v1 guard it.
-     *  Function-local at every use: a static constexpr member is an ODR link
-     *  error on GCC 8.4. */
-    static float band() { return 394.0f; }
+    /* Params::band - the ring's half-width in map units, per parameterisation
+     * and shared by both boards (V1 and V2 use the same ~197-unit die pitch; do
+     * not split it per board). The ring lights a slot while |distance - radius|
+     * < band, so it clears a radial gap of G only while band > G/2. Worst gaps
+     * measured: V2 254 units from the panel centre, 595 from a half origin; V1
+     * 354 from the colon midpoint, 189 from a half centroid - so any band above
+     * 298 is safe, and a thinner one blanks whole frames (check_v1/check_v2 guard
+     * it). Boot and celebration both use 690 (~3.5 die pitches), a look choice:
+     * wide enough to wash over the score it passes (user, 2026-09-24; was 394). */
 
     void recomputeMaxRadius() {
         maxRadius = 0.0f;
@@ -197,7 +196,7 @@ public:
     void renderFrame(const uint32_t elapsedMs, CRGB *out) const {
         // The ring must still clear the farthest slot, so the sweep runs one band past it.
         constexpr float HUE_SPAN = 200.0f;   // not 255: the edge must not wrap back to red
-        const float BAND = band();
+        const float BAND = static_cast<float>(params.band);
         const float sweepLen = maxRadius + BAND;
 
         const uint32_t clamped = elapsedMs > params.durationMs ? params.durationMs : elapsedMs;

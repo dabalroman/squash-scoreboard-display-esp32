@@ -44,7 +44,7 @@ class LedDisplay {
     LedSweepAnimation sweep = LedSweepAnimation(LedSweepAnimation::celebrationParams());
     LedBreathingAnimation breathing;
     LedLayerStack layers{elementMap};
-    BlendMode celebrationBlend = BlendMode::Screen;
+    BlendMode celebrationBlend = BlendMode::Normal;   // picked on V1 among Normal/Screen/Add/Lighten, 2026-09-24
 
     void buildElementMap() {
         glyphA.markSlots(elementMap, LedTarget::DigitA);
@@ -215,12 +215,12 @@ public:
         layers.set(LedLayerStack::LAYER_2, &sweep, celebrationBlend, LedTarget::Front, LayerMask::AllSlots);
     }
 
-    // Demo-only (#52 layer demo): removed once the celebration blend is chosen.
+    // Applies from the next startCelebration(); nothing in production changes it.
     void setCelebrationBlend(const BlendMode mode) {
         celebrationBlend = mode;
     }
 
-    // Demo-only (#52 layer demo): dims the lit front on layer 1.
+    // Dims the lit front on layer 1. No view uses it yet; resetAnimations() stops it.
     void setBreathing(const bool enabled) {
         if (enabled) {
             breathing.start(millis());
