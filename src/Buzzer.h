@@ -9,8 +9,6 @@ class Buzzer {
     ulong offAtMs = 0;
     bool enabled = true;
 
-    // Patterns are on/off durations in ms, terminated by 0. Function-local statics
-    // rather than static class members: those are an ODR link error on GCC 8.4.
     const uint16_t *pattern = nullptr;
 
     uint8_t patternIndex = 0;

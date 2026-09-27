@@ -9,11 +9,8 @@ class RemoteInput {
     bool canTakeAction = false;
     ulong canBeTriggerAtMs = 0;
 
-    // Measured on the bench (V2, 37 presses): the receiver drives the line HIGH for the
-    // whole press and LOW on release, with no dropouts - so a hold is read from the pin
-    // level, not from edge timing. Taps run 236-360 ms, deliberate holds 2498-7595 ms.
-    static constexpr ulong LONG_PRESS_MS = 2000;      // holds aimed at "3 s" land at 2.5-3.0 s; do not raise
-    static constexpr ulong RELEASE_CONFIRM_MS = 40;   // margin only; no dropout was ever observed
+    static constexpr ulong LONG_PRESS_MS = 2000;
+    static constexpr ulong RELEASE_CONFIRM_MS = 40;
 
     bool deferToRelease = false;
     bool pressActive = false;

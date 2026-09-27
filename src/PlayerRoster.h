@@ -9,6 +9,7 @@
 
 #include "PlayerPalette.h"
 #include "UserProfile.h"
+#include "Utils.h"
 
 /**
  * The player roster, as data rather than code. Board-agnostic - no `#if BOARD_REV`.
@@ -38,8 +39,7 @@
 namespace PlayerRosterLimits {
     constexpr uint8_t MAX_PLAYERS = 32;
     constexpr uint8_t NAME_SIZE = 10;      // 9 characters + NUL, matching UserProfile
-    constexpr uint8_t BLOB_VERSION = 2;    // v2 added the uid
-    constexpr uint8_t BLOB_VERSION_LEGACY = 1;
+    constexpr uint8_t BLOB_VERSION = 2;
 }
 
 struct PlayerEntry {
@@ -54,21 +54,6 @@ struct PlayersData {
     uint8_t version;
     uint8_t count;
     PlayerEntry entries[PlayerRosterLimits::MAX_PLAYERS];
-} __attribute__((packed));
-
-// The v1 layout, kept only so a roster saved before uids existed is migrated
-// rather than thrown away. Never written - migration always writes v2 back.
-struct PlayerEntryV1 {
-    char name[PlayerRosterLimits::NAME_SIZE];
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-} __attribute__((packed));
-
-struct PlayersDataV1 {
-    uint8_t version;
-    uint8_t count;
-    PlayerEntryV1 entries[PlayerRosterLimits::MAX_PLAYERS];
 } __attribute__((packed));
 
 // One factory player. The list itself lives in main.cpp, where player profiles
@@ -119,22 +104,17 @@ public:
     }
 
     /**
-     * setup() only. Reads the stored roster, migrating a v1 blob if it finds one,
-     * or seeds the factory list when there is nothing valid to read.
+     * setup() only. Reads the stored roster, or seeds the factory list when there
+     * is nothing valid to read.
      */
     void load(const FactoryPlayer *factory, const uint8_t count) {
         factoryList = factory;
         factoryCount = count > PlayerRosterLimits::MAX_PLAYERS ? PlayerRosterLimits::MAX_PLAYERS : count;
 
         PlayersData data;
-        bool writeBack = false;
 
-        if (!readBlob(data, writeBack)) {
+        if (!readBlob(data)) {
             seedDefaults(data);
-            writeBack = true;
-        }
-
-        if (writeBack) {
             writeBlob(data);
         }
 
@@ -162,29 +142,15 @@ public:
     }
 
 private:
-    // `migrated` is set when a v1 blob was upgraded and has to be written back.
-    bool readBlob(PlayersData &out, bool &migrated) {
+    bool readBlob(PlayersData &out) {
         bool ok = false;
 
         if (preferences.begin(NAMESPACE, true)) {
-            const size_t length = preferences.getBytesLength(KEY_PLAYERS);
-
-            if (length == sizeof(PlayersData)) {
-                ok = preferences.getBytes(KEY_PLAYERS, &out, sizeof(PlayersData)) == sizeof(PlayersData)
-                     && out.version == PlayerRosterLimits::BLOB_VERSION
-                     && out.count >= 1
-                     && out.count <= PlayerRosterLimits::MAX_PLAYERS;
-            } else if (length == sizeof(PlayersDataV1)) {
-                PlayersDataV1 legacy;
-                if (preferences.getBytes(KEY_PLAYERS, &legacy, sizeof(legacy)) == sizeof(legacy)
-                    && legacy.version == PlayerRosterLimits::BLOB_VERSION_LEGACY
-                    && legacy.count >= 1
-                    && legacy.count <= PlayerRosterLimits::MAX_PLAYERS) {
-                    migrateV1(legacy, out);
-                    migrated = true;
-                    ok = true;
-                }
-            }
+            ok = preferences.getBytesLength(KEY_PLAYERS) == sizeof(PlayersData)
+                 && preferences.getBytes(KEY_PLAYERS, &out, sizeof(PlayersData)) == sizeof(PlayersData)
+                 && out.version == PlayerRosterLimits::BLOB_VERSION
+                 && out.count >= 1
+                 && out.count <= PlayerRosterLimits::MAX_PLAYERS;
         }
 
         preferences.end();
@@ -200,23 +166,6 @@ private:
         preferences.end();
 
         return written == sizeof(PlayersData);
-    }
-
-    // Same people, same colours, freshly minted identities - a v1 roster never had
-    // any, so this is the one moment where existing players get theirs.
-    static void migrateV1(const PlayersDataV1 &legacy, PlayersData &out) {
-        memset(&out, 0, sizeof(PlayersData));
-        out.version = PlayerRosterLimits::BLOB_VERSION;
-        out.count = legacy.count;
-
-        for (uint8_t i = 0; i < legacy.count; i++) {
-            memcpy(out.entries[i].name, legacy.entries[i].name, PlayerRosterLimits::NAME_SIZE);
-            out.entries[i].name[PlayerRosterLimits::NAME_SIZE - 1] = '\0';
-            out.entries[i].r = legacy.entries[i].r;
-            out.entries[i].g = legacy.entries[i].g;
-            out.entries[i].b = legacy.entries[i].b;
-            out.entries[i].uid = generateUid(out, i);
-        }
     }
 
     void seedDefaults(PlayersData &out) const {

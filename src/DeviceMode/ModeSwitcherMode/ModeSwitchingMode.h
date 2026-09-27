@@ -5,6 +5,7 @@
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Views/ModeSwitchingView.h"
+#include "Utils.h"
 
 class ModeSwitchingMode final : public DeviceMode {
 

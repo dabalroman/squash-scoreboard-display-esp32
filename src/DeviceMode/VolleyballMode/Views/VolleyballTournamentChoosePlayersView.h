@@ -13,6 +13,7 @@
 #include "Display/ScrollableWidget.h"
 #include "Display/LedDisplay/Renderer/TournamentPlayersBarRenderer.h"
 #include "PlayerRoster.h"
+#include "Utils.h"
 
 class VolleyballTournamentChoosePlayersView final : public View {
     Tournament &tournament;

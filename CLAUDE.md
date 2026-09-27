@@ -61,7 +61,7 @@ library change, run these checks **before** uploading:
 | Check | Why |
 |---|---|
 | `partitions.bin` old vs new is identical | OTA writes only the app image; the device keeps its own table. A changed NVS offset loses WiFi credentials and the device falls back to AP mode, unreachable. |
-| New image fits the app slot | `app0` and `app1` are 1280 KB each. Current build: 65% (852,682 bytes as reported by `pio run`; the `.bin` on disk is 853,040). Core 3.x pushed this to 81%. |
+| New image fits the app slot | `app0` and `app1` are 1280 KB each. Current build: 68.5% (898,322 bytes as reported by `pio run`; the `.bin` on disk is 898,688). Core 3.x pushed this to 81%. |
 | Failure mode is safe | `Update.end(true)` switches the boot partition **only on success**, so a corrupt or partial upload leaves the running firmware bootable. |
 
 Then verify with a **two-cycle OTA test**: flash the new firmware, then flash
@@ -185,7 +185,8 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   - The drop comes from the **font's** ascent, measured once per `initBigFont`/`initSmallFont` from a sample string, never from the individual string. Fitting each string exactly makes the top score hop 1-2 px as its value changes (`1` and `4` ascend 28/27 against 29 for the rest) and puts the menu's `>` marker a pixel off its label. Line 0 big-font baseline is therefore a fixed 40, small-font 21.
   - **No battery readout on the OLED.** It sat wholly inside the dead rows and the 3-row menu leaves it nowhere to move, so it was removed for good - the e-paper already carries it on both screens that showed it. That removal is *not* part of the `DEAD_TOP_ROWS` revert.
 - Bar renderers live in `src/Display/LedDisplay/Renderer/`. Each exposes a static `toLedBarPixels()` returning `std::array<LedBarPixel, LedBar::PIXEL_COUNT>`.
-- `static constexpr` arrays as class members in header-only adapters cause ODR linker errors with GCC 8.4 (C++14). Declare them as local `constexpr` variables inside the static method instead.
+- **The language standard is C++11** (`-std=gnu++11`, set by the pinned Arduino core's builder, GCC 8.4). Do not raise it: under `-std=gnu++14` some libraries no longer compile. So no C++14 features - `src/Utils.h` backfills `std::make_unique`, and every file that calls it must include `Utils.h` itself rather than rely on another header having pulled it in.
+- `static constexpr` arrays as class members in header-only adapters cause ODR linker errors under C++11 (no inline variables). Declare them as local `constexpr` variables inside the static method instead.
 - **FastLED is a pinned, load-bearing dependency (3.9.16).** See *READ FIRST*.
   The project uses only `addLeds`, `show`, `clear`, `setBrightness`,
   `setMaxRefreshRate` and `CRGB` - **none** of its colour engine (no `CHSV`,
@@ -279,7 +280,7 @@ The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone 
 - `PlayerRoster` (`src/PlayerRoster.h`, board-agnostic) owns the profiles and exposes `profiles()` as `std::vector<UserProfile *> &`, so every mode's signature is unchanged. Built exactly once, by `load()` in `setup()`.
 - Its own NVS key `"ply"` in namespace `"ns"` - **never a field in `PrefsData`**, whose `read()` rejects the blob unless `getBytesLength == sizeof(PrefsData)`, so growing it would drop brightness *and* the WiFi credentials.
 - NVS usage: the roster ("ply") blob is ~608 B and `PrefsData` ("set") is 131 B, both in namespace "ns", against V1's 20,480 B NVS partition — under 5% used, so headroom is not a concern for either blob.
-- Blob is fixed-size `PlayersData` v2. `readBlob()` recognises the v1 layout (no uid) by its length and migrates it in place rather than reseeding, so an update never wipes a roster. Keep that path when adding a v3.
+- Blob is fixed-size `PlayersData` v2. `readBlob()` accepts only an exact v2 blob (length, version, count) and seeds the factory list otherwise. The v1 (no uid) migration was dropped once both devices had run v2 firmware, so a v3 must bring its own v2 migration, or an update wipes the roster.
 - **Two identifiers, deliberately** (`UserProfile`): `id` is the position in this boot's roster - what the LEDs show as `P  3` and what `MatchOrderKeeper` keys on - and is renumbered by any reorder. `uid` is a `uint32_t` from `esp_random()`, stored beside the name, and survives rename/recolour/reorder. Use `id` inside a match, `uid` for anything outliving one. Nothing persists an `id`, which is what makes positional ids safe.
 - Colours come from `PlayerPalette` / `PlayerColors` (`src/PlayerPalette.h`), **not** `Colors::` - those are UI accents. 16 entries, picked by the user on the LEDs (2026-09-24) to replace a screen-derived set whose pale entries washed out; none trips the editor's bright or dark warning. Read the caveat block in that header before changing them: several entries share a hue (Pomarańczowy/Brązowy, the three greens, Czerwony/Magenta/Różowy) and a WS2812 conveys hue far better than lightness. Changing an entry recolours nobody - stored players keep raw RGB and show as custom until re-picked.
 - The `/save` colour field is a palette **index** for a preset, or `#RRGGBB` (`PlayerPalette::fromHex`, strict) for a custom colour - the blob already stores raw RGB, so no layout change. The page shows a stored colour as a preset only on an exact match (`isPreset`); anything else, including one left over from an older palette, renders and re-saves as its own hex, never snapped to the nearest preset.
@@ -301,17 +302,15 @@ The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone 
 - The placard has **no title bar** - the two QR codes and their captions need the full 296 px, and the menu entry has just named the screen. It is a baked bitmap and cannot read `Strings.h`; its wording lives in `helpers/player_setup_qr.py`. Regenerate with `python helpers/player_setup_qr.py` (needs `pillow` and `qrcode`) after changing the AP name, password, URL or captions.
 
 ### Battery (V2)
-
-### Battery (V2)
 `BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17. Volts appear only in the log now; both screens show percent.
 
 `BatteryMonitor` (`src/BatteryMonitor.h`) turns that voltage into what the user sees. Board-agnostic — **no `#if BOARD_REV`**; on V1 the sensor is unavailable, so nothing downstream fires.
 - `voltsToPercent()` interpolates one curve: the **midpoint** of the resting-OCV and 10 W-load columns for the 1S2P INR18650-35E pack (3.000 V = 0 %, 4.175 V = 100 %, 10 % steps). It is a local `constexpr` inside the static method (a `static constexpr` array member is an ODR link error on GCC 8.4) and the single place to retune the mapping.
 - Two separate numbers, deliberately: the **mapped** percent drives the thresholds, the **shown** percent (5 % steps, only ever falling, jumping up only on a >= 10 point rise) is what displays print — otherwise the readout flickers as LED load sags the cell.
 - Low state: mapped <= 10 % held for 60 s continuously; clears above 15 % (hysteresis), so a single LED-load sag does not trip it. `takeLowWarning()` is the one-shot that fires the overlay.
-- The overlay is additionally rate-limited to one per `WARNING_COOLDOWN_MS` (5 min). Hysteresis alone is not enough: under LED load the voltage still floats across the 30/35 pair, so `low` clears and re-latches and the one-shot re-arms every time. The cooldown gates only the *warning* - `isLow()`, and therefore the brightness cap, keeps tracking the live state.
+- The overlay is additionally rate-limited to one per `WARNING_COOLDOWN_MS` (5 min). Hysteresis alone is not enough: under LED load the voltage still floats across the 10/15 pair, so `low` clears and re-latches and the one-shot re-arms every time. The cooldown gates only the *warning* - `isLow()`, and therefore the brightness cap, keeps tracking the live state.
 - While low, `main.cpp` sets `LedDisplay::setBrightnessCap(31)` (menu level 1). The cap is **not** persisted and callers never see it: `setBrightness()` stores what was requested and applies `min(requested, cap)`, so `ConfigView`'s brightness edits stay capped on their own. Always set brightness through `LedDisplay`, never `FastLED.setBrightness` directly.
 - Shown on the e-paper only: the mode selector footer and the CONFIG menu footer. The rear OLED no longer prints it at all (see `BackDisplay`).
 
 ### `lib/` directory
-The `lib/` directory contains only backup files (`.h~`) and is not used for active code. All project source is under `src/`.
+`lib/` holds only PlatformIO's stock `README` and no code. All project source is under `src/`.

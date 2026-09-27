@@ -5,6 +5,7 @@
 #include "Web/PlayerSetupWebUi.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "Views/PlayerSetupView.h"
+#include "Utils.h"
 
 /**
  * The roster editor. Entering forces the setup AP up whatever `enableDevMode` says -

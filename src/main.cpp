@@ -7,6 +7,7 @@
 
 #include "Strings.h"
 #include "Board.h"
+#include "Utils.h"
 
 #include "DeviceMode/DeviceModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -74,7 +75,6 @@ void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = Board::
 void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = Board::RF_D3; }
 
 unsigned long lastUpdate = 0;
-unsigned long lastEInkStatsLog = 0;
 
 std::unique_ptr<DeviceMode> deviceMode;
 DeviceModeState deviceState = DeviceModeState::Booting;
@@ -287,11 +287,6 @@ void setup() {
         }
         backDisplay->display();
 
-        // WebServer reads the whole multipart body inside handleClient(), so loop()
-        // - and with it the e-paper's refresh pump - is stalled for the entire
-        // upload. This screen has to be driven to completion right here, and as a
-        // full refresh: an update screen must not carry the ghost of the match
-        // behind it.
         einkDisplay.dismissSplash();
         einkDisplay.showMessage(
             failed ? (detail != nullptr ? detail : Str::OTA_EINK_TITLE_ERROR) : Str::OTA_EINK_TITLE_STARTED,
@@ -346,21 +341,8 @@ void showLowBatteryOverlay() {
 }
 
 void loop() {
-    // First, before the frame gate: polls the panel's BUSY pin on every pass.
     einkDisplay.update();
-
-    if (einkDisplay.available() && millis() - lastEInkStatsLog >= 30000) {
-        lastEInkStatsLog = millis();
-        printLn("EInk: worst start %lu us, worst finish %lu us, partials %lu (%lu since full), full %lu, timeouts %lu, busy never rose %lu",
-                (unsigned long) einkDisplay.worstStartUs(), (unsigned long) einkDisplay.worstFinishUs(),
-                (unsigned long) einkDisplay.refreshes(), (unsigned long) einkDisplay.partialsSinceFull(),
-                (unsigned long) einkDisplay.fullRefreshes(), (unsigned long) einkDisplay.timeouts(),
-                (unsigned long) einkDisplay.busyNeverRose());
-    }
-
     gRemoteDevelopmentService->loop();
-    // Right after it: a save handled above arms a restart a few hundred ms out, so
-    // the socket flushes before the board goes down.
     playerSetupWebUi.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
     gBuzzer.loop();

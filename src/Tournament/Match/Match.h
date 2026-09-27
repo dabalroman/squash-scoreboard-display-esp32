@@ -6,6 +6,7 @@
 #include "Tournament/Game/Game.h"
 #include "Tournament/Rules/Rules.h"
 #include "Tournament/Game/GameResult.h"
+#include "Utils.h"
 
 /**
  * Two preselected players play against each other in many rounds.

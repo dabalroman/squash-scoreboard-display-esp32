@@ -5,6 +5,7 @@
 
 #include "Match/Match.h"
 #include "Match/MatchOrderKeeper.h"
+#include "Utils.h"
 
 /**
  * Multiple players play against each other in many rounds.

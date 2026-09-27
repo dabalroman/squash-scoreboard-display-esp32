@@ -46,7 +46,6 @@ public:
         lastSampleMs = millis();
     }
 
-    // Non-blocking: at most one ADC sample per SAMPLE_INTERVAL_MS.
     void loop() {
         const uint32_t now = millis();
         if (now - lastSampleMs < BatterySensorConfig::SAMPLE_INTERVAL_MS) {
