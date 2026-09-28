@@ -121,8 +121,8 @@ public:
         }
 
         if (webUi.hasPreview()) {
-            const PlayerSetupWebUi::PreviewSlot &left = webUi.previewSlot(0);
-            const PlayerSetupWebUi::PreviewSlot &right = webUi.previewSlot(1);
+            const PreviewSlot &left = webUi.previewSlot(0);
+            const PreviewSlot &right = webUi.previewSlot(1);
             const Color leftColor = left.used ? left.color : Colors::Black;
             const Color rightColor = right.used ? right.color : Colors::Black;
 

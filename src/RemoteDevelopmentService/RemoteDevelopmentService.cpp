@@ -155,8 +155,8 @@ void RemoteDevelopmentService::setupOTA() {
     }
 
     // "/" is registered by extraRoutes above (PlayerSetupWebUi, identical on both
-    // boards). The WiFi credentials form lives only on GET /update now, which that
-    // same registration adds and which carries no `active` gate.
+    // boards). The WiFi credentials form lives on GET /settings, which that same
+    // registration adds and which carries no gate; only its settings data is gated.
     OTAServer->begin();
 
     isOTAActive = true;

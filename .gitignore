@@ -4,6 +4,8 @@
 /.mcp.json
 # Splash artwork stays local; the header it generates is what gets committed.
 /assets/eink/
+# Built from web/ by helpers/web_assets.py on every build.
+/src/Web/WebAssets.generated.h
 
 # Editor backup files (e.g. Emacs ~ backups left in src/ and lib/)
 *~

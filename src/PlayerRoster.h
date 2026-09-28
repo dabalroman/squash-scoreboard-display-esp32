@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "PlayerPalette.h"
+#include "PlayerRosterData.h"
 #include "UserProfile.h"
 #include "Utils.h"
 
@@ -35,26 +36,6 @@
  * web editor's save - which always ends in safeRestart(). So nothing can be left
  * holding a stale positional id or a dangling pointer.
  */
-
-namespace PlayerRosterLimits {
-    constexpr uint8_t MAX_PLAYERS = 32;
-    constexpr uint8_t NAME_SIZE = 10;      // 9 characters + NUL, matching UserProfile
-    constexpr uint8_t BLOB_VERSION = 2;
-}
-
-struct PlayerEntry {
-    uint32_t uid;
-    char name[PlayerRosterLimits::NAME_SIZE];
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-} __attribute__((packed));
-
-struct PlayersData {
-    uint8_t version;
-    uint8_t count;
-    PlayerEntry entries[PlayerRosterLimits::MAX_PLAYERS];
-} __attribute__((packed));
 
 // One factory player. The list itself lives in main.cpp, where player profiles
 // have always been written. No uid here - those are generated when it is seeded.
@@ -86,21 +67,11 @@ public:
 
         // Terminates: at most `filled` (<= 32) values are taken, and each step
         // moves to a different one.
-        while (candidate == 0 || isUidTaken(data, filled, candidate)) {
+        while (candidate == 0 || PlayerRosterData::isUidTaken(data, filled, candidate)) {
             candidate++;
         }
 
         return candidate;
-    }
-
-    static bool isUidTaken(const PlayersData &data, const uint8_t filled, const uint32_t uid) {
-        for (uint8_t i = 0; i < filled && i < PlayerRosterLimits::MAX_PLAYERS; i++) {
-            if (data.entries[i].uid == uid) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

@@ -149,23 +149,36 @@ namespace PlayerPalette {
      * path both use. Exactly 7 characters; anything else is false and `out` is
      * left untouched, matching the index path's all-or-nothing validation.
      */
-    inline bool fromHex(const String &text, Color &out) {
-        if (text.length() != 7 || text[0] != '#') {
+    inline bool fromHex(const char *text, Color &out) {
+        if (text == nullptr || text[0] != '#') {
             return false;
         }
 
         uint8_t channel[3];
         for (uint8_t i = 0; i < 3; i++) {
+            // hi before lo: a NUL is not a nibble, so a short string never reads past it.
             const int8_t hi = hexNibble(text[1 + i * 2]);
+            if (hi < 0) {
+                return false;
+            }
             const int8_t lo = hexNibble(text[2 + i * 2]);
-            if (hi < 0 || lo < 0) {
+            if (lo < 0) {
                 return false;
             }
             channel[i] = static_cast<uint8_t>((hi << 4) | lo);
         }
 
+        if (text[7] != '\0') {
+            return false;
+        }
+
         out = Color(channel[0], channel[1], channel[2]);
         return true;
+    }
+
+    // The length check keeps an embedded NUL from passing as a 7-character string.
+    inline bool fromHex(const String &text, Color &out) {
+        return text.length() == 7 && fromHex(text.c_str(), out);
     }
 
     /**

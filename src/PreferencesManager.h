@@ -2,21 +2,13 @@
 #define PREFERENCES_MANAGER_H
 
 #include <Preferences.h>
+#include <functional>
 
-struct PrefsData {
-    uint8_t brightness = 127;
-    uint8_t enableBuzzer = 1;
-    // Joins the house network at boot, for OTA and telnet without standing at the
-    // device. Default OFF: with an empty or invalid NVS blob a fresh device would
-    // otherwise spend ~15 s failing STA against an empty SSID and then raise an open
-    // AP. Stored blobs keep their own value, so V1's OTA path is untouched.
-    uint8_t enableDevMode = 0;
-    char wifiSSID[64] = "";
-    char wifiPassword[64] = "";
-} __attribute__((packed));
+#include "PrefsData.h"
 
 class PreferencesManager {
     Preferences preferences;
+    std::function<void(const PrefsData &)> applyHandler;
 
     static constexpr const char *NAMESPACE = "ns";
     static constexpr const char *KEY_SETTINGS = "set";
@@ -28,6 +20,19 @@ public:
     PreferencesManager() {
     }
 
+    // Set once from main.cpp: this class never learns about LEDs or the buzzer.
+    void setApplyHandler(const std::function<void(const PrefsData &)> &handler) {
+        applyHandler = handler;
+    }
+
+    // Pushes `settings` to the hardware. Must never block, restart or touch WiFi:
+    // it also runs inside POST /connect's save(), just before its restart.
+    void apply() {
+        if (applyHandler) {
+            applyHandler(settings);
+        }
+    }
+
     void read() {
         if (preferences.begin(NAMESPACE, true)
             && preferences.getBytesLength(KEY_SETTINGS) == sizeof(PrefsData)
@@ -37,10 +42,15 @@ public:
         preferences.end();
     }
 
+    // The apply choke point: every writer (CONFIG exit, web settings, /connect)
+    // gets its values live without applying them by hand. Applied even if NVS
+    // refuses - the RAM values are what the device runs with either way.
     void save() {
-        if (!preferences.begin(NAMESPACE, false)) return;
-        preferences.putBytes(KEY_SETTINGS, &settings, sizeof(PrefsData));
-        preferences.end();
+        if (preferences.begin(NAMESPACE, false)) {
+            preferences.putBytes(KEY_SETTINGS, &settings, sizeof(PrefsData));
+            preferences.end();
+        }
+        apply();
     }
 };
 

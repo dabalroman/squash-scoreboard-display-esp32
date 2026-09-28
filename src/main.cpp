@@ -95,7 +95,17 @@ const FactoryPlayer FACTORY_PLAYERS[] = {
 constexpr uint8_t FACTORY_PLAYER_COUNT = sizeof(FACTORY_PLAYERS) / sizeof(FACTORY_PLAYERS[0]);
 
 PlayerRoster playerRoster;
-PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager);
+PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager, [](const uint8_t brightness) {
+    ledDisplay.setBrightness(brightness);
+});
+
+// What PreferencesManager::save() applies. Dev Mode is deliberately absent: it is
+// network topology, read at boot and by disablePlayerSetupAp() on PROFILE exit, and
+// save() also runs inside POST /connect, where touching WiFi would race its restart.
+void applySettings(const PrefsData &settings) {
+    ledDisplay.setBrightness(settings.brightness);
+    gBuzzer.setEnabled(settings.enableBuzzer);
+}
 
 void initHardware() {
     Wire.begin(Board::OLED_SDA, Board::OLED_SCL);
@@ -106,7 +116,6 @@ void initHardware() {
     backDisplay = std::make_unique<BackDisplay>(&display);
 
     FastLED.addLeds<NEOPIXEL, Board::LED_DATA>(pixels, Board::LED_COUNT);
-    ledDisplay.setBrightness(preferencesManager.settings.brightness);
     FastLED.setMaxRefreshRate(400);
     FastLED.clear();
     FastLED.show();
@@ -234,10 +243,13 @@ void setup() {
         Serial.begin(115200);
     }
 
+    preferencesManager.setApplyHandler(applySettings);
     preferencesManager.read();
     // Before any mode is built: every mode is handed playerRoster.profiles().
     playerRoster.load(FACTORY_PLAYERS, FACTORY_PLAYER_COUNT);
     initHardware();
+    // Stored brightness before the boot sweep, buzzer state before anything can sound.
+    preferencesManager.apply();
     einkDisplay.begin();   // V2: blocks ~3 s once (initial full refresh), then the splash
     // begin() only queues the splash; the sweep below blocks before loop() can send it.
     einkDisplay.flushRefresh();
@@ -248,6 +260,10 @@ void setup() {
     // Before init(): the routes are registered with the port-80 server whenever it
     // is created, which may be here or later, when the roster editor raises its AP.
     remoteDev.setExtraRouteRegistrar([](WebServer &server) { playerSetupWebUi.registerRoutes(server); });
+    // Lets the web UI's gate open on Dev Mode + STA, not only PROFILE. `remoteDev`
+    // has static storage duration, so capturing it by reference here is safe for
+    // the lifetime of the callback.
+    playerSetupWebUi.setStaConnectedCheck([&remoteDev] { return remoteDev.isStaConnected(); });
     // Same capture rule as above - file-scope globals only. It is here, and not in
     // RemoteDevelopmentService, so that class never learns about LedDisplay or
     // EInkDisplay: it reports a stage, main.cpp decides what the board shows.
@@ -297,7 +313,6 @@ void setup() {
     remoteDev.init(preferencesManager, *backDisplay);
     gRemoteDevelopmentService = &remoteDev;
 
-    gBuzzer.setEnabled(preferencesManager.settings.enableBuzzer);
     // Any accepted press also skips the boot splash; it still does its normal job.
     remoteInputManager.setOnActionTaken([] {
         gBuzzer.trigger();

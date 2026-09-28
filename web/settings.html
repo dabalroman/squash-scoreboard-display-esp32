@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ustawienia</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<!--
+  The CONFIG menu's settings, from the phone. Brightness and buzzer come from the
+  gated /api/settings and save to POST /settings (applied live, no restart).
+  The developer panel posts to POST /settings/dev, which saves and restarts. Its
+  Wi-Fi half is NOT gated: it is how a sealed V1 on the wrong network gets new
+  credentials, so it shows whatever /api/settings answers, and as a plain form it
+  works with JavaScript off. The Dev Mode toggle appears only when the gate is open.
+-->
+<nav><a href="/">Profile</a><a class="on" href="/settings">Ustawienia</a><a href="/update">Aktualizacja oprogramowania</a></nav>
+<header><h1>Ustawienia</h1>
+<p class="sub">Jasność i dźwięk zapisują się bez restartu tablicy.</p></header>
+<main>
+<p id="closed" class="note" style="display:none">Edycja jest dostępna na ekranie <b>PROFILE</b> albo w trybie deweloperskim w sieci Wi-Fi.</p>
+
+<section id="editor" class="card" style="display:none">
+<h2>Wyświetlacz i dźwięk</h2>
+<div class="field"><label>Jasność wyświetlacza</label>
+<div class="sl" id="lvsl"><i></i><b></b></div></div>
+<p class="warn" id="lvwarn" style="display:none">Użycie wysokiego poziomu jasności skróci czas pracy urządzenia.</p>
+<div class="field"><label>Dźwięk</label>
+<div class="seg"><button type="button" id="bz1">Włączony</button>
+<button type="button" id="bz0">Wyłączony</button></div></div>
+<div class="actions"><button type="button" id="save" class="btn primary">Zapisz</button></div>
+<div id="msg" class="msg"></div>
+</section>
+
+<form id="devform" class="card dev" method="POST" action="/settings/dev">
+<h2>Dla programistów</h2>
+<p class="warn">Te ustawienia służą do rozwoju oprogramowania. Nie zmieniaj ich, jeśli nie wiesz, do czego służą.</p>
+<div class="field" id="devset" style="display:none"><label>Tryb deweloperski</label>
+<div class="seg red"><button type="button" id="dm1">Włączony</button>
+<button type="button" id="dm0">Wyłączony</button></div>
+<p class="hint">Tryb deweloperski przeznaczony jest do aktualizacji i testowania eksperymentalnych wersji oprogramowania. Może powodować migotanie wyświetlacza. Tylko dla odważnych.</p></div>
+<div class="field"><label for="ssid">Sieć Wi-Fi</label>
+<input type="text" name="ssid" id="ssid" maxlength="63" required placeholder="Nazwa sieci"></div>
+<div class="field"><label for="pass">Hasło Wi-Fi</label>
+<input type="password" name="password" id="pass" maxlength="63" placeholder="Puste = bez zmian">
+<p class="hint">Puste hasło zostawia zapisane. Przy nowej sieci oznacza sieć bez hasła.</p></div>
+<div class="actions"><button type="submit" id="devsave" class="btn danger">Zapisz i zrestartuj</button></div>
+<div id="devmsg" class="msg"></div>
+</form>
+</main>
+<script src="/settings.js"></script>
+</body>
+</html>

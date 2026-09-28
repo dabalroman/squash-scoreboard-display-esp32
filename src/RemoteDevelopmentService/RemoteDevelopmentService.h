@@ -144,6 +144,13 @@ public:
         return isAPActive || isWifiActive;
     }
 
+    // True once init() or checkStaReconnect() has landed WL_CONNECTED - the house
+    // network, never the setup AP. Read by PlayerSetupWebUi's access gate so the
+    // web UI is reachable in Dev Mode without joining that AP.
+    bool isStaConnected() const {
+        return isWifiActive;
+    }
+
     // Read by the OLED discovery screen; empty while no interface is up (same
     // string PreferencesManager itself would otherwise expose).
     const String &currentIpAddress() const {
