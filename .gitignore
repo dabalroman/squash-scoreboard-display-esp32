@@ -2,8 +2,9 @@
 /.idea
 /.pio
 /.mcp.json
-# Splash artwork stays local; the header it generates is what gets committed.
-/assets/eink/
+# The splash artwork stays local; the header it generates is what gets committed.
+# The rest of assets/eink/ (bajgiel art, QR placard source) is tracked.
+/assets/eink/splash-text*
 # Built from web/ by helpers/web_assets.py on every build.
 /src/Web/WebAssets.generated.h
 
