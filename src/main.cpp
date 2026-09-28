@@ -17,6 +17,7 @@
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
 #include "DeviceMode/PadelMode/PadelMode.h"
+#include "DeviceMode/Celebration/CelebrationVariant.h"
 #include "DeviceMode/PlayerSetupMode/PlayerSetupMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "Tournament/Rules/VolleyballRules.h"
@@ -142,6 +143,15 @@ void requestDeviceMode(const DeviceModeState deviceModeState) {
     modeChangePending = true;
 }
 
+// Fired once per game from each sport's GameCelebration state.
+void playMatchOver(const CelebrationVariant variant) {
+    if (variant == CelebrationVariant::Bajgiel) {
+        gBuzzer.playBajgiel();
+    } else {
+        gBuzzer.playCelebration();
+    }
+}
+
 void buildDeviceMode(const DeviceModeState deviceModeState) {
     deviceState = deviceModeState;
 
@@ -178,7 +188,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
-                []{ gBuzzer.playCelebration(); }
+                playMatchOver
             );
             break;
 
@@ -191,7 +201,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 std::make_unique<VolleyballRules>(),
-                []{ gBuzzer.playCelebration(); }
+                playMatchOver
             );
             break;
 
@@ -204,7 +214,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
                 std::make_unique<ShortVolleyballRules>(),
-                []{ gBuzzer.playCelebration(); }
+                playMatchOver
             );
             break;
 
@@ -228,7 +238,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 playerRoster.profiles(),
-                []{ gBuzzer.playCelebration(); }
+                playMatchOver
             );
             break;
     }

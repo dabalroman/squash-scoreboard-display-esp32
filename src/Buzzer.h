@@ -25,6 +25,21 @@ class Buzzer {
         return steps;
     }
 
+    // A game won to zero: a quick roll, then one long beep - unlike the
+    // celebration's short-long alternation.
+    static const uint16_t *bajgielPattern() {
+        static const uint16_t steps[] = {
+            40, 50,
+            40, 50,
+            40, 50,
+            40, 50,
+            40, 50,
+            40, 250,
+            400, 0
+        };
+        return steps;
+    }
+
     // Three long beeps, distinct from any in-game sound.
     static const uint16_t *lowBatteryPattern() {
         static const uint16_t steps[] = {
@@ -81,6 +96,10 @@ public:
 
     void playCelebration() {
         playPattern(celebrationPattern());
+    }
+
+    void playBajgiel() {
+        playPattern(bajgielPattern());
     }
 
     void playLowBattery() {

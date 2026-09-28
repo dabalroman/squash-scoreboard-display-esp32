@@ -21,7 +21,7 @@ class SquashMode final : public DeviceMode {
     SquashModeState previousState = SquashModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::function<void()> onMatchOver;
+    std::function<void(CelebrationVariant)> onMatchOver;
 
     void setState(const SquashModeState newState) {
         state = newState;
@@ -63,19 +63,21 @@ class SquashMode final : public DeviceMode {
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
-            case SquashModeState::GameCelebration:
-                // Once per game: restoreView() after an Overlay never comes through here.
-                if (onMatchOver) {
-                    onMatchOver();
-                }
-
-                activeView = std::make_unique<GameCelebrationView<SquashModeState>>(
+            case SquashModeState::GameCelebration: {
+                auto view = std::make_unique<GameCelebrationView<SquashModeState>>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); },
                     Str::MATCH_SCORE_LABEL_SETS,
                     false
                 );
+                // Once per game: restoreView() after an Overlay never comes through here.
+                if (onMatchOver) {
+                    onMatchOver(view->getVariant());
+                }
+
+                activeView = std::move(view);
                 break;
+            }
             case SquashModeState::GameOver:
                 activeView = std::make_unique<SquashGameOverView>(
                     tournament,
@@ -100,7 +102,7 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        std::function<void()> onMatchOver
+        std::function<void(CelebrationVariant)> onMatchOver
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::make_unique<SquashRules>()),

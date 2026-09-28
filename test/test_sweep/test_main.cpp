@@ -79,11 +79,17 @@ static void test_boot_sweep_reaches_near_and_both_far_ends() {
     TEST_ASSERT_TRUE_MESSAGE(farB, "never reached far end B");
 }
 
-// --------------------------------------------------------------- celebration ---
+// ----------------------------------------------------------- layered sweeps ---
+// Shared by celebration (GameOver, 3x800ms) and the #60 comeback burst
+// (GamePlaying, one 800ms cycle) - both are LedSweepAnimation on LAYER_2 over
+// a live screen, so one fixture drives the per-side assertions for either.
 
 static const CRGB RED(255, 0, 0);
 static const Color WIN(0, 255, 0);
 static const uint32_t START = 5000;
+
+/** Starts the layered sweep under test on `display`; `mode` is only meaningful to celebration. */
+typedef std::function<void(LedDisplay &display, bool leftWon, BlendMode mode)> StartLayeredSweep;
 
 static void celebrationScreen(LedDisplay &display) {
     display.setSameSideMode(false);
@@ -105,17 +111,18 @@ static void celebrationScreen(LedDisplay &display) {
 }
 
 /**
- * The celebrating display, a celebration-free reference and the bare ring from a
- * standalone sweep with the same params and origin, rendered at the same instant.
+ * The display under test, a celebration/comeback-free reference and the bare
+ * ring from a standalone sweep with the same params and origin, rendered at
+ * the same instant. `start` fires whichever layered sweep is under test.
  */
-struct Celebration {
+struct LayeredSweep {
     CRGB buffer[Board::LED_COUNT];
     CRGB reference[Board::LED_COUNT];
     CRGB ring[Board::LED_COUNT];
     LedDisplay display{buffer};
     LedDisplay plain{reference};
-    LedSweepAnimation::Params params = LedSweepAnimation::celebrationParams();
-    LedSweepAnimation ringSweep{ringParams(params)};
+    LedSweepAnimation::Params params;
+    LedSweepAnimation ringSweep;
     const bool leftWon;
 
     static LedSweepAnimation::Params ringParams(LedSweepAnimation::Params p) {
@@ -123,14 +130,14 @@ struct Celebration {
         return p;
     }
 
-    Celebration(const BlendMode mode, const bool leftWon) : leftWon(leftWon) {
+    LayeredSweep(const LedSweepAnimation::Params &sweepParams, const BlendMode mode, const bool leftWon, const StartLayeredSweep &start)
+        : params(sweepParams), ringSweep(ringParams(sweepParams)), leftWon(leftWon) {
         celebrationScreen(display);
         celebrationScreen(plain);
         ringSweep.setOriginToHalf(leftWon);
         ringSweep.start(START);
-        display.setCelebrationBlend(mode);
         g_fakeMillis = START;
-        display.startCelebration(WIN, leftWon);
+        start(display, leftWon, mode);
     }
 
     uint32_t cycle() const { return static_cast<uint32_t>(params.durationMs) + params.gapMs; }
@@ -151,8 +158,10 @@ struct Celebration {
     }
 };
 
-static void assertCelebrationSide(const BlendMode mode, const bool leftWon) {
-    Celebration c(mode, leftWon);
+/** One (params, mode, side) case: every existing celebration assertion, generalised. */
+static void assertLayeredSweepSide(const LedSweepAnimation::Params &params, const BlendMode mode, const bool leftWon,
+                                    const char *label, const StartLayeredSweep &start) {
+    LayeredSweep c(params, mode, leftWon, start);
     const char *name = blendName(mode);
     const char *side = leftWon ? "left won" : "right won";
 
@@ -164,33 +173,47 @@ static void assertCelebrationSide(const BlendMode mode, const bool leftWon) {
         for (int i = 0; i < Board::LED_COUNT; i++) {
             if (!(c.ring[i] == OFF)) {
                 lit++;
-                CHECK(isSwept(i) && !inGap, "%s %s t=%u: ring on slot %d (gap=%d)", name, side, t, i, inGap);
+                CHECK(isSwept(i) && !inGap, "%s %s %s t=%u: ring on slot %d (gap=%d)", label, name, side, t, i, inGap);
                 CHECK(c.ring[i].r == 0 && c.ring[i].b == 0 && c.ring[i].g != 0,
-                      "%s %s t=%u: ring slot %d not solid green", name, side, t, i);
-                CHECK(c.buffer[i].g != 0, "%s %s t=%u: ring invisible on slot %d", name, side, t, i);
+                      "%s %s %s t=%u: ring slot %d not solid green", label, name, side, t, i);
+                CHECK(c.buffer[i].g != 0, "%s %s %s t=%u: ring invisible on slot %d", label, name, side, t, i);
             }
 
-            CHECK_RGB(blendPixel(c.reference[i], c.ring[i], mode), c.buffer[i], "%s %s t=%u slot %d", name, side, t, i);
+            CHECK_RGB(blendPixel(c.reference[i], c.ring[i], mode), c.buffer[i], "%s %s %s t=%u slot %d", label, name, side, t, i);
             if (mode != BlendMode::Normal) {
                 CHECK(c.buffer[i].r >= c.reference[i].r && c.buffer[i].g >= c.reference[i].g && c.buffer[i].b >= c.reference[i].b,
-                      "%s %s t=%u: slot %d darker than the base", name, side, t, i);
+                      "%s %s %s t=%u: slot %d darker than the base", label, name, side, t, i);
             }
         }
 
         // Indicators face the players and stay exactly as the base drew them.
-        CHECK_RGB(RED, c.buffer[BOARD.indicatorA], "%s %s t=%u indicator A", name, side, t);
-        CHECK_RGB(RED, c.buffer[BOARD.indicatorB], "%s %s t=%u indicator B", name, side, t);
-        CHECK(lit > 0 || inGap, "%s %s t=%u: ring lit nothing", name, side, t);
+        CHECK_RGB(RED, c.buffer[BOARD.indicatorA], "%s %s %s t=%u indicator A", label, name, side, t);
+        CHECK_RGB(RED, c.buffer[BOARD.indicatorB], "%s %s %s t=%u indicator B", label, name, side, t);
+        CHECK(lit > 0 || inGap, "%s %s %s t=%u: ring lit nothing", label, name, side, t);
     }
 
     // Past the last cycle the frame is the plain screen, byte for byte.
     c.renderAt(START + c.total());
-    c.assertEqualsReference(strf("%s %s after %u ms", name, side, c.total()).c_str());
+    c.assertEqualsReference(strf("%s %s %s after %u ms", label, name, side, c.total()).c_str());
+}
+
+/** Runs every (mode, side) combination for one layered sweep under `label`/`start`. */
+static void runLayeredSweepCheck(const LedSweepAnimation::Params &params, const BlendMode modes[], const size_t modeCount,
+                                  const char *label, const StartLayeredSweep &start) {
+    for (size_t i = 0; i < modeCount; i++) {
+        assertLayeredSweepSide(params, modes[i], true, label, start);
+        assertLayeredSweepSide(params, modes[i], false, label, start);
+    }
+}
+
+static void celebrationStart(LedDisplay &display, const bool leftWon, const BlendMode mode) {
+    display.setCelebrationBlend(mode);
+    display.startCelebration(WIN, leftWon);
 }
 
 static void assertCelebrationBlend(const BlendMode mode) {
-    assertCelebrationSide(mode, true);
-    assertCelebrationSide(mode, false);
+    const BlendMode modes[] = {mode};
+    runLayeredSweepCheck(LedSweepAnimation::celebrationParams(), modes, 1, "celebration", celebrationStart);
 }
 
 static void test_celebration_normal_blend() { assertCelebrationBlend(BlendMode::Normal); }
@@ -204,13 +227,49 @@ static void test_celebration_stops_on_reset_animations() {
     const BlendMode modes[] = {BlendMode::Normal, BlendMode::Screen, BlendMode::Add, BlendMode::Lighten};
     for (const BlendMode mode : modes) {
         for (int leftWon = 0; leftWon <= 1; leftWon++) {
-            Celebration c(mode, leftWon == 1);
+            LayeredSweep c(LedSweepAnimation::celebrationParams(), mode, leftWon == 1, celebrationStart);
             c.renderAt(START + 500);
             c.display.resetAnimations();
             c.plain.resetAnimations();
             c.renderAt(START + 550);
             c.assertEqualsReference(strf("%s leftWon=%d after resetAnimations()", blendName(mode), leftWon).c_str());
         }
+    }
+}
+
+// -------------------------------------------------------------- comeback (#60) ---
+// Same fixture, comebackParams() (one 800ms cycle, band still 690 - the shared
+// radial-gap rule) and startComeback() in place of startCelebration(); LedDisplay
+// fixes its blend to Normal internally, so only Normal is exercised here.
+
+static void comebackStart(LedDisplay &display, const bool leftWon, BlendMode) {
+    display.startComeback(WIN, leftWon);
+}
+
+static void test_comeback_burst_normal_blend() {
+    const BlendMode modes[] = {BlendMode::Normal};
+    runLayeredSweepCheck(LedSweepAnimation::comebackParams(), modes, 1, "comeback", comebackStart);
+}
+
+// One cycle only: unlike celebration's 3, it must already be dark on the very
+// next frame past the single cycle (covered inside assertLayeredSweepSide's
+// tail check too, but asserted directly here since that is the whole point
+// of the burst being one-shot).
+static void test_comeback_burst_is_a_single_cycle() {
+    const uint32_t duration = LedSweepAnimation::comebackParams().durationMs;
+    LayeredSweep c(LedSweepAnimation::comebackParams(), BlendMode::Normal, true, comebackStart);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(duration, c.total(), "comeback burst must be exactly one cycle");
+}
+
+// Mirrors test_celebration_stops_on_reset_animations - same sweep member, same guard.
+static void test_comeback_stops_on_reset_animations() {
+    for (int leftWon = 0; leftWon <= 1; leftWon++) {
+        LayeredSweep c(LedSweepAnimation::comebackParams(), BlendMode::Normal, leftWon == 1, comebackStart);
+        c.renderAt(START + 200);
+        c.display.resetAnimations();
+        c.plain.resetAnimations();
+        c.renderAt(START + 250);
+        c.assertEqualsReference(strf("comeback leftWon=%d after resetAnimations()", leftWon).c_str());
     }
 }
 
@@ -226,5 +285,8 @@ int main() {
     RUN_TEST(test_celebration_add_blend);
     RUN_TEST(test_celebration_lighten_blend);
     RUN_TEST(test_celebration_stops_on_reset_animations);
+    RUN_TEST(test_comeback_burst_normal_blend);
+    RUN_TEST(test_comeback_burst_is_a_single_cycle);
+    RUN_TEST(test_comeback_stops_on_reset_animations);
     return UNITY_END();
 }

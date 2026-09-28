@@ -280,7 +280,14 @@ public:
             shouldUpdateLedBarState = false;
         }
 
-        ledDisplay.setBreathing(LedDisplay::breathingTargets(breathes(GameSide::a), breathes(GameSide::b)));
+        // On fire is set-level (the engine Game's gem history); gem ball outranks it on that side.
+        const bool breatheA = breathes(GameSide::a);
+        const bool breatheB = breathes(GameSide::b);
+        ledDisplay.setOnFire(LedDisplay::onFireTargets(
+            game->isOnFire(GameSide::a) && !breatheA,
+            game->isOnFire(GameSide::b) && !breatheB
+        ));
+        ledDisplay.setBreathing(LedDisplay::breathingTargets(breatheA, breatheB));
 
         ledDisplay.display();
     }

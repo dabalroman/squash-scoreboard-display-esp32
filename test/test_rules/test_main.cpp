@@ -158,6 +158,224 @@ static void test_padel_uncommitted_rallies_ignored() {
     assertGameBall(LEFT, gameBall(tiebreak), "tiebreak 6-5, uncommitted rally undone");
 }
 
+// ------------------------------------------------------------- on fire (#59) ---
+
+static void test_on_fire_streak_threshold() {
+    SquashRules rules;
+    Game game(&rules);
+    for (int i = 0; i < 4; i++) { game.scorePoint(GameSide::a); game.commit(); }
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::a), "4 committed points: not on fire yet");
+
+    game.scorePoint(GameSide::a);
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "5 committed points: on fire");
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::b), "the other side never scored");
+}
+
+static void test_on_fire_ignores_uncommitted_points() {
+    SquashRules rules;
+    Game game(&rules);
+    for (int i = 0; i < 5; i++) game.scorePoint(GameSide::a);   // all uncommitted
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::a), "5 scored but uncommitted: not on fire yet");
+
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "commit lights the streak");
+}
+
+static void test_on_fire_opponent_uncommitted_point_does_not_break_it() {
+    SquashRules rules;
+    Game game(&rules);
+    for (int i = 0; i < 5; i++) game.scorePoint(GameSide::a);
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "5-0 committed: on fire");
+
+    game.scorePoint(GameSide::b);   // uncommitted
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "opponent's uncommitted point must not break the streak");
+
+    game.commit();
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::a), "opponent's committed point breaks the streak");
+}
+
+static void test_on_fire_own_lost_point_counts_until_commit() {
+    SquashRules rules;
+    Game game(&rules);
+    for (int i = 0; i < 5; i++) game.scorePoint(GameSide::a);
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "5-0 committed: on fire");
+
+    game.losePoint(GameSide::a);   // marks the last committed point 'lost' (undo pending)
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "'lost' (uncommitted undo) still counts as committed");
+
+    game.commit();   // erases the lost entry
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::a), "commit erases the lost point: streak drops to 4");
+}
+
+static void test_on_fire_opponents_undone_point_rejoins_streak() {
+    SquashRules rules;
+    Game game(&rules);
+    for (int i = 0; i < 4; i++) game.scorePoint(GameSide::a);
+    game.scorePoint(GameSide::b);
+    game.commit();   // history: A A A A B, all committed
+    TEST_ASSERT_FALSE_MESSAGE(game.isOnFire(GameSide::a), "trailing B breaks the streak");
+
+    game.losePoint(GameSide::b);   // marks B's committed point 'lost'
+    game.scorePoint(GameSide::a);  // uncommitted 5th A
+    game.commit();                 // erases B (lost), commits the new A -> A A A A A
+
+    TEST_ASSERT_TRUE_MESSAGE(game.isOnFire(GameSide::a), "B undone and committed: the streak re-joins to 5");
+}
+
+static void test_on_fire_resets_per_new_game() {
+    SquashRules rules;
+    Game first(&rules);
+    for (int i = 0; i < 5; i++) first.scorePoint(GameSide::a);
+    first.commit();
+    TEST_ASSERT_TRUE_MESSAGE(first.isOnFire(GameSide::a), "5-0 committed in the first game");
+
+    Game second(&rules);
+    TEST_ASSERT_FALSE_MESSAGE(second.isOnFire(GameSide::a), "a fresh game starts unlit - no carry-over");
+}
+
+// The engine Game is the set for padel; its history entries are gems, so the
+// threshold (3) counts gems won in a row, and a step-back is losePoint+commit.
+static void test_padel_on_fire_counts_gems_and_step_back_drops_it() {
+    PadelRules rules;
+    Game set(&rules);
+    set.scorePoint(GameSide::a);
+    set.commit();
+    set.scorePoint(GameSide::a);
+    set.commit();
+    TEST_ASSERT_FALSE_MESSAGE(set.isOnFire(GameSide::a), "2 gems: below padel's threshold of 3");
+
+    set.scorePoint(GameSide::a);
+    set.commit();
+    TEST_ASSERT_TRUE_MESSAGE(set.isOnFire(GameSide::a), "3 gems in a row: on fire");
+
+    set.losePoint(GameSide::a);   // PadelGamePlayingView::stepBackToPreviousGem's undo
+    set.commit();
+    TEST_ASSERT_FALSE_MESSAGE(set.isOnFire(GameSide::a), "step-back drops the third gem: streak falls to 2");
+}
+
+// ------------------------------------------------------------ comeback (#60) ---
+
+static const char *sideName(const GameSide side) {
+    return side == GameSide::a ? "a" : side == GameSide::b ? "b" : "none";
+}
+
+/**
+ * Commits `history` one point per commit ('a'/'b'), so the committed order is
+ * exact, discards whatever those commits produced, then scores `addA`/`addB`
+ * in one batch and commits again - the case under test. Returns that commit's
+ * (still unconsumed) side.
+ */
+static GameSide comebackAfter(Rules &rules, const char *history, const int addA, const int addB) {
+    Game game(&rules);
+    for (const char *c = history; *c; c++) {
+        game.scorePoint(*c == 'a' ? GameSide::a : GameSide::b);
+        game.commit();
+    }
+    game.takeComebackSide();
+
+    for (int i = 0; i < addA; i++) game.scorePoint(GameSide::a);
+    for (int i = 0; i < addB; i++) game.scorePoint(GameSide::b);
+    game.commit();
+    return game.takeComebackSide();
+}
+
+static void assertComeback(const GameSide want, Rules &rules, const char *history, const int addA, const int addB, const char *what) {
+    const GameSide got = comebackAfter(rules, history, addA, addB);
+    CHECK(got == want, "%s [%s] +%da+%db: got %s, expected %s", what, history, addA, addB, sideName(got), sideName(want));
+}
+
+static void test_comeback_fires_when_breaking_a_five_streak() {
+    SquashRules squash;
+    assertComeback(GameSide::a, squash, "bbbbb", 1, 0, "0:5 -> 1:5");
+    assertComeback(GameSide::b, squash, "aaaaa", 0, 1, "5:0 -> 5:1 mirrored");
+    assertComeback(GameSide::a, squash, "abbbbbb", 1, 0, "1:6 -> 2:6, streak 6");
+}
+
+static void test_comeback_not_on_every_point_while_trailing() {
+    SquashRules squash;
+    // 9:1 with B's point last: A's streak is 0, so 9:2, 9:3 ... never fire.
+    assertComeback(GameSide::none, squash, "aaaaaaaaab", 0, 1, "9:1 -> 9:2");
+    assertComeback(GameSide::none, squash, "aaaaaaaaba", 0, 1, "9:1 -> 9:2, A streak 1");
+    assertComeback(GameSide::none, squash, "aaaaaaaaabb", 0, 1, "9:2 -> 9:3");
+    assertComeback(GameSide::b, squash, "baaaaaaaaa", 0, 1, "9:1 -> 9:2 after A's 9 in a row");
+}
+
+static void test_comeback_not_below_threshold() {
+    SquashRules squash;
+    assertComeback(GameSide::none, squash, "bbbb", 1, 0, "opponent streak 4");
+    assertComeback(GameSide::none, squash, "aaaa", 0, 1, "opponent streak 4 mirrored");
+}
+
+static void test_comeback_needs_own_positive_delta() {
+    SquashRules squash;
+    assertComeback(GameSide::none, squash, "bbbbb", 0, 1, "B extends its own streak");
+}
+
+static void test_comeback_opponent_uncommitted_points_do_not_count() {
+    SquashRules squash;
+    // A's 5th point sits in the same batch as B's: before this commit A has 4 committed.
+    assertComeback(GameSide::none, squash, "aaaa", 1, 1, "A 4 committed + 1 uncommitted");
+}
+
+static void test_comeback_one_per_commit_even_with_multiple_points() {
+    SquashRules squash;
+    Game game(&squash);
+    for (int i = 0; i < 5; i++) {
+        game.scorePoint(GameSide::b);
+        game.commit();
+    }
+    game.takeComebackSide();
+
+    game.scorePoint(GameSide::a);
+    game.scorePoint(GameSide::a);   // two points in the same batch
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.takeComebackSide() == GameSide::a, "first take: one burst for the whole batch");
+    TEST_ASSERT_TRUE_MESSAGE(game.takeComebackSide() == GameSide::none, "second take: consumed, not re-armed");
+
+    game.scorePoint(GameSide::a);
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.takeComebackSide() == GameSide::none, "streak already broken: the next point does not re-fire");
+}
+
+static void test_comeback_none_for_a_point_undone_before_commit() {
+    SquashRules squash;
+    Game game(&squash);
+    for (int i = 0; i < 5; i++) {
+        game.scorePoint(GameSide::b);
+        game.commit();
+    }
+    game.takeComebackSide();
+
+    game.scorePoint(GameSide::a);
+    game.losePoint(GameSide::a);   // undone inside the commit window: net delta 0
+    game.commit();
+    TEST_ASSERT_TRUE_MESSAGE(game.takeComebackSide() == GameSide::none, "undo-only batch must not fire");
+}
+
+static void test_comeback_mixed_batch_checks_side_a_first() {
+    SquashRules squash;
+    assertComeback(GameSide::a, squash, "bbbbb", 1, 1, "B streak 5, batch +a+b");
+}
+
+static void test_comeback_none_on_a_winning_commit() {
+    SquashRules squash;
+    // 5:10 with A's last 5 in a row; B's 11th point breaks the streak and wins.
+    const GameSide got = comebackAfter(squash, "bbbbbbbbbbaaaaa", 0, 1);
+    CHECK(got == GameSide::none, "a winning commit must not also fire a burst, got %s", sideName(got));
+}
+
+static void test_comeback_volleyball_same_threshold() {
+    VolleyballRules volleyball;
+    assertComeback(GameSide::b, volleyball, "aaaaa", 0, 1, "volleyball streak 5");
+    assertComeback(GameSide::none, volleyball, "aaaa", 0, 1, "volleyball streak 4");
+    ShortVolleyballRules shortVolleyball;
+    assertComeback(GameSide::a, shortVolleyball, "bbbbb", 1, 0, "short volleyball streak 5");
+    assertComeback(GameSide::none, shortVolleyball, "bbbb", 1, 0, "short volleyball streak 4");
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_squash_game_ball);
@@ -168,5 +386,22 @@ int main() {
     RUN_TEST(test_padel_gem_rallies);
     RUN_TEST(test_padel_tiebreak_rallies);
     RUN_TEST(test_padel_uncommitted_rallies_ignored);
+    RUN_TEST(test_on_fire_streak_threshold);
+    RUN_TEST(test_on_fire_ignores_uncommitted_points);
+    RUN_TEST(test_on_fire_opponent_uncommitted_point_does_not_break_it);
+    RUN_TEST(test_on_fire_own_lost_point_counts_until_commit);
+    RUN_TEST(test_on_fire_opponents_undone_point_rejoins_streak);
+    RUN_TEST(test_on_fire_resets_per_new_game);
+    RUN_TEST(test_padel_on_fire_counts_gems_and_step_back_drops_it);
+    RUN_TEST(test_comeback_fires_when_breaking_a_five_streak);
+    RUN_TEST(test_comeback_not_on_every_point_while_trailing);
+    RUN_TEST(test_comeback_not_below_threshold);
+    RUN_TEST(test_comeback_needs_own_positive_delta);
+    RUN_TEST(test_comeback_opponent_uncommitted_points_do_not_count);
+    RUN_TEST(test_comeback_one_per_commit_even_with_multiple_points);
+    RUN_TEST(test_comeback_none_for_a_point_undone_before_commit);
+    RUN_TEST(test_comeback_mixed_batch_checks_side_a_first);
+    RUN_TEST(test_comeback_none_on_a_winning_commit);
+    RUN_TEST(test_comeback_volleyball_same_threshold);
     return UNITY_END();
 }

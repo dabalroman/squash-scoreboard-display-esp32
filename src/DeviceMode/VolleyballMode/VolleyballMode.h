@@ -22,7 +22,7 @@ class VolleyballMode final : public DeviceMode {
     VolleyballModeState previousState = VolleyballModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::function<void()> onMatchOver;
+    std::function<void(CelebrationVariant)> onMatchOver;
 
     void setState(const VolleyballModeState newState) {
         state = newState;
@@ -64,19 +64,21 @@ class VolleyballMode final : public DeviceMode {
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
-            case VolleyballModeState::GameCelebration:
-                // Once per game: restoreView() after an Overlay never comes through here.
-                if (onMatchOver) {
-                    onMatchOver();
-                }
-
-                activeView = std::make_unique<GameCelebrationView<VolleyballModeState>>(
+            case VolleyballModeState::GameCelebration: {
+                auto view = std::make_unique<GameCelebrationView<VolleyballModeState>>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); },
                     Str::MATCH_SCORE_LABEL_SETS,
                     false
                 );
+                // Once per game: restoreView() after an Overlay never comes through here.
+                if (onMatchOver) {
+                    onMatchOver(view->getVariant());
+                }
+
+                activeView = std::move(view);
                 break;
+            }
             case VolleyballModeState::GameOver:
                 activeView = std::make_unique<VolleyballGameOverView>(
                     tournament,
@@ -102,7 +104,7 @@ public:
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
         std::unique_ptr<Rules> rules,
-        std::function<void()> onMatchOver
+        std::function<void(CelebrationVariant)> onMatchOver
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::move(rules)), users(users), onMatchOver(std::move(onMatchOver)) {

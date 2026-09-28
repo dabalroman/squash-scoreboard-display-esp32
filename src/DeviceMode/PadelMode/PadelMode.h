@@ -21,7 +21,7 @@ class PadelMode final : public DeviceMode {
     PadelModeState previousState = PadelModeState::Init;
     Tournament tournament;
     std::vector<UserProfile *> &users;
-    std::function<void()> onMatchOver;
+    std::function<void(CelebrationVariant)> onMatchOver;
 
     void setState(const PadelModeState newState) {
         state = newState;
@@ -63,19 +63,21 @@ class PadelMode final : public DeviceMode {
                     [this](const PadelModeState newState) { setState(newState); }
                 );
                 break;
-            case PadelModeState::GameCelebration:
-                // Once per game: restoreView() after an Overlay never comes through here.
-                if (onMatchOver) {
-                    onMatchOver();
-                }
-
-                activeView = std::make_unique<GameCelebrationView<PadelModeState>>(
+            case PadelModeState::GameCelebration: {
+                auto view = std::make_unique<GameCelebrationView<PadelModeState>>(
                     tournament,
                     [this](const PadelModeState newState) { setState(newState); },
                     Str::MATCH_SCORE_LABEL_GEMS,
                     true
                 );
+                // Once per game: restoreView() after an Overlay never comes through here.
+                if (onMatchOver) {
+                    onMatchOver(view->getVariant());
+                }
+
+                activeView = std::move(view);
                 break;
+            }
             case PadelModeState::GameOver:
                 activeView = std::make_unique<PadelGameOverView>(
                     tournament,
@@ -100,7 +102,7 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        std::function<void()> onMatchOver
+        std::function<void(CelebrationVariant)> onMatchOver
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
           tournament(std::make_unique<PadelRules>()),

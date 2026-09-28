@@ -136,10 +136,23 @@ public:
             shouldUpdateLedBarState = false;
         }
 
-        ledDisplay.setBreathing(LedDisplay::breathingTargets(
-            game->willWinOnNextPointScored(GameSide::a),
-            game->willWinOnNextPointScored(GameSide::b)
+        // Game ball outranks on fire: that side's smoke goes off, its breathing runs unmasked.
+        const bool breatheA = game->willWinOnNextPointScored(GameSide::a);
+        const bool breatheB = game->willWinOnNextPointScored(GameSide::b);
+        ledDisplay.setOnFire(LedDisplay::onFireTargets(
+            game->isOnFire(GameSide::a) && !breatheA,
+            game->isOnFire(GameSide::b) && !breatheB
         ));
+        ledDisplay.setBreathing(LedDisplay::breathingTargets(breatheA, breatheB));
+
+        // After setOnFire, so a burst started this frame is not overwritten by it;
+        // GameSide::a is the left court player in this view.
+        const GameSide comebackSide = game->takeComebackSide();
+        if (comebackSide == GameSide::a) {
+            ledDisplay.startComeback(playerLeft->getColor(), true);
+        } else if (comebackSide == GameSide::b) {
+            ledDisplay.startComeback(playerRight->getColor(), false);
+        }
 
         ledDisplay.display();
     }

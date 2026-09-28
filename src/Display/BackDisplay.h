@@ -98,6 +98,18 @@ public:
         screen->println(text);
     }
 
+    /**
+     * A full-screen 128x64 PROGMEM bitmap, set bit = lit. Deliberately ignores
+     * DEAD_TOP_ROWS: artwork uses the whole panel (user's call, 2026-09-28).
+     */
+    void drawBitmap(const uint8_t *bitmap) const {
+        if (bitmap == nullptr) {
+            return;
+        }
+
+        screen->drawBitmap(0, 0, bitmap, 128, 64, SSD1306_WHITE);
+    }
+
     void drawThiccTopToBottomLine(const uint8_t x1, const uint8_t x2, const uint8_t thiccness = 3) const {
         const uint8_t half = thiccness / 2;
         for (int8_t i = -half; i <= half; i++) {

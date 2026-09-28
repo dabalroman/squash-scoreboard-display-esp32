@@ -5,13 +5,16 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/Celebration/CelebrationVariant.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/EInk/Images/Bajgiel.h"
+#include "Display/Images/BajgielOled.h"
 #include "Tournament/Tournament.h"
 
 /**
  * Between GamePlaying and the GameOver summary, shared by every sport mode.
  * Shows exactly what the summary shows (so the hand-over repaints nothing on
  * the e-paper) with the variant's animation on top, and leaves for GameOver
- * when that animation ends or on C/D.
+ * when that animation ends or on C/D. Bajgiel is the exception: its own
+ * picture on the OLED and e-paper, so the e-paper repaints at the hand-over.
  */
 template <typename StateEnum>
 class GameCelebrationView final : public View {
@@ -50,6 +53,10 @@ public:
         variant     = selectCelebrationVariant(*match, *gameResult);
     }
 
+    CelebrationVariant getVariant() const {
+        return variant;
+    }
+
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             // Otherwise the same press also leaves the summary.
@@ -80,6 +87,9 @@ public:
         started = true;
 
         switch (variant) {
+            case CelebrationVariant::Bajgiel:
+                ledDisplay.startBajgiel(!leftWon);
+                break;
             case CelebrationVariant::Normal:
             default:
                 ledDisplay.startCelebration(leftWon ? playerLeft->getColor() : playerRight->getColor(), leftWon);
@@ -91,11 +101,13 @@ public:
         // Also keeps a constructor bail to MatchStartGame from being overwritten.
         if (gameResult == nullptr) return;
 
-        ledDisplay.display();
-
+        // Hand over without drawing: the summary's first frame follows directly.
         if (!ledDisplay.celebrationActive()) {
             onStateChange(StateEnum::GameOver);
+            return;
         }
+
+        ledDisplay.display();
     }
 
     void initBackDisplay(BackDisplay &backDisplay) override {
@@ -108,7 +120,11 @@ public:
         if (gameResult == nullptr || !shouldRenderBack) return;
 
         backDisplay.clear();
-        backDisplay.renderScoreWidget(leftScore, rightScore);
+        if (variant == CelebrationVariant::Bajgiel) {
+            backDisplay.drawBitmap(BAJGIELOLED_BITMAP);
+        } else {
+            backDisplay.renderScoreWidget(leftScore, rightScore);
+        }
         backDisplay.display();
 
         shouldRenderBack = false;
@@ -119,6 +135,12 @@ public:
 
         if (gameResult == nullptr) {
             einkDisplay.showBlank();
+            return;
+        }
+
+        if (variant == CelebrationVariant::Bajgiel) {
+            // The summary's showMatchScore repaints the score after the hand-over.
+            einkDisplay.showImage(BAJGIEL_EINK_BITMAP);
             return;
         }
 

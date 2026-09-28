@@ -14,6 +14,7 @@ class Game {
     int8_t scoreA = 0, scoreB = 0;
     int8_t deltaA = 0, deltaB = 0;
     GameSide winner = GameSide::none;
+    GameSide comebackSide = GameSide::none;
     Rules *rules;
     GameScoreHistory history;
 
@@ -48,6 +49,22 @@ public:
     /** Game ball on the committed score: an uncommitted point neither starts nor stops it. */
     bool willWinOnNextPointScored(const GameSide side) const {
         return rules->willWinOnNextPointScored(getRealScore(GameSide::a), getRealScore(GameSide::b), side);
+    }
+
+    /** On fire: `side`'s trailing committed streak has reached the sport's threshold. */
+    bool isOnFire(const GameSide side) const {
+        return history.committedStreak(side) >= rules->onFireStreak();
+    }
+
+    /**
+     * One-shot comeback burst side from the last commit(), consumed on read.
+     * Set there when a side's point breaks the opponent's on-fire streak,
+     * cleared once taken or once a winner exists. Padel's view never takes it.
+     */
+    GameSide takeComebackSide() {
+        const GameSide side = comebackSide;
+        comebackSide = GameSide::none;
+        return side;
     }
 
     GameSide getWinner() const {
@@ -103,6 +120,17 @@ public:
             return winner;
         }
 
+        // Before history.commit(): the opponent's streak as it stood before this
+        // batch (uncommitted entries are skipped). One side per commit.
+        const uint8_t streak = rules->onFireStreak();
+        if (deltaA > 0 && history.committedStreak(GameSide::b) >= streak) {
+            comebackSide = GameSide::a;
+        } else if (deltaB > 0 && history.committedStreak(GameSide::a) >= streak) {
+            comebackSide = GameSide::b;
+        } else {
+            comebackSide = GameSide::none;
+        }
+
         history.commit();
 
         scoreA += deltaA;
@@ -115,6 +143,9 @@ public:
         scoreB = std::max<int8_t>(scoreB, 0);
 
         winner = rules->checkWinner(scoreA, scoreB);
+        if (winner != GameSide::none) {
+            comebackSide = GameSide::none;   // the view hands over to GameCelebration anyway
+        }
         return winner;
     }
 

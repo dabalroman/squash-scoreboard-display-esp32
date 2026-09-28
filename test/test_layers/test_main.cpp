@@ -6,8 +6,10 @@
 
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Animation/LedSlotPositions.h"
+#include "Display/LedDisplay/Animation/LedSweepAnimation.h"
 #include "Display/LedDisplay/Layers/LedBlend.h"
 #include "Display/LedDisplay/Layers/LedBreathingAnimation.h"
+#include "Display/LedDisplay/Layers/LedSmokeAnimation.h"
 #include "Display/LedDisplay/Layers/LedLayerStack.h"
 #include "Display/LedDisplay/Layers/LedTarget.h"
 #include "Display/LedDisplay/Renderer/GameScoreHistoryBarRenderer.h"
@@ -518,6 +520,427 @@ static void test_game_ball_breathing_over_blink() {
     }
 }
 
+// ------------------------------------------------------------ smoke (#59) ---
+
+static bool isSkip(const int slot) {
+    return LedSlots::POS[slot][0] == LedSlots::SKIP;
+}
+
+static void test_smoke_is_neutral_grey_and_skips_dead_slots() {
+    LedSmokeAnimation smoke;
+    smoke.start(1000);
+    int lit = 0;
+    for (uint32_t t = 1000; t < 1000 + 6000; t += 50) {
+        CRGB out[Board::LED_COUNT];
+        fillPixels(out, Board::LED_COUNT, CRGB(1, 2, 3));   // sentinel: SKIP slots must keep it
+        smoke.render(t, out);
+        for (int i = 0; i < Board::LED_COUNT; i++) {
+            if (isSkip(i)) {
+                CHECK_RGB(CRGB(1, 2, 3), out[i], "t=%u SKIP slot %d written", t, i);
+                continue;
+            }
+            CHECK(out[i].r == out[i].g && out[i].g == out[i].b, "t=%u slot %d not grey (%d,%d,%d)", t, i, out[i].r, out[i].g, out[i].b);
+            CHECK(out[i].r <= LedSmokeAnimation::PEAK, "t=%u slot %d level %d above PEAK", t, i, out[i].r);
+            if (out[i].r) lit++;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(lit > 0, "smoke never lit anything over 6 s");
+}
+
+static void test_smoke_deterministic_for_same_nowMs() {
+    LedSmokeAnimation smoke;
+    smoke.start(1000);
+    CRGB out1[Board::LED_COUNT], out2[Board::LED_COUNT];
+    fillPixels(out1, Board::LED_COUNT, CRGB(0, 0, 0));
+    fillPixels(out2, Board::LED_COUNT, CRGB(0, 0, 0));
+    smoke.render(1500, out1);
+    smoke.render(1500, out2);
+    for (int i = 0; i < Board::LED_COUNT; i++) CHECK_RGB(out1[i], out2[i], "slot %d not deterministic", i);
+
+    // Only elapsed time matters: the same offset from a different start is the same frame.
+    LedSmokeAnimation later;
+    later.start(9000);
+    CRGB out3[Board::LED_COUNT];
+    fillPixels(out3, Board::LED_COUNT, CRGB(0, 0, 0));
+    later.render(9500, out3);
+    for (int i = 0; i < Board::LED_COUNT; i++) CHECK_RGB(out1[i], out3[i], "slot %d depends on more than elapsed time", i);
+}
+
+static void test_smoke_moves_over_time() {
+    LedSmokeAnimation smoke;
+    smoke.start(0);
+    CRGB a[Board::LED_COUNT], b[Board::LED_COUNT];
+    int changedFrames = 0;
+    for (uint32_t t = 0; t < 4000; t += 100) {
+        fillPixels(a, Board::LED_COUNT, CRGB(0, 0, 0));
+        fillPixels(b, Board::LED_COUNT, CRGB(0, 0, 0));
+        smoke.render(t, a);
+        smoke.render(t + 100, b);
+        bool differ = false;
+        for (int i = 0; i < Board::LED_COUNT; i++) differ = differ || !(a[i] == b[i]);
+        if (differ) changedFrames++;
+    }
+    CHECK(changedFrames >= 30, "only %d of 40 100 ms steps changed the smoke", changedFrames);
+}
+
+// The per-frame path is integer: smoothstep hits both ends exactly, is monotone,
+// and value noise never jumps more than a few levels per 1/256 cell.
+static void test_smoke_integer_noise_is_smooth() {
+    TEST_ASSERT_EQUAL_UINT8(0, LedSmokeAnimation::smooth(0));
+    TEST_ASSERT_EQUAL_UINT8(255, LedSmokeAnimation::smooth(255));
+    for (int t = 1; t < 256; t++) {
+        CHECK(LedSmokeAnimation::smooth(t) >= LedSmokeAnimation::smooth(t - 1), "smooth not monotone at %d", t);
+    }
+    for (uint32_t row = 0; row < 4; row++) {
+        const uint32_t fy = (100u + row) * 256u + row * 61u;
+        int prev = LedSmokeAnimation::sample(100u * 256u, fy, 7u);
+        for (uint32_t fx = 100u * 256u + 1; fx < 108u * 256u; fx++) {
+            const int v = LedSmokeAnimation::sample(fx, fy, 7u);
+            CHECK(v - prev <= 3 && prev - v <= 3, "noise jumps %d -> %d at fx=%u", prev, v, fx);
+            prev = v;
+        }
+    }
+}
+
+static void test_smoke_inactive_after_stop() {
+    LedSmokeAnimation smoke;
+    smoke.start(1000);
+    smoke.stop();
+    TEST_ASSERT_FALSE_MESSAGE(smoke.active(1500), "active after stop()");
+}
+
+static void test_on_fire_targets_per_side() {
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(0, LedDisplay::onFireTargets(false, false), "nobody");
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(LedTarget::LeftScore | LedTarget::BarLeft, LedDisplay::onFireTargets(true, false), "left");
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(LedTarget::RightScore | LedTarget::BarRight, LedDisplay::onFireTargets(false, true), "right");
+}
+
+// Only the fired side's lit digit and own-bar slots may change: everything else (unlit,
+// untargeted, SKIP/dead - which carry no element bit at all) stays byte-identical.
+static void test_on_fire_only_touches_lit_target_slots() {
+    const GameScoreHistory history = ownerCheckHistory();
+
+    CRGB bufferBase[Board::LED_COUNT];
+    LedDisplay base(bufferBase);
+    gameBallScreen(base, history, false);
+
+    CRGB bufferFire[Board::LED_COUNT];
+    LedDisplay onFire(bufferFire);
+    gameBallScreen(onFire, history, false);
+    g_fakeMillis = 5000;
+    onFire.setOnFire(LedDisplay::onFireTargets(true, false));
+
+    bool sawSmoke = false, hasLeftBar = false, sawBarSmoke = false;
+    for (uint32_t t = 5000; t < 5000 + 4000; t += 100) {
+        CRGB baseline[Board::LED_COUNT], fired[Board::LED_COUNT];
+        renderAt(base, bufferBase, t, baseline);
+        renderAt(onFire, bufferFire, t, fired);
+        for (int slot = 0; slot < Board::LED_COUNT; slot++) {
+            const uint16_t bits = onFire.elementsAt(slot);
+            const bool isLeftTarget = (bits & (LedTarget::LeftScore | LedTarget::BarLeft)) != 0;
+            const bool lit = baseline[slot].r | baseline[slot].g | baseline[slot].b;
+            if (isLeftTarget && lit) {   // the only slots the smoke may touch - and Screen only brightens
+                CHECK(fired[slot].r >= baseline[slot].r && fired[slot].g >= baseline[slot].g && fired[slot].b >= baseline[slot].b,
+                      "t=%u slot %d darkened by Screen smoke", t, slot);
+                const bool changed = !(fired[slot] == baseline[slot]);
+                sawSmoke = sawSmoke || changed;
+                if (bits & LedTarget::BarLeft) {
+                    hasLeftBar = true;
+                    sawBarSmoke = sawBarSmoke || changed;
+                }
+                continue;
+            }
+            CHECK_RGB(baseline[slot], fired[slot], "t=%u slot %d bits 0x%x changed outside the smoke target", t, slot, bits);
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(sawSmoke, "smoke never reached the left digits in 4 s");
+    // V1 only: the left player's lit bar pixels smoke too (V2 has no bar).
+    if (hasLeftBar) TEST_ASSERT_TRUE_MESSAGE(sawBarSmoke, "smoke never reached the left bar pixels in 4 s");
+}
+
+// setOnFire(0) is a no-op unless the smoke itself owns LAYER_2: proves the
+// hazard guard from #59's spec (never clobber a celebration or intro).
+static void test_on_fire_stop_leaves_celebration_alone() {
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    display.setBorderEnabled(true);
+    display.setBorderAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 1000;
+    display.startCelebration(Colors::White, true);
+    CRGB withCelebration[Board::LED_COUNT];
+    renderAt(display, buffer, 1000, withCelebration);
+
+    display.setOnFire(0);   // the smoke was never started, so it does not own LAYER_2
+    CRGB afterOnFireStop[Board::LED_COUNT];
+    renderAt(display, buffer, 1000, afterOnFireStop);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(withCelebration[i], afterOnFireStop[i], "slot %d: setOnFire(0) disturbed the celebration frame", i);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(display.celebrationActive(), "celebration stopped by setOnFire(0)");
+}
+
+static void test_on_fire_stop_leaves_intro_alone() {
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    display.setBorderEnabled(true);
+
+    g_fakeMillis = 2000;
+    display.startIntro(Colors::Orange, Colors::Aqua);
+    CRGB withIntro[Board::LED_COUNT];
+    renderAt(display, buffer, 2000, withIntro);
+
+    display.setOnFire(0);   // the smoke was never started, so it does not own LAYER_2
+    CRGB afterOnFireStop[Board::LED_COUNT];
+    renderAt(display, buffer, 2000, afterOnFireStop);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(withIntro[i], afterOnFireStop[i], "slot %d: setOnFire(0) disturbed the intro frame", i);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(display.introActive(), "intro stopped by setOnFire(0)");
+}
+
+// The positive case of the same guard: when the smoke DOES own LAYER_2, setOnFire(0)
+// must release it, verified against a display that never started the smoke at all.
+static void test_on_fire_stop_releases_layer_it_owns() {
+    CRGB bufferA[Board::LED_COUNT];
+    LedDisplay noSmoke(bufferA);
+    noSmoke.setNumericValue(0, 0);
+    noSmoke.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    CRGB baseline[Board::LED_COUNT];
+    renderAt(noSmoke, bufferA, 3000, baseline);
+
+    CRGB bufferB[Board::LED_COUNT];
+    LedDisplay display(bufferB);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 3000;
+    display.setOnFire(LedDisplay::onFireTargets(true, false));
+    display.setOnFire(0);   // the smoke owns LAYER_2 here, so this must clear it
+    CRGB afterStop[Board::LED_COUNT];
+    renderAt(display, bufferB, 3000, afterStop);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(baseline[i], afterStop[i], "slot %d: setOnFire(0) failed to release LAYER_2 it owned", i);
+    }
+}
+
+static void test_on_fire_reset_animations_stops_it() {
+    CRGB bufferA[Board::LED_COUNT];
+    LedDisplay noSmoke(bufferA);
+    noSmoke.setNumericValue(0, 0);
+    noSmoke.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    CRGB baseline[Board::LED_COUNT];
+    renderAt(noSmoke, bufferA, 4000, baseline);
+
+    CRGB bufferB[Board::LED_COUNT];
+    LedDisplay display(bufferB);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 4000;
+    display.setOnFire(LedDisplay::onFireTargets(true, false));
+    display.resetAnimations();
+    CRGB afterReset[Board::LED_COUNT];
+    renderAt(display, bufferB, 4000, afterReset);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(baseline[i], afterReset[i], "slot %d: resetAnimations left the smoke active", i);
+    }
+}
+
+// Game ball outranks on fire (views: onFireTargets(isOnFire && !breathe), breathing
+// unmasked). Both sides on fire, left at game ball: the left breathes exactly as
+// with no smoke at all, the right carries smoke only.
+static void test_game_ball_wins_over_on_fire() {
+    const GameScoreHistory history = ownerCheckHistory();
+    const uint32_t started = 1000;
+    const uint32_t t = started + 700;   // breathing's trough: its dimming is unambiguous
+
+    const bool breatheA = true, breatheB = false;
+    const uint16_t fire = LedDisplay::onFireTargets(!breatheA, !breatheB);   // both sides on fire
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(LedTarget::RightScore | LedTarget::BarRight, fire, "the breathing side's smoke is off");
+
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    gameBallScreen(display, history, false);
+    g_fakeMillis = started;
+    display.setOnFire(fire);
+    display.setBreathing(LedDisplay::breathingTargets(breatheA, breatheB));
+    CRGB combo[Board::LED_COUNT];
+    renderAt(display, buffer, t, combo);
+
+    CRGB bufferBreathe[Board::LED_COUNT];
+    LedDisplay breatheOnly(bufferBreathe);
+    gameBallScreen(breatheOnly, history, false);
+    g_fakeMillis = started;
+    breatheOnly.setBreathing(LedDisplay::breathingTargets(breatheA, breatheB));
+    CRGB breathed[Board::LED_COUNT];
+    renderAt(breatheOnly, bufferBreathe, t, breathed);
+
+    CRGB bufferSmoke[Board::LED_COUNT];
+    LedDisplay smokeOnly(bufferSmoke);
+    gameBallScreen(smokeOnly, history, false);
+    g_fakeMillis = started;
+    smokeOnly.setOnFire(fire);
+    CRGB smoked[Board::LED_COUNT];
+    renderAt(smokeOnly, bufferSmoke, t, smoked);
+
+    CRGB bufferNeither[Board::LED_COUNT];
+    LedDisplay neither(bufferNeither);
+    gameBallScreen(neither, history, false);
+    CRGB plain[Board::LED_COUNT];
+    renderAt(neither, bufferNeither, t, plain);
+
+    bool leftDigitDimmed = false;
+    for (int slot = 0; slot < Board::LED_COUNT; slot++) {
+        const uint16_t bits = display.elementsAt(slot);
+        if (bits & (LedTarget::RightScore | LedTarget::BarRight)) {
+            CHECK_RGB(smoked[slot], combo[slot], "slot %d: right digits and bar must carry the smoke only", slot);
+        } else {
+            CHECK_RGB(breathed[slot], combo[slot], "slot %d: breathing side must look as if no smoke ran", slot);
+            if ((bits & LedTarget::LeftScore) && !(combo[slot] == plain[slot])) leftDigitDimmed = true;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(leftDigitDimmed, "left digits never dimmed - breathing masked off the game-ball side");
+}
+
+// -------------------------------------------------------- comeback (#60) vs fire ---
+// LAYER_2 is shared by the smoke (#59) and the comeback burst during GamePlaying;
+// startComeback() stops the smoke and claims it, setOnFire() must yield while the
+// burst runs, and the smoke must be free to retake the layer once it ends.
+
+static void test_comeback_during_fire_wins_layer_and_smoke_resumes_after() {
+    // References: smoke alone and comeback alone, each on its own untouched display.
+    CRGB bufferSmoke[Board::LED_COUNT];
+    LedDisplay smokeOnly(bufferSmoke);
+    smokeOnly.setNumericValue(0, 0);
+    smokeOnly.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    g_fakeMillis = 1000;
+    smokeOnly.setOnFire(LedDisplay::onFireTargets(true, false));
+    CRGB smokeFrame[Board::LED_COUNT];
+    renderAt(smokeOnly, bufferSmoke, 1000, smokeFrame);
+
+    CRGB bufferComeback[Board::LED_COUNT];
+    LedDisplay comebackOnly(bufferComeback);
+    comebackOnly.setNumericValue(0, 0);
+    comebackOnly.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    g_fakeMillis = 1000;
+    comebackOnly.startComeback(Colors::White, true);
+    CRGB comebackFrame[Board::LED_COUNT];
+    renderAt(comebackOnly, bufferComeback, 1000, comebackFrame);
+
+    bool differ = false;
+    for (int i = 0; i < Board::LED_COUNT; i++) differ = differ || !(smokeFrame[i] == comebackFrame[i]);
+    TEST_ASSERT_TRUE_MESSAGE(differ, "sanity: smoke-only and comeback-only frames must differ");
+
+    // Fire first, then a comeback lands on top of it.
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 1000;
+    display.setOnFire(LedDisplay::onFireTargets(true, false));   // smoke owns LAYER_2
+    display.startComeback(Colors::White, true);                  // takes it over for 800 ms
+
+    CRGB duringComeback[Board::LED_COUNT];
+    renderAt(display, buffer, 1000, duringComeback);
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(comebackFrame[i], duringComeback[i], "slot %d: comeback did not win LAYER_2 over the smoke", i);
+    }
+
+    // Every frame the view still calls setOnFire(fire) first; it must not reclaim the layer.
+    display.setOnFire(LedDisplay::onFireTargets(true, false));
+    CRGB stillComeback[Board::LED_COUNT];
+    renderAt(display, buffer, 1000, stillComeback);
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(comebackFrame[i], stillComeback[i], "slot %d: setOnFire(fire) overrode a running comeback burst", i);
+    }
+
+    // Past the single 800 ms cycle the sweep reports inactive: the smoke must be
+    // able to retake LAYER_2 on the very next setOnFire(), not be blocked forever.
+    const uint32_t after = 1000 + LedSweepAnimation::comebackParams().durationMs + 10;
+
+    CRGB bufferFreshSmoke[Board::LED_COUNT];
+    LedDisplay freshSmoke(bufferFreshSmoke);
+    freshSmoke.setNumericValue(0, 0);
+    freshSmoke.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+    g_fakeMillis = after;
+    freshSmoke.setOnFire(LedDisplay::onFireTargets(true, false));
+    CRGB freshSmokeFrame[Board::LED_COUNT];
+    renderAt(freshSmoke, bufferFreshSmoke, after, freshSmokeFrame);
+
+    g_fakeMillis = after;
+    display.setOnFire(LedDisplay::onFireTargets(true, false));
+    CRGB resumedFrame[Board::LED_COUNT];
+    renderAt(display, buffer, after, resumedFrame);
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(freshSmokeFrame[i], resumedFrame[i], "slot %d: smoke failed to retake LAYER_2 once the burst ended", i);
+    }
+}
+
+// setOnFire(0) while a comeback is running must leave the sweep alone - mirrors
+// the celebration/intro guards, this time on the other side of the yield check.
+static void test_on_fire_stop_leaves_comeback_alone() {
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 2000;
+    display.startComeback(Colors::White, true);
+    CRGB withComeback[Board::LED_COUNT];
+    renderAt(display, buffer, 2000, withComeback);
+
+    display.setOnFire(0);   // the comeback owns LAYER_2 here, not the smoke
+    CRGB afterOnFireStop[Board::LED_COUNT];
+    renderAt(display, buffer, 2000, afterOnFireStop);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(withComeback[i], afterOnFireStop[i], "slot %d: setOnFire(0) disturbed a running comeback burst", i);
+    }
+}
+
+// No fire ever involved: a comeback must render exactly like the bare sweep
+// (base screen Normal-blended with the ring), proving startComeback()'s
+// unconditional smoke.stop() has no visible side effect when the smoke was
+// already idle.
+static void test_comeback_with_no_fire_matches_plain_sweep() {
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    display.setNumericValue(0, 0);
+    display.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    CRGB bufferPlain[Board::LED_COUNT];
+    LedDisplay plain(bufferPlain);
+    plain.setNumericValue(0, 0);
+    plain.setGlyphsAppearance(Colors::Orange, Colors::Aqua);
+
+    g_fakeMillis = 3000;
+    display.startComeback(Colors::White, true);
+
+    LedSweepAnimation ring(LedSweepAnimation::comebackParams());
+    ring.setSolidColor(CRGB(255, 255, 255));   // matches Colors::White passed to startComeback below
+    ring.setOriginToHalf(true);
+    ring.start(3000);
+
+    const uint32_t t = 3050;
+    CRGB withComeback[Board::LED_COUNT], base[Board::LED_COUNT], ringFrame[Board::LED_COUNT];
+    fillPixels(ringFrame, Board::LED_COUNT, CRGB(0, 0, 0));
+    renderAt(display, buffer, t, withComeback);
+    renderAt(plain, bufferPlain, t, base);
+    ring.render(t, ringFrame);
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK_RGB(blendPixel(base[i], ringFrame[i], BlendMode::Normal), withComeback[i], "slot %d", i);
+    }
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_div255_matches_integer_division);
@@ -546,5 +969,20 @@ int main() {
     RUN_TEST(test_game_ball_breathes_left_side_only);
     RUN_TEST(test_game_ball_breathes_right_side_only);
     RUN_TEST(test_game_ball_breathing_over_blink);
+    RUN_TEST(test_smoke_is_neutral_grey_and_skips_dead_slots);
+    RUN_TEST(test_smoke_deterministic_for_same_nowMs);
+    RUN_TEST(test_smoke_moves_over_time);
+    RUN_TEST(test_smoke_integer_noise_is_smooth);
+    RUN_TEST(test_smoke_inactive_after_stop);
+    RUN_TEST(test_on_fire_targets_per_side);
+    RUN_TEST(test_on_fire_only_touches_lit_target_slots);
+    RUN_TEST(test_on_fire_stop_leaves_celebration_alone);
+    RUN_TEST(test_on_fire_stop_leaves_intro_alone);
+    RUN_TEST(test_on_fire_stop_releases_layer_it_owns);
+    RUN_TEST(test_on_fire_reset_animations_stops_it);
+    RUN_TEST(test_game_ball_wins_over_on_fire);
+    RUN_TEST(test_comeback_during_fire_wins_layer_and_smoke_resumes_after);
+    RUN_TEST(test_on_fire_stop_leaves_comeback_alone);
+    RUN_TEST(test_comeback_with_no_fire_matches_plain_sweep);
     return UNITY_END();
 }

@@ -34,6 +34,11 @@ public:
     size_t historyReserve() const override {
         return 16;
     }
+
+    // The engine Game is the set here, so this counts gems, not rallies.
+    uint8_t onFireStreak() const override {
+        return 3;
+    }
 };
 
 #endif //PADELRULES_H

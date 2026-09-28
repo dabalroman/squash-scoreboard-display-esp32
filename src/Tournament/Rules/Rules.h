@@ -33,6 +33,15 @@ public:
     virtual size_t historyReserve() const {
         return 32;
     }
+
+    /**
+     * Trailing same-side streak of committed history entries that lights the
+     * "on fire" smoke (LedSmokeAnimation). Breaking an opponent's streak of
+     * this length is also what fires the comeback burst. Padel counts gems.
+     */
+    virtual uint8_t onFireStreak() const {
+        return 5;
+    }
 };
 
 #endif //RULES_H

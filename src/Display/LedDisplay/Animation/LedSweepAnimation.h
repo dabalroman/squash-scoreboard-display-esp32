@@ -10,7 +10,7 @@
 #include "LedSlotPositions.h"
 
 /**
- * A thin ring that grows from an origin outward across the front LEDs. Two
+ * A thin ring that grows from an origin outward across the front LEDs. Three
  * callers, one state machine, on both boards:
  *
  *   boot()         rainbow, one 1 s cycle, driven blocking from setup() by
@@ -18,6 +18,9 @@
  *   celebration()  the winner's colour, three 800 ms cycles, a layer over the
  *                  GameOver screen stepped from loop() at ~20 fps. Its origin is
  *                  the winner's half, so the wave breaks from their side.
+ *   comeback()     (#60) the streak breaker's colour, one 800 ms cycle, a layer
+ *                  over live GamePlaying. Origin is that player's half; it takes
+ *                  LAYER_2 from the "on fire" smoke for its duration.
  *
  * An LedAnimation: it writes only the ring's lit slots into the layer buffer
  * (black, the buffer's fill, is transparent), never into pixels[]. SKIP slots in
@@ -47,6 +50,11 @@ public:
         return Params{800, 300, 3, false, CRGB::Black, 690};
     }
 
+    /** #60 comeback burst: one cycle only, same band (shared radial-gap rule). */
+    static Params comebackParams() {
+        return Params{800, 0, 1, false, CRGB::Black, 690};
+    }
+
 private:
     Params params;
     uint32_t startedMs = 0;
@@ -61,7 +69,7 @@ private:
      * < band, so it clears a radial gap of G only while band > G/2. Worst gaps
      * measured: V2 254 units from the panel centre, 595 from a half origin; V1
      * 354 from the colon midpoint, 189 from a half centroid - so any band above
-     * 298 is safe, and a thinner one blanks whole frames (check_v1/check_v2 guard
+     * 298 is safe, and a thinner one blanks whole frames (test_sweep guards
      * it). Boot and celebration both use 690 (~3.5 die pitches), a look choice:
      * wide enough to wash over the score it passes (user, 2026-09-24; was 394). */
 

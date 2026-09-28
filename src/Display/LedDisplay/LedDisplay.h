@@ -1,4 +1,4 @@
-#ifndef LED_DISPLAY_H
+﻿#ifndef LED_DISPLAY_H
 #define LED_DISPLAY_H
 
 #include <utility>
@@ -9,10 +9,12 @@
 #include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
 #include "LedText.h"
+#include "Animation/LedBajgielAnimation.h"
 #include "Animation/LedIntroAnimation.h"
 #include "Animation/LedSweepAnimation.h"
 #include "Layers/LedBlend.h"
 #include "Layers/LedBreathingAnimation.h"
+#include "Layers/LedSmokeAnimation.h"
 #include "Layers/LedLayerStack.h"
 #include "Layers/LedTarget.h"
 
@@ -45,8 +47,11 @@ class LedDisplay {
     LedSweepAnimation sweep = LedSweepAnimation(LedSweepAnimation::celebrationParams());
     LedBreathingAnimation breathing;
     LedIntroAnimation intro;
+    LedSmokeAnimation smoke;
+    LedBajgielAnimation bajgiel;
     LedLayerStack layers{elementMap};
     BlendMode celebrationBlend = BlendMode::Normal;   // picked on V1 among Normal/Screen/Add/Lighten, 2026-09-24
+    BlendMode smokeBlend = BlendMode::Screen;   // default for #59; setSmokeBlend() is the knob, picked on V1
 
     void buildElementMap() {
         glyphA.markSlots(elementMap, LedTarget::DigitA);
@@ -74,7 +79,25 @@ class LedDisplay {
         sweep.stop();
         breathing.stop();
         intro.stop();
+        smoke.stop();
+        bajgiel.stop();
         layers.clearAll();
+    }
+
+    /**
+     * Single LAYER_2-ownership check, shared by the smoke (#59) and the
+     * comeback burst (#60) - only one of them may render there during
+     * GamePlaying. `startComeback()` stops the smoke before claiming the
+     * layer, so while a burst runs `smoke.active(0)` is always false; once
+     * the sweep goes inactive on its own (one 800 ms cycle, no explicit
+     * stop), the smoke is free to retake the layer on the next setOnFire().
+     */
+    bool smokeOwnsLayer2() const {
+        return smoke.active(0);   // ignores nowMs, same as breathing.active(0) elsewhere
+    }
+
+    bool comebackOwnsLayer2() const {
+        return sweep.active(millis());   // sweep is comeback-only during GamePlaying
     }
 
 public:
@@ -219,6 +242,8 @@ public:
      * under it. `winnerOnLeft` puts its origin on that player's half.
      */
     void startCelebration(const Color color, const bool winnerOnLeft) {
+        smoke.stop();   // releases LAYER_2 so setOnFire(0) later can't mistake itself for the owner
+        bajgiel.stop();
         sweep.setParams(LedSweepAnimation::celebrationParams());
         sweep.setSolidColor(CRGB(color.r, color.g, color.b));
         sweep.setOriginToHalf(winnerOnLeft);
@@ -226,13 +251,34 @@ public:
         layers.set(LedLayerStack::LAYER_2, &sweep, celebrationBlend, LedTarget::Front, LayerMask::AllSlots);
     }
 
+    /**
+     * A game won to zero: the loser's two 0s spin as a comet in their own colour,
+     * instead of the sweep. Multiply + LitOnly, so it only dims the lit ring and
+     * the frame after it expires is the steady score.
+     */
+    void startBajgiel(const bool loserOnLeft) {
+        smoke.stop();
+        sweep.stop();
+        bajgiel.start(
+            millis(), elementMap,
+            loserOnLeft ? LedTarget::DigitA : LedTarget::DigitC,
+            loserOnLeft ? LedTarget::DigitB : LedTarget::DigitD
+        );
+        layers.set(
+            LedLayerStack::LAYER_2, &bajgiel, BlendMode::Multiply,
+            loserOnLeft ? LedTarget::LeftScore : LedTarget::RightScore, LayerMask::LitOnly
+        );
+    }
+
     bool celebrationActive() const {
-        return sweep.active(millis());
+        const uint32_t now = millis();
+        return sweep.active(now) || bajgiel.active(now);
     }
 
     // Layer 2 only: unlike resetAnimations(), V1's history bar survives.
     void stopCelebration() {
         sweep.stop();
+        bajgiel.stop();
         layers.clear(LedLayerStack::LAYER_2);
     }
 
@@ -242,11 +288,28 @@ public:
     }
 
     /**
+     * One-cycle burst on LAYER_2 for a point that breaks the opponent's on-fire streak (#60).
+     * Reuses the same `sweep` member as celebration - the two never coexist,
+     * celebration is GameCelebration-only, this is GamePlaying-only. Stops the
+     * smoke first so it releases LAYER_2 (comebackOwnsLayer2() then holds until
+     * the single cycle ends); a new burst restarts an active one.
+     */
+    void startComeback(const Color color, const bool onLeft) {
+        smoke.stop();
+        sweep.setParams(LedSweepAnimation::comebackParams());
+        sweep.setSolidColor(CRGB(color.r, color.g, color.b));
+        sweep.setOriginToHalf(onLeft);
+        sweep.start(millis());
+        layers.set(LedLayerStack::LAYER_2, &sweep, BlendMode::Normal, LedTarget::Front, LayerMask::AllSlots);
+    }
+
+    /**
      * The walk-on wipe on layer 2, left half `left`, right half `right`. Bar
      * slots erase after the hold (empty at GamePlaying's 0:0); border top/bottom
      * take left/right regardless of x-half (its segments straddle the seam).
      */
     void startIntro(const Color left, const Color right) {
+        smoke.stop();   // releases LAYER_2 so setOnFire(0) later can't mistake itself for the owner
         intro.start(
             millis(), CRGB(left.r, left.g, left.b), CRGB(right.r, right.g, right.b),
             elementMap, LedTarget::Bar, LedTarget::BorderTop, LedTarget::BorderBottom
@@ -283,8 +346,50 @@ public:
     }
 
     /**
+     * "On fire" (task #59): rising smoke over the lit `targets` on LAYER_2.
+     * 0 stops it only when the smoke currently owns LAYER_2 - never clobbers
+     * a celebration or intro running there. Called every frame, so the drift
+     * restarts only on off -> on; a repeat call just moves the mask.
+     *
+     * Yields to a running comeback burst (#60) either way: while one owns
+     * LAYER_2 this neither starts/claims the smoke (non-zero) nor clears the
+     * burst (0). Views call this before taking the comeback side each frame,
+     * so a burst started this same frame is not yet active here and still
+     * wins the layer once its own startComeback() runs afterwards.
+     */
+    void setOnFire(const uint16_t targets) {
+        if (comebackOwnsLayer2()) {
+            return;
+        }
+
+        if (targets == 0) {
+            if (smokeOwnsLayer2()) {
+                smoke.stop();
+                layers.clear(LedLayerStack::LAYER_2);
+            }
+            return;
+        }
+
+        if (!smoke.active(0)) smoke.start(millis());
+        layers.set(LedLayerStack::LAYER_2, &smoke, smokeBlend, targets, LayerMask::LitOnly);
+    }
+
+    /** On fire covers the side's digits and its own V1 bar pixels - not the border. */
+    static uint16_t onFireTargets(const bool left, const bool right) {
+        uint16_t targets = 0;
+        if (left) targets |= LedTarget::LeftScore | LedTarget::BarLeft;
+        if (right) targets |= LedTarget::RightScore | LedTarget::BarRight;
+        return targets;
+    }
+
+    // Applies from the next setOnFire(); nothing in production calls it - the user picks on V1.
+    void setSmokeBlend(const BlendMode mode) {
+        smokeBlend = mode;
+    }
+
+    /**
      * One boot-sweep frame at `elapsedMs`: the sweep screened over a black base,
-     * which is exactly the sweep alone (check_boot.sh holds it byte-identical to
+     * which is exactly the sweep alone (test_boot holds it byte-identical to
      * the pre-layer frames). Clock-free for the host checks.
      */
     void renderBootFrame(const uint32_t elapsedMs) {
