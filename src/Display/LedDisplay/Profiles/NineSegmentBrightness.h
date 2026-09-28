@@ -51,7 +51,7 @@
  * segment clamped to full) draws more than the old 0.8 scheme on V2, but
  * stays under that 69.6 <= 72 bound - accepted.
  *
- * Factors below are literals, not computed at build time: check_v2.cpp
+ * Factors below are literals, not computed at build time: test_v2_glyphs
  * independently recomputes them from the areas above and asserts they match.
  */
 struct NineSegmentBrightness {

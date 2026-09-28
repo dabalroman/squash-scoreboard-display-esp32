@@ -2,3 +2,5 @@
 # generated header out as CRLF and every regeneration shows a whole-file diff.
 helpers/eink_image.py text eol=lf
 src/Display/EInk/Images/*.h text eol=lf
+# Byte-exact goldens: never convert line ends (core.autocrlf is on).
+test/fixtures/*.txt -text

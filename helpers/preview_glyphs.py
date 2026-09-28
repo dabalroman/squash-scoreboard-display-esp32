@@ -9,7 +9,7 @@ firmware. Run after editing the table:
 Checks:
   * enum and mask table are index-aligned;
   * `mask & 0x7F` equals the original V1 7-segment table (indices 0..36), taken
-    from helpers/led_dump/v1_snapshot (Glyph::All differs only in unread bit 7).
+    frozen below as V1_MASKS (Glyph::All differs only in unread bit 7).
 Ported from the 9-segment rig (squash-scoreboard-display-testing-playground).
 """
 import os
@@ -18,7 +18,15 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MASKS = os.path.join(HERE, '..', 'src', 'Display', 'LedDisplay', 'GlyphMasks.h')
-V1_TABLE = os.path.join(HERE, 'led_dump', 'v1_snapshot', 'Display', 'LedDisplay', 'LedGlyph.h')
+# Frozen V1 7-segment table (SegmentToGlyphMap, indices 0..36), copied from the
+# pre-V2 LedGlyph.h that helpers/led_dump/v1_snapshot used to hold.
+V1_MASKS = [
+    0b01110111, 0b00100100, 0b01101011, 0b01101101, 0b00111100, 0b01011101, 0b01011111, 0b01100100,
+    0b01111111, 0b01111101, 0b01111110, 0b01010011, 0b01011010, 0b01010111, 0b00010011, 0b01111010,
+    0b00110111, 0b00111101, 0b00001000, 0b00001111, 0b01111000, 0b11111111, 0b00000000, 0b00011111,
+    0b01011011, 0b00111110, 0b00001110, 0b00001111, 0b00001010, 0b00011011, 0b00000111, 0b00001011,
+    0b00011110, 0b01011101, 0b01101011, 0b00100100, 0b00101111,
+]
 
 BOT, BL, BR, CEN, UL, TR, TOP, ML, MR = (1 << i for i in range(9))
 
@@ -59,9 +67,7 @@ def check(names, masks):
         print('FAIL: enum has %d entries, mask table %d' % (len(names), len(masks)))
         ok = False
 
-    v1 = open(V1_TABLE, encoding='utf-8').read()
-    v1_body = v1.split('SegmentToGlyphMap[37] = {')[1].split('};')[0]
-    v1_masks = [int(m, 2) for m in re.findall(r'0b([01]{8})', v1_body)]
+    v1_masks = V1_MASKS
     for index, old in enumerate(v1_masks):
         collapsed = masks[index] & 0x7F
         if collapsed != old & 0x7F:
