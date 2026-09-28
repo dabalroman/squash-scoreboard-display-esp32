@@ -118,7 +118,7 @@ public:
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            onStateChange(PadelModeState::GamePlaying);
+            onStateChange(PadelModeState::MatchIntro);
             queueRender();
         }
     }

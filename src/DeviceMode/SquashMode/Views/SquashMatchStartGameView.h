@@ -119,7 +119,7 @@ public:
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
             // tournament.matchOrderKeeper->confirmMatchBetweenPlayers({playerA->getId(), playerB->getId()});
-            onStateChange(SquashModeState::GamePlaying);
+            onStateChange(SquashModeState::MatchIntro);
             queueRender();
         }
     }

@@ -9,6 +9,10 @@
 //   - the celebration is a layer over the front: off the ring the frame equals the
 //     plain screen, under every blend; indicators untouched
 //   - the layer engine (task #52): blend maths, element map, compose, breathing
+//   - game ball (task #55): bar owner bits, side targets, phase, blink overlap, rules
+//   - match intro (task #56): outer edge first, monotone through the hold, halves
+//     painted, SKIP untouched, border top/bottom fixed to left/right (not x-half),
+//     no bar so the out phase is zero-length
 //   - per-segment brightness compensation (task #43): the factor table matches the
 //     measured-area formula, indicators/dead slots are untouched, and the worst-case
 //     die-equivalent draw stays under the old flat-0.8 bound
@@ -19,7 +23,9 @@
 
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Profiles/NineSegmentBrightness.h"
+#include "intro_checks.h"
 #include "layer_checks.h"
+#include "rules_checks.h"
 #include "sweep_checks.h"
 
 uint32_t g_fakeMillis = 0;
@@ -189,6 +195,13 @@ int main() {
         /* colon, bar, border top/bottom slots */ 0, 0, 4, 4,
     };
     failures += runLayerChecks(v2Layers);
+    failures += runRulesChecks("v2");
+
+    const IntroCheckConfig v2Intro{
+        "v2", v2SweepReserved, /* indicatorA, indicatorB */ 9, 4, /* seam */ 0,
+        /* expectedTotalMs: wipe 1000 + hold 200, no out phase - V2 has no bar */ 1200,
+    };
+    failures += runIntroChecks(v2Intro);
 
     // Per-segment brightness compensation (task #43): recompute each factor
     // independently from the measured areas/dies and compare against

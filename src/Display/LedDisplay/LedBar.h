@@ -3,9 +3,12 @@
 
 #include <FastLED.h>
 
+#include "Tournament/GameSide.h"
+
 struct LedBarPixel {
     CRGB color = CRGB::Black;
     bool isBlinking = false;
+    GameSide side = GameSide::none;   // who scored it; none outside a game history
 };
 
 // V1 only. The celebration is LedSweepAnimation on a layer over the whole front
@@ -32,6 +35,16 @@ public:
     void markSlots(uint16_t *map, const uint16_t bit) const {
         for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
             map[FIRST_PIXEL_INDEX + i] |= bit;
+        }
+    }
+
+    // Clears both bits first, so no owner survives a new state.
+    void markOwners(uint16_t *map, const uint16_t leftBit, const uint16_t rightBit) const {
+        for (uint8_t i = 0; i < PIXEL_COUNT; i++) {
+            uint16_t &slot = map[FIRST_PIXEL_INDEX + i];
+            slot &= static_cast<uint16_t>(~(leftBit | rightBit));
+            if (state[i].side == GameSide::a) slot |= leftBit;
+            else if (state[i].side == GameSide::b) slot |= rightBit;
         }
     }
 

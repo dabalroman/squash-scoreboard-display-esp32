@@ -62,6 +62,7 @@ public:
             for (uint8_t j = 0; j < pointWidth && (start + j) < LedBar::PIXEL_COUNT; j++) {
                 pixels[start + j].color = crgb;
                 pixels[start + j].isBlinking = blinking;
+                pixels[start + j].side = entry.side;
             }
         }
 

@@ -21,6 +21,10 @@ namespace LedTarget {
         BorderTop = 1u << 7,
         BorderBottom = 1u << 8,
         Bar = 1u << 9,
+        // Bar slots whose pixel a side scored; re-marked by LedBar on every state.
+        // Not in Front: they only ever sit on Bar slots, which Front already covers.
+        BarLeft = 1u << 10,
+        BarRight = 1u << 11,
 
         LeftScore = DigitA | DigitB,
         RightScore = DigitC | DigitD,

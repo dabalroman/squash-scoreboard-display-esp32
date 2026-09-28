@@ -9,6 +9,7 @@
 #include "LedCentralScreenBorder.h"
 #include "LedGlyph.h"
 #include "LedText.h"
+#include "Animation/LedIntroAnimation.h"
 #include "Animation/LedSweepAnimation.h"
 #include "Layers/LedBlend.h"
 #include "Layers/LedBreathingAnimation.h"
@@ -43,6 +44,7 @@ class LedDisplay {
     // Boot and celebration share the sweep; it only ever draws into a layer.
     LedSweepAnimation sweep = LedSweepAnimation(LedSweepAnimation::celebrationParams());
     LedBreathingAnimation breathing;
+    LedIntroAnimation intro;
     LedLayerStack layers{elementMap};
     BlendMode celebrationBlend = BlendMode::Normal;   // picked on V1 among Normal/Screen/Add/Lighten, 2026-09-24
 
@@ -60,9 +62,18 @@ class LedDisplay {
 #endif
     }
 
+#if BOARD_REV == 1
+    // Every bar state goes through here, so the owner bits always match it.
+    void applyBarState(std::array<LedBarPixel, LedBar::PIXEL_COUNT> state) {
+        bar.setState(std::move(state));
+        bar.markOwners(elementMap, LedTarget::BarLeft, LedTarget::BarRight);
+    }
+#endif
+
     void stopLayers() {
         sweep.stop();
         breathing.stop();
+        intro.stop();
         layers.clearAll();
     }
 
@@ -122,13 +133,13 @@ public:
 #if BOARD_REV == 1
     template <typename MakePixels>
     void setLedBarState(MakePixels makePixels) {
-        bar.setState(makePixels());
+        applyBarState(makePixels());
     }
 
     /** Detaches both layers; V1 also clears the bar. */
     void resetAnimations() {
         stopLayers();
-        bar.setState({});
+        applyBarState({});
     }
 #else
     template <typename MakePixels>
@@ -215,21 +226,60 @@ public:
         layers.set(LedLayerStack::LAYER_2, &sweep, celebrationBlend, LedTarget::Front, LayerMask::AllSlots);
     }
 
+    bool celebrationActive() const {
+        return sweep.active(millis());
+    }
+
+    // Layer 2 only: unlike resetAnimations(), V1's history bar survives.
+    void stopCelebration() {
+        sweep.stop();
+        layers.clear(LedLayerStack::LAYER_2);
+    }
+
     // Applies from the next startCelebration(); nothing in production changes it.
     void setCelebrationBlend(const BlendMode mode) {
         celebrationBlend = mode;
     }
 
-    // Dims the lit front on layer 1. No view uses it yet; resetAnimations() stops it.
-    void setBreathing(const bool enabled) {
-        if (enabled) {
-            breathing.start(millis());
-            layers.set(LedLayerStack::LAYER_1, &breathing, BlendMode::Multiply, LedTarget::Front, LayerMask::LitOnly);
+    /**
+     * The walk-on wipe on layer 2, left half `left`, right half `right`. Bar
+     * slots erase after the hold (empty at GamePlaying's 0:0); border top/bottom
+     * take left/right regardless of x-half (its segments straddle the seam).
+     */
+    void startIntro(const Color left, const Color right) {
+        intro.start(
+            millis(), CRGB(left.r, left.g, left.b), CRGB(right.r, right.g, right.b),
+            elementMap, LedTarget::Bar, LedTarget::BorderTop, LedTarget::BorderBottom
+        );
+        layers.set(LedLayerStack::LAYER_2, &intro, BlendMode::Normal, LedTarget::Front, LayerMask::AllSlots);
+    }
+
+    bool introActive() const {
+        return intro.active(millis());
+    }
+
+    /**
+     * Dims the lit `targets` on layer 1; 0 stops it. Called every frame, so the
+     * phase restarts only when it was off - a repeat call just moves the mask.
+     * resetAnimations() stops it.
+     */
+    void setBreathing(const uint16_t targets) {
+        if (targets == 0) {
+            breathing.stop();
+            layers.clear(LedLayerStack::LAYER_1);
             return;
         }
 
-        breathing.stop();
-        layers.clear(LedLayerStack::LAYER_1);
+        if (!breathing.active(0)) breathing.start(millis());
+        layers.set(LedLayerStack::LAYER_1, &breathing, BlendMode::Multiply, targets, LayerMask::LitOnly);
+    }
+
+    /** Game ball: a side's digits, border half and the bar pixels it scored. */
+    static uint16_t breathingTargets(const bool left, const bool right) {
+        uint16_t targets = 0;
+        if (left) targets |= LedTarget::LeftScore | LedTarget::BorderTop | LedTarget::BarLeft;
+        if (right) targets |= LedTarget::RightScore | LedTarget::BorderBottom | LedTarget::BarRight;
+        return targets;
     }
 
     /**

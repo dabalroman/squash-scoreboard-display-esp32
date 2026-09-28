@@ -59,11 +59,12 @@ public:
         ledDisplay.setIndicatorAppearancePlayerA(playerLeft->getColor(), leftWon);
         ledDisplay.setIndicatorAppearancePlayerB(playerRight->getColor(), rightWon);
         ledDisplay.setBorderAppearance(playerLeft->getColor(), playerRight->getColor(), leftWon, rightWon);
-        ledDisplay.startCelebration(leftWon ? playerLeft->getColor() : playerRight->getColor(), leftWon);
+        ledDisplay.stopCelebration();
+        ledDisplay.setBreathing(0);
     }
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
-        // celebrations - update every tick
+        // blinking winner - update every tick
         if (gameResult == nullptr) return;
 
         ledDisplay.display();

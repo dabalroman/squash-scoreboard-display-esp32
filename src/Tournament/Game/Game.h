@@ -45,6 +45,11 @@ public:
         return static_cast<uint8_t>(score < 0 ? 0 : score);
     }
 
+    /** Game ball on the committed score: an uncommitted point neither starts nor stops it. */
+    bool willWinOnNextPointScored(const GameSide side) const {
+        return rules->willWinOnNextPointScored(getRealScore(GameSide::a), getRealScore(GameSide::b), side);
+    }
+
     GameSide getWinner() const {
         return winner;
     }

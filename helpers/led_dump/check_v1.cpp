@@ -6,11 +6,16 @@
 //   - the celebration is a layer over the whole front, history bar included:
 //     off the ring the frame equals the plain screen, under every blend
 //   - the layer engine (task #52): blend maths, element map, compose, breathing
+//   - game ball (task #55): bar owner bits, side targets, phase, blink overlap, rules
+//   - match intro (task #56): outer edge first, monotone through the hold, halves
+//     painted, colon seam dark, bar erases outward after the hold (nearest first)
 // Build: ./check_v1.sh
 #include <cstdio>
 
 #include "Display/LedDisplay/LedDisplay.h"
+#include "intro_checks.h"
 #include "layer_checks.h"
+#include "rules_checks.h"
 #include "sweep_checks.h"
 
 uint32_t g_fakeMillis = 0;
@@ -38,6 +43,13 @@ int main() {
         /* colon, bar, border top/bottom slots */ 2, 24, 0, 0,
     };
     failures += runLayerChecks(v1Layers);
+    failures += runRulesChecks("v1");
+
+    const IntroCheckConfig v1Intro{
+        "v1", v1SweepReserved, /* indicatorA, indicatorB */ 3, 2, /* seam (colon) */ 2,
+        /* expectedTotalMs: wipe 1000 + hold 200 + out 400 (the bar is outgoing) */ 1600,
+    };
+    failures += runIntroChecks(v1Intro);
 
     printf("%s: %d writes checked, %d failures\n", failures ? "FAIL" : "OK", writes, failures);
     return failures ? 1 : 0;

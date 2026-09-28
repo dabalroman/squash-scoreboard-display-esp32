@@ -3,12 +3,27 @@
 
 #include <cstddef>
 
+#include "../GameSide.h"
+
 class Rules {
 public:
     virtual ~Rules() {
     }
 
     virtual GameSide checkWinner(int8_t scoreA, int8_t scoreB) const = 0;
+
+    /**
+     * Game ball: `side` wins on its next point. Per side rather than a returned
+     * GameSide, so a rule set that allows both at once never forces a pick.
+     * An already won score is nobody's game ball.
+     */
+    virtual bool willWinOnNextPointScored(const int8_t scoreA, const int8_t scoreB, const GameSide side) const {
+        if (side == GameSide::none || checkWinner(scoreA, scoreB) != GameSide::none) return false;
+
+        return side == GameSide::a
+                   ? checkWinner(scoreA + 1, scoreB) == GameSide::a
+                   : checkWinner(scoreA, scoreB + 1) == GameSide::b;
+    }
 
     /**
      * How many score-history entries to reserve for a game under these rules.

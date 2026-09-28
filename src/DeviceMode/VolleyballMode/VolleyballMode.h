@@ -9,6 +9,8 @@
 #include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/VolleyballMatchStartGameView.h"
 #include "Views/VolleyballGameOverView.h"
+#include "DeviceMode/Celebration/GameCelebrationView.h"
+#include "DeviceMode/Intro/MatchIntroView.h"
 #include "Views/VolleyballGamePlayingView.h"
 #include "Views/VolleyballTournamentChoosePlayersView.h"
 #include "Utils.h"
@@ -28,6 +30,9 @@ class VolleyballMode final : public DeviceMode {
 
     void handleStateChange() {
         previousState = state;
+        // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
+        // a press latched in between must not act on the new view's first frame.
+        remoteInputManager.clearLatches();
 
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
@@ -45,17 +50,34 @@ class VolleyballMode final : public DeviceMode {
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
+            case VolleyballModeState::MatchIntro:
+                activeView = std::make_unique<MatchIntroView<VolleyballModeState>>(
+                    tournament,
+                    [this](const VolleyballModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_SETS,
+                    true
+                );
+                break;
             case VolleyballModeState::GamePlaying:
                 activeView = std::make_unique<VolleyballGamePlayingView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
-            case VolleyballModeState::GameOver:
+            case VolleyballModeState::GameCelebration:
+                // Once per game: restoreView() after an Overlay never comes through here.
                 if (onMatchOver) {
                     onMatchOver();
                 }
 
+                activeView = std::make_unique<GameCelebrationView<VolleyballModeState>>(
+                    tournament,
+                    [this](const VolleyballModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_SETS,
+                    false
+                );
+                break;
+            case VolleyballModeState::GameOver:
                 activeView = std::make_unique<VolleyballGameOverView>(
                     tournament,
                     [this](const VolleyballModeState newState) { setState(newState); }
@@ -98,6 +120,11 @@ public:
             case VolleyballModeState::MatchStartGame:
                 setState(VolleyballModeState::TournamentChoosePlayers);
                 return true;
+            case VolleyballModeState::MatchIntro:
+                // No game exists yet (GamePlaying creates it), so nothing is lost.
+                setState(VolleyballModeState::MatchStartGame);
+                return true;
+            case VolleyballModeState::GameCelebration:
             case VolleyballModeState::GameOver:
                 // The result is already recorded; back cannot undo it, so it lands where
                 // the forward action would.

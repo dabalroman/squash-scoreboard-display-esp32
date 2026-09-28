@@ -11,6 +11,8 @@
 #include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/PadelMatchStartGameView.h"
 #include "Views/PadelGameOverView.h"
+#include "DeviceMode/Celebration/GameCelebrationView.h"
+#include "DeviceMode/Intro/MatchIntroView.h"
 #include "Views/PadelGamePlayingView.h"
 #include "Views/PadelTournamentChoosePlayersView.h"
 
@@ -27,6 +29,9 @@ class PadelMode final : public DeviceMode {
 
     void handleStateChange() {
         previousState = state;
+        // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
+        // a press latched in between must not act on the new view's first frame.
+        remoteInputManager.clearLatches();
 
         switch (state) {
             case PadelModeState::TournamentChoosePlayers:
@@ -44,17 +49,34 @@ class PadelMode final : public DeviceMode {
                     [this](const PadelModeState newState) { setState(newState); }
                 );
                 break;
+            case PadelModeState::MatchIntro:
+                activeView = std::make_unique<MatchIntroView<PadelModeState>>(
+                    tournament,
+                    [this](const PadelModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_GEMS,
+                    false
+                );
+                break;
             case PadelModeState::GamePlaying:
                 activeView = std::make_unique<PadelGamePlayingView>(
                     tournament,
                     [this](const PadelModeState newState) { setState(newState); }
                 );
                 break;
-            case PadelModeState::GameOver:
+            case PadelModeState::GameCelebration:
+                // Once per game: restoreView() after an Overlay never comes through here.
                 if (onMatchOver) {
                     onMatchOver();
                 }
 
+                activeView = std::make_unique<GameCelebrationView<PadelModeState>>(
+                    tournament,
+                    [this](const PadelModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_GEMS,
+                    true
+                );
+                break;
+            case PadelModeState::GameOver:
                 activeView = std::make_unique<PadelGameOverView>(
                     tournament,
                     [this](const PadelModeState newState) { setState(newState); }
@@ -97,6 +119,11 @@ public:
             case PadelModeState::MatchStartGame:
                 setState(PadelModeState::TournamentChoosePlayers);
                 return true;
+            case PadelModeState::MatchIntro:
+                // No game exists yet (GamePlaying creates it), so nothing is lost.
+                setState(PadelModeState::MatchStartGame);
+                return true;
+            case PadelModeState::GameCelebration:
             case PadelModeState::GameOver:
                 // The result is already recorded; back cannot undo it, so it lands where
                 // the forward action would.

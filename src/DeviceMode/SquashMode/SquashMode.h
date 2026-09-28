@@ -11,6 +11,8 @@
 #include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/SquashMatchStartGameView.h"
 #include "Views/SquashGameOverView.h"
+#include "DeviceMode/Celebration/GameCelebrationView.h"
+#include "DeviceMode/Intro/MatchIntroView.h"
 #include "Views/SquashGamePlayingView.h"
 #include "Views/SquashTournamentChoosePlayersView.h"
 
@@ -27,6 +29,9 @@ class SquashMode final : public DeviceMode {
 
     void handleStateChange() {
         previousState = state;
+        // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
+        // a press latched in between must not act on the new view's first frame.
+        remoteInputManager.clearLatches();
 
         switch (state) {
             case SquashModeState::TournamentChoosePlayers:
@@ -44,17 +49,34 @@ class SquashMode final : public DeviceMode {
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
+            case SquashModeState::MatchIntro:
+                activeView = std::make_unique<MatchIntroView<SquashModeState>>(
+                    tournament,
+                    [this](const SquashModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_SETS,
+                    true
+                );
+                break;
             case SquashModeState::GamePlaying:
                 activeView = std::make_unique<SquashGamePlayingView>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); }
                 );
                 break;
-            case SquashModeState::GameOver:
+            case SquashModeState::GameCelebration:
+                // Once per game: restoreView() after an Overlay never comes through here.
                 if (onMatchOver) {
                     onMatchOver();
                 }
 
+                activeView = std::make_unique<GameCelebrationView<SquashModeState>>(
+                    tournament,
+                    [this](const SquashModeState newState) { setState(newState); },
+                    Str::MATCH_SCORE_LABEL_SETS,
+                    false
+                );
+                break;
+            case SquashModeState::GameOver:
                 activeView = std::make_unique<SquashGameOverView>(
                     tournament,
                     [this](const SquashModeState newState) { setState(newState); }
@@ -97,6 +119,11 @@ public:
             case SquashModeState::MatchStartGame:
                 setState(SquashModeState::TournamentChoosePlayers);
                 return true;
+            case SquashModeState::MatchIntro:
+                // No game exists yet (GamePlaying creates it), so nothing is lost.
+                setState(SquashModeState::MatchStartGame);
+                return true;
+            case SquashModeState::GameCelebration:
             case SquashModeState::GameOver:
                 // The result is already recorded; back cannot undo it, so it lands where
                 // the forward action would.

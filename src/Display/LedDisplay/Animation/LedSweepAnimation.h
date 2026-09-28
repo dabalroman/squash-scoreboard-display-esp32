@@ -128,6 +128,7 @@ public:
      * slot at x == 0, so this is a no-op for it).
      */
     void setOriginToHalf(const bool left) {
+        const LedSlots::Half half = left ? LedSlots::Half::Left : LedSlots::Half::Right;
         float sumX = 0.0f;
         float sumY = 0.0f;
         uint16_t count = 0;
@@ -138,7 +139,7 @@ public:
             }
 
             const int16_t x = LedSlots::POS[slot][0];
-            if (left ? (x >= 0) : (x <= 0)) {
+            if (LedSlots::halfOf(x) != half) {
                 continue;
             }
 

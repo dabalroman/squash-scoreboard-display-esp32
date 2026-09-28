@@ -232,4 +232,14 @@ namespace LedSlots {
 
 #endif
 
+namespace LedSlots {
+    /** Which player's side of the front a slot is on. V1's colon dies sit at
+     *  x == 0 and belong to neither; V2 has no slot there. */
+    enum class Half : uint8_t { Left, Right, Seam };
+
+    inline Half halfOf(const int16_t x) {
+        return x < 0 ? Half::Left : (x > 0 ? Half::Right : Half::Seam);
+    }
+}
+
 #endif //LED_SLOT_POSITIONS_H

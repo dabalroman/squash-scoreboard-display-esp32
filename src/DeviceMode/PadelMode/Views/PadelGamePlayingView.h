@@ -63,7 +63,7 @@ class PadelGamePlayingView final : public View {
     static GlyphPair pointToGlyphs(const PadelPoint point) {
         switch (point) {
             default:
-            case PadelPoint::Love:      return {Glyph::Empty, Glyph::D0};
+            case PadelPoint::Love:      return {Glyph::D0, Glyph::D0};
             case PadelPoint::Fifteen:   return {Glyph::D1, Glyph::D5};
             case PadelPoint::Thirty:    return {Glyph::D3, Glyph::D0};
             case PadelPoint::Forty:     return {Glyph::D4, Glyph::D0};
@@ -71,12 +71,9 @@ class PadelGamePlayingView final : public View {
         }
     }
 
-    // Tens blank below 10, matching the ladder's own [  ][0] for love.
+    // Zero-padded like every other sport's score (setNumericValue): 00:00, 05:03.
     static GlyphPair numberToGlyphs(const uint8_t value) {
-        return {
-            value < 10 ? Glyph::Empty : LedDisplay::digitToGlyph(value / 10),
-            LedDisplay::digitToGlyph(value % 10)
-        };
+        return {LedDisplay::digitToGlyph(value / 10), LedDisplay::digitToGlyph(value % 10)};
     }
 
     static String pointToString(const PadelPoint point) {
@@ -104,6 +101,12 @@ class PadelGamePlayingView final : public View {
 
     bool isTiebreakNow() const {
         return PadelRules::isTiebreakScore(game->getRealScore(GameSide::a), game->getRealScore(GameSide::b));
+    }
+
+    // Gem ball on the committed rallies (40:00, Ad; in the tiebreak the set):
+    // what the digits show, and never both sides at once.
+    bool breathes(const GameSide side) const {
+        return scorer.willWinOnNextRally(side);
     }
 
     void stepBackToPreviousGem() {
@@ -193,7 +196,7 @@ public:
                 if (setWinner != GameSide::none) {
                     remoteInputManager.preventTriggerForMs();
                     match->finishGame();
-                    onStateChange(PadelModeState::GameOver);
+                    onStateChange(PadelModeState::GameCelebration);
                     return;
                 }
 
@@ -276,6 +279,8 @@ public:
 
             shouldUpdateLedBarState = false;
         }
+
+        ledDisplay.setBreathing(LedDisplay::breathingTargets(breathes(GameSide::a), breathes(GameSide::b)));
 
         ledDisplay.display();
     }

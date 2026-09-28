@@ -144,6 +144,20 @@ public:
     }
 
     /**
+     * `side` takes the gem (in the tiebreak: the set) on its next rally.
+     * Committed rallies only: an uncommitted rally neither starts nor stops it.
+     */
+    bool willWinOnNextRally(const GameSide side) const {
+        if (side == GameSide::none) return false;
+
+        const int a = committedPoints(GameSide::a);
+        const int b = committedPoints(GameSide::b);
+        if (winnerOf(a, b) != GameSide::none) return false;
+
+        return side == GameSide::a ? winnerOf(a + 1, b) == GameSide::a : winnerOf(a, b + 1) == GameSide::b;
+    }
+
+    /**
      * Applies the uncommitted rallies. Returns the gem winner if the gem just
      * completed, otherwise none. Does not reset — snapshot then reset() the gem.
      */

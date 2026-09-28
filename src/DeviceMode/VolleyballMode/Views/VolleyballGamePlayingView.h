@@ -88,7 +88,7 @@ public:
             if (commitResultWinner != GameSide::none) {
                 remoteInputManager.preventTriggerForMs();
                 match->finishGame();
-                onStateChange(VolleyballModeState::GameOver);
+                onStateChange(VolleyballModeState::GameCelebration);
                 return;
             }
         }
@@ -135,6 +135,11 @@ public:
 
             shouldUpdateLedBarState = false;
         }
+
+        ledDisplay.setBreathing(LedDisplay::breathingTargets(
+            game->willWinOnNextPointScored(GameSide::a),
+            game->willWinOnNextPointScored(GameSide::b)
+        ));
 
         ledDisplay.display();
     }
