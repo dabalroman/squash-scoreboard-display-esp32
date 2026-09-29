@@ -74,7 +74,7 @@ void RemoteDevelopmentService::setupOTA() {
 
             if (Update.hasError()) {
                 // Say what went wrong, not "FAIL": the scripted path
-                // (`pio run -t upload -e lolin_s2_mini_ota`) curls this and used to be
+                // (`pio run -t upload -e v1_ota`) curls this and used to be
                 // handed HTTP 200 for a flash that never landed.
                 OTAServer->send(400, "text/plain; charset=utf-8", Update.errorString());
                 notifyUpdate(FirmwareUpdateStage::Failed, Str::OTA_EINK_TITLE_ERROR);
@@ -127,7 +127,7 @@ void RemoteDevelopmentService::setupOTA() {
                 closeTelnetForOta();
                 Update.write(upload.buf, upload.currentSize);
             } else if (upload.status == UPLOAD_FILE_END) {
-                // A file too short to hold a header never reached a verdict above.
+                // A file too short to reach the marker never got a verdict above.
                 if (otaRejectReason == nullptr && !otaHeader.ready()) {
                     latchOtaReject(FirmwareImageCheck::Verdict::NotFirmware);
                 }
@@ -230,9 +230,13 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
         delay(500);
     }
 
+    // Logged, not only drawn: a naked or sealed board has no OLED to read it from.
     if (WiFi.status() != WL_CONNECTED) {
+        ::printLn("WiFi: no STA on '%s' (status %d), fallback AP '%s'", savedSSID.c_str(),
+                  static_cast<int>(WiFi.status()), AP_SSID);
         enableAP();
     } else {
+        ::printLn("WiFi: connected to '%s', IP %s", savedSSID.c_str(), WiFi.localIP().toString().c_str());
         backDisplay->clear();
         backDisplay->setCursorToLine();
         backDisplay->print(WiFi.SSID());
@@ -392,22 +396,27 @@ void RemoteDevelopmentService::notifyUpdate(const FirmwareUpdateStage stage, con
  * always records what the image actually was.
  */
 void RemoteDevelopmentService::latchOtaReject(const FirmwareImageCheck::Verdict verdict) {
+    // Reading board_marker here is also what keeps it past --gc-sections.
+    const unsigned runningRev = board_marker.boardRev;
+    const unsigned seenRev = otaHeader.seenBoardRev();
+
     if (verdict == FirmwareImageCheck::Verdict::Ok) {
-        ::printLn("OTA: header ok, chip 0x%04X", otaHeader.seenChipId());
+        ::printLn("OTA: header ok, chip 0x%04X, board %u (running %u)", otaHeader.seenChipId(), seenRev, runningRev);
         return;
     }
 
-    const char *label = verdict == FirmwareImageCheck::Verdict::WrongChip
+    const char *label = FirmwareImageCheck::isWrongBoard(verdict)
                             ? Str::OTA_EINK_TITLE_WRONG_BOARD
                             : Str::OTA_EINK_TITLE_BAD_FILE;
 
     if (otaForced) {
-        ::printLn("OTA: header rejected (%s, chip 0x%04X) but forced - writing anyway",
-                label, otaHeader.seenChipId());
+        ::printLn("OTA: header rejected (%s, verdict %u, chip 0x%04X, board %u, running %u) but forced - writing anyway",
+                label, static_cast<unsigned>(verdict), otaHeader.seenChipId(), seenRev, runningRev);
         return;
     }
 
-    ::printLn("OTA: header rejected - %s, chip 0x%04X", label, otaHeader.seenChipId());
+    ::printLn("OTA: header rejected - %s, verdict %u, chip 0x%04X, board %u (running %u)",
+            label, static_cast<unsigned>(verdict), otaHeader.seenChipId(), seenRev, runningRev);
     otaRejectReason = FirmwareImageCheck::reasonFor(verdict);
     otaRejectLabel = label;
 }

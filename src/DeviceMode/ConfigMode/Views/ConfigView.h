@@ -221,9 +221,8 @@ public:
                                         ip.length() > 0 ? ip.c_str() : nullptr, batteryPercent));
     }
 
-    // The battery is an e-paper-only readout now: on the OLED it lived in the top
-    // strip the damaged panel never lights, and the 3-row menu below leaves it
-    // nowhere else to go. The footer here still carries it.
+    // The battery reaches the OLED only where there is no e-paper to carry it (V1).
+    // Gated on the two facts, never on the board.
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
@@ -231,6 +230,9 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
+        if (!EInkDisplay::available() && batteryMonitor.available()) {
+            backDisplay.drawBatteryPercent(batteryMonitor.percent());
+        }
         backDisplay.display();
 
         shouldRenderBack = false;

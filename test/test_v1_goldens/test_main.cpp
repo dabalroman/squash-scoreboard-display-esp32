@@ -180,9 +180,17 @@ static void test_frames_match_golden() {
     assertMatchesGolden("golden_v1_frames.txt", dumpFrames());
 }
 
+// V1's OLED is healthy (the battery readout lives in its top strip) and its battery
+// factor is the uncalibrated V2 starting value.
+static void test_board_facts() {
+    TEST_ASSERT_EQUAL_UINT8(0, Board::OLED_DEAD_TOP_ROWS);
+    TEST_ASSERT_TRUE(Board::BATTERY_FACTOR > 1.9f && Board::BATTERY_FACTOR < 2.2f);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_glyphs_match_golden);
     RUN_TEST(test_frames_match_golden);
+    RUN_TEST(test_board_facts);
     return UNITY_END();
 }

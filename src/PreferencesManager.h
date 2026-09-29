@@ -6,6 +6,12 @@
 
 #include "PrefsData.h"
 
+#ifdef BOOTSTRAP_WIFI
+// Generated into the v1_bootstrap build dir only (on the include path of that env alone),
+// so no other env can see it, and it never lands in the source tree.
+#include "BootstrapWifi.generated.h"
+#endif
+
 class PreferencesManager {
     Preferences preferences;
     std::function<void(const PrefsData &)> applyHandler;
@@ -33,13 +39,28 @@ public:
         }
     }
 
-    void read() {
+    // Returns true when the bootstrap credentials were just seeded (v1_bootstrap only), so
+    // main.cpp can log it: this header cannot reach printLn (include cycle).
+    bool read() {
+        bool valid = false;
         if (preferences.begin(NAMESPACE, true)
             && preferences.getBytesLength(KEY_SETTINGS) == sizeof(PrefsData)
         ) {
             preferences.getBytes(KEY_SETTINGS, &settings, sizeof(PrefsData));
+            valid = true;
         }
         preferences.end();
+
+#ifdef BOOTSTRAP_WIFI
+        // Only a missing/invalid blob is seeded: a valid one (real credentials, a chosen
+        // brightness) is never touched, so re-flashing this env over a used device is safe.
+        if (!valid) {
+            PrefsBootstrap::seed(settings, BOOTSTRAP_WIFI_SSID, BOOTSTRAP_WIFI_PASSWORD);
+            save();
+            return true;
+        }
+#endif
+        return false;
     }
 
     // The apply choke point: every writer (CONFIG exit, web settings, /connect)

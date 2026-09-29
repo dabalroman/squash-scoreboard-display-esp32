@@ -2,6 +2,7 @@
 #define PREFS_DATA_H
 
 #include <stdint.h>
+#include <string.h>
 
 /**
  * The NVS "set" blob. Split from PreferencesManager.h (which needs <Preferences.h>)
@@ -33,6 +34,19 @@ namespace PrefsBrightness {
 
     inline uint8_t byteToLevel(const uint8_t brightness) {
         return static_cast<uint8_t>(brightness / 32 + 1);
+    }
+}
+
+// First-boot seed for the v1_bootstrap env (helpers/wifi_bootstrap.py): the one USB flash of
+// a sealed V1 must come up on the house network with OTA, with no remote or menu needed.
+// Pure so the host tests can hold it; PreferencesManager::read() decides when to call it.
+namespace PrefsBootstrap {
+    inline void seed(PrefsData &data, const char *ssid, const char *password) {
+        data = PrefsData();
+        data.enableDevMode = 1;
+        // Bounded copy: the fields are zeroed by the reset above, so [63] stays NUL.
+        strncpy(data.wifiSSID, ssid, sizeof(data.wifiSSID) - 1);
+        strncpy(data.wifiPassword, password, sizeof(data.wifiPassword) - 1);
     }
 }
 

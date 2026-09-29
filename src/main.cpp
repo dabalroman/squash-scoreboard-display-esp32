@@ -121,10 +121,11 @@ void initHardware() {
     FastLED.clear();
     FastLED.show();
 
-    pinMode(Board::RF_D0, INPUT);
-    pinMode(Board::RF_D1, INPUT);
-    pinMode(Board::RF_D2, INPUT);
-    pinMode(Board::RF_D3, INPUT);
+    // Pull-down: unwired pins float and fire phantom presses; the receiver drives its output, so it wins.
+    pinMode(Board::RF_D0, INPUT_PULLDOWN);
+    pinMode(Board::RF_D1, INPUT_PULLDOWN);
+    pinMode(Board::RF_D2, INPUT_PULLDOWN);
+    pinMode(Board::RF_D3, INPUT_PULLDOWN);
 
     attachInterrupt(digitalPinToInterrupt(Board::RF_D0), onRemoteReceiverInterrupt_d0, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D1), onRemoteReceiverInterrupt_d1, RISING);
@@ -249,12 +250,10 @@ void setup() {
     // so the pin is never left floating while the rest of the hardware comes up.
     gBuzzer.init();
 
-    if (Board::SERIAL_LOG) {
-        Serial.begin(115200);
-    }
+    Serial.begin(115200);
 
     preferencesManager.setApplyHandler(applySettings);
-    preferencesManager.read();
+    const bool wifiSeeded = preferencesManager.read();
     // Before any mode is built: every mode is handed playerRoster.profiles().
     playerRoster.load(FACTORY_PLAYERS, FACTORY_PLAYER_COUNT);
     initHardware();
@@ -335,11 +334,13 @@ void setup() {
     printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
+    if (wifiSeeded) {
+        printLn("Bootstrap: empty NVS seeded with WiFi credentials, Dev Mode on");
+    }
     printLn("Roster: %u players", static_cast<unsigned>(playerRoster.size()));
 
-    if (batterySensor.available()) {
-        printLn("Battery: %u mV raw, %.3f V", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts());
-    }
+    printLn("Battery: %u mV raw, %.3f V%s", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts(),
+            batterySensor.available() ? "" : " (implausible, ignored)");
 
     buildDeviceMode(DeviceModeState::ModeSwitchingMode);
 }
@@ -384,10 +385,11 @@ void loop() {
         showLowBatteryOverlay();
     }
 
-    if (batterySensor.available() && millis() - lastBatteryLogMs >= 10000) {
+    // Logged even when implausible: the raw value is what calibrating a divider needs.
+    if (millis() - lastBatteryLogMs >= 10000) {
         lastBatteryLogMs = millis();
-        printLn("Battery: %u mV raw, %.3f V, %u%%", static_cast<unsigned>(batterySensor.rawMilliVolts()),
-                batterySensor.volts(), batteryMonitor.percent());
+        printLn("Battery: %u mV raw, %.3f V, %u%%%s", static_cast<unsigned>(batterySensor.rawMilliVolts()),
+                batterySensor.volts(), batteryMonitor.percent(), batterySensor.available() ? "" : " (implausible, ignored)");
     }
 
     // At most 20 fps, for now

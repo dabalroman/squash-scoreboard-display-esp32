@@ -15,7 +15,7 @@
  * the lit digits keeps the player's hue readable underneath.
  *
  * Per-slot lattice coordinates are fixed-point, computed once in the ctor; the
- * per-frame path is integer only (the S2 has no FPU) and a pure function of
+ * per-frame path is integer only (host/device bit-identical, cheap per pixel) and a pure function of
  * nowMs - startedMs.
  */
 class LedSmokeAnimation : public LedAnimation {

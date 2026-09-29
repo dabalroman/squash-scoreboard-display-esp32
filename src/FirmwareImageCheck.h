@@ -2,46 +2,54 @@
 #define FIRMWARE_IMAGE_CHECK_H
 
 /**
- * Is this .bin an application image for *this* chip?
+ * Is this .bin an application image for *this* board?
  *
- * Header fields only - no signature, no MD5, no project sentinel. It is here to
- * catch the wrong attachment (the other board's firmware, a bootloader.bin, a
- * neighbour in the build directory), not an attacker: measured 2026-09-18, the
- * app descriptor says project_name "arduino-lib-builder" and version
- * "esp-idf: v4.4.7" in *every* image this toolchain builds, so nothing in the
- * header identifies this project or its firmware version. An unrelated Arduino
- * build for the same chip therefore passes, and that is the accepted limit.
+ * Header fields plus the board marker - no signature, no MD5. It is here to catch
+ * the wrong attachment (the other board's firmware, a bootloader.bin, a neighbour
+ * in the build directory), not an attacker: the app descriptor says project_name
+ * "arduino-lib-builder" and version "esp-idf: v4.4.7" in *every* image this
+ * toolchain builds, so nothing there identifies this project.
  *
- * Nothing here is hand-written. Every expected value comes from the same
- * toolchain headers that stamped the running image, so no future build can drift
- * away from what the check expects and lock the board out - and an older .bin
- * built before this feature still passes, because these fields have always been
- * in every image. That is also why the chip id is not a Board.h constant:
- * CONFIG_IDF_FIRMWARE_CHIP_ID comes from the sdkconfig.h that built this
- * firmware (0x0002 on the S2, 0x0009 on the S3) and needs no BOARD_REV branch.
+ * Both boards are an ESP32-S3, so the chip id only rejects images for another
+ * chip family. What tells V1 from V2 is BoardMarker (BoardMarker.h), which every
+ * build stamps right after esp_app_desc_t. An image without it predates the
+ * marker: accepted only where such images exist in the field (V2), because V1's
+ * first S3 image went in over USB already marked.
+ *
+ * The chip id is not a Board.h constant: CONFIG_IDF_FIRMWARE_CHIP_ID comes from
+ * the sdkconfig.h that built this firmware, so a build cannot drift from what the
+ * check expects.
  *
  * Board-agnostic: no #if BOARD_REV.
  */
 
+#include <cstring>
+
 #include <Arduino.h>
 #include <esp_app_format.h>
 
+#include "BoardMarker.h"
+
 namespace FirmwareImageCheck {
-    // The 24-byte image header, the 8-byte first segment header, and the first word
-    // behind them - the app descriptor's magic, which is what separates an application from a bootloader.
     enum : size_t {
-        HEADER_BYTES = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(uint32_t)
+        APP_DESC_OFFSET = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t),
+        HEADER_BYTES = BoardMarker::IMAGE_OFFSET + sizeof(BoardMarker::Marker)
     };
 
     static_assert(sizeof(esp_image_header_t) == 24, "ESP image header is not 24 bytes");
     static_assert(sizeof(esp_image_segment_header_t) == 8, "ESP segment header is not 8 bytes");
+    static_assert(sizeof(esp_app_desc_t) == 256, "esp_app_desc_t is not 256 bytes");
     static_assert(offsetof(esp_image_header_t, chip_id) == 0x0C, "chip_id is no longer at 0x0C");
+    static_assert(BoardMarker::IMAGE_OFFSET == APP_DESC_OFFSET + sizeof(esp_app_desc_t),
+                  "the marker must follow esp_app_desc_t");
 
     enum class Verdict : uint8_t {
         Pending,        // fewer than HEADER_BYTES bytes seen so far
         Ok,
         NotFirmware,    // no 0xE9, or nothing behind the header that says "application"
-        WrongChip,      // an application image, but built for the other board
+        WrongChip,      // an application image for another chip family
+        WrongBoard,     // marked for the other board
+        MissingMarker,  // unmarked (pre-marker build) on a board that does not accept those
     };
 
     /**
@@ -72,7 +80,8 @@ namespace FirmwareImageCheck {
             return filled >= HEADER_BYTES;
         }
 
-        Verdict verdict() const {
+        // receivingRev is a parameter only so the host tests can judge as either board.
+        Verdict verdict(const uint8_t receivingRev = BoardMarker::RUNNING_REV) const {
             if (!ready()) {
                 return Verdict::Pending;
             }
@@ -81,9 +90,8 @@ namespace FirmwareImageCheck {
                 return Verdict::NotFirmware;
             }
 
-            // Wrong board is reported ahead of a missing descriptor: for the one
-            // realistic wrong file - the other board's firmware.bin - that is the
-            // useful thing to say, and both could otherwise apply.
+            // Wrong chip is reported ahead of a missing descriptor: for a
+            // firmware.bin built for another chip that is the useful thing to say.
             if (chipId() != CONFIG_IDF_FIRMWARE_CHIP_ID) {
                 return Verdict::WrongChip;
             }
@@ -94,12 +102,21 @@ namespace FirmwareImageCheck {
                 return Verdict::NotFirmware;
             }
 
-            return Verdict::Ok;
+            if (!hasMarker()) {
+                return receivingRev == BoardMarker::LEGACY_UNMARKED_REV ? Verdict::Ok : Verdict::MissingMarker;
+            }
+
+            return marker().boardRev == receivingRev ? Verdict::Ok : Verdict::WrongBoard;
         }
 
         // For the log line only - 0xFFFF while nothing has been read yet.
         uint16_t seenChipId() const {
             return ready() ? chipId() : static_cast<uint16_t>(ESP_CHIP_ID_INVALID);
+        }
+
+        // For the log line only - 0 when unmarked or not yet read.
+        uint8_t seenBoardRev() const {
+            return ready() && hasMarker() ? marker().boardRev : 0;
         }
 
     private:
@@ -116,10 +133,24 @@ namespace FirmwareImageCheck {
 
         uint32_t appDescMagic() const {
             uint32_t value = 0;
-            memcpy(&value, header + sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t), sizeof(value));
+            memcpy(&value, header + APP_DESC_OFFSET, sizeof(value));
             return value;
         }
+
+        BoardMarker::Marker marker() const {
+            BoardMarker::Marker value = {};
+            memcpy(&value, header + BoardMarker::IMAGE_OFFSET, sizeof(value));
+            return value;
+        }
+
+        bool hasMarker() const {
+            return marker().magic == BoardMarker::MAGIC;
+        }
     };
+
+    inline bool isWrongBoard(const Verdict verdict) {
+        return verdict == Verdict::WrongChip || verdict == Verdict::WrongBoard || verdict == Verdict::MissingMarker;
+    }
 
     /**
      * The HTTP 400 body, read by someone who has never seen a build directory: it
@@ -130,7 +161,10 @@ namespace FirmwareImageCheck {
     inline const char *reasonFor(const Verdict verdict) {
         switch (verdict) {
             case Verdict::WrongChip:
+            case Verdict::WrongBoard:
                 return "To nie jest plik dla tej tablicy - sprawdź, czy wysłano właściwy załącznik.";
+            case Verdict::MissingMarker:
+                return "To nie jest plik dla tej tablicy albo to stara wersja - sprawdź, czy wysłano właściwy załącznik.";
             case Verdict::NotFirmware:
                 return "To nie jest plik z oprogramowaniem tablicy - sprawdź, czy wysłano właściwy załącznik.";
             default:

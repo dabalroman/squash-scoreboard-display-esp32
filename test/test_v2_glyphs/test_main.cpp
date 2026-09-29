@@ -229,6 +229,12 @@ static void test_compensate_scales_every_slot_by_its_factor() {
     }
 }
 
+// The damaged bench OLED keeps its 11-row floor: V2's OLED layout depends on it.
+static void test_board_facts() {
+    TEST_ASSERT_EQUAL_UINT8(11, Board::OLED_DEAD_TOP_ROWS);
+    TEST_ASSERT_EQUAL_FLOAT(2.027f, Board::BATTERY_FACTOR);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_glyph_writes_stay_in_their_module);
@@ -240,5 +246,6 @@ int main() {
     RUN_TEST(test_compensation_leaves_indicators_and_dead_slots);
     RUN_TEST(test_compensation_worst_case_within_power_bound);
     RUN_TEST(test_compensate_scales_every_slot_by_its_factor);
+    RUN_TEST(test_board_facts);
     return UNITY_END();
 }

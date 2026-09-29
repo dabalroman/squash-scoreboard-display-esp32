@@ -14,7 +14,7 @@ inline void printLn(const char *format, ...) {
     va_end(args);
 
     // `Serial` is false while no USB host is attached, so this never stalls loop().
-    if (Board::SERIAL_LOG && Serial) {
+    if (Serial) {
         Serial.println(buf);
     }
 

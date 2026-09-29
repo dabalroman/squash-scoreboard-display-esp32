@@ -37,7 +37,7 @@ Limits and facts to design around:
   apps install only on the uploader's account (no tester invites).
 - **Simulator:** interactive, any watch model, but BLE only through a Nordic nRF52840 dongle / nRF52 DK,
   not the PC's Bluetooth.
-- **V2 only:** V1's ESP32-S2 has no Bluetooth. Integration = a WiFi <-> BLE mode switch (never both),
+- **Both boards:** V1 and V2 are ESP32-S3, so both have Bluetooth. Integration = a WiFi <-> BLE mode switch (never both),
   a BLE command source into `RemoteInputManager` beside the RF fob, NimBLE on core 0.
 
 Not tested: battery drain (dropped), bonding, MIP / touch-only layouts in the simulator.
@@ -274,15 +274,15 @@ write `A`/`B`/`U` and change the score. Options for a real feature, none tested 
   `SECURE_PAIR_BOND` strategy crashed a Venu 3S (CIQQA-4568) - test on the FR970 first.
 - **App-level token** in each command. Weak against a sniffer, stops casual misuse.
 
-## What a V2 integration would need
+## What an integration would need (either board)
 
 - **Mode, not coexistence:** BLE and WiFi never run together (user, 2026-09-29). A "watch
   remote" mode would stop WiFi and start NimBLE, and the reverse - the pattern
   `PlayerSetupMode` already uses for its AP (raise in the constructor, drop in the destructor).
 - **Input path:** a BLE command source feeding `RemoteInputManager` beside the 433 MHz
-  receiver, so views see ordinary A/B/C presses. The RF fob stays - V1 has no BLE.
+  receiver, so views see ordinary A/B/C presses. The RF fob stays.
 - **Cores:** keep the NimBLE host on core 0 and `loop()` (FastLED/RMT ISR) on core 1, as here.
 - **Budget:** ~50 KB heap at init; flash cost to be measured against V2's app partition.
 - **Confirm the RMT result on real V2 LEDs** (74 slots, OLED, e-paper SPI all running) - the
   bare-board result (never >5 us late of 60 us) is strong evidence, not proof.
-- **V1** (ESP32-S2) has no Bluetooth; it would need an S3 MCU swap.
+- **V1** is also an ESP32-S3 now (N16R8, V2's pinout), so it has Bluetooth too; the same integration applies to both boards.

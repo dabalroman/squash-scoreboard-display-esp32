@@ -553,7 +553,8 @@ private:
 // V1 has no e-paper. Same API, all empty; nothing is allocated.
 class EInkDisplay {
 public:
-    bool available() const { return false; }
+    // Static like V2's, so a view can ask without an instance (OLED battery gate).
+    static bool available() { return false; }
     void begin() {}
     void update() {}
     void flushRefresh() {}

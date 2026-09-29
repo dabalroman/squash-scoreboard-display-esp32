@@ -21,6 +21,7 @@ class BackDisplay {
     bool sameSideMode = false;
     Dimensions currentFontDimensions = {0, 0};
     uint8_t currentFontAscent = 0;
+    const GFXfont *currentFont = nullptr;
 
 public:
     constexpr static uint8_t ONE_CHAR_WIDTH_24pt7b = 26;
@@ -31,19 +32,19 @@ public:
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_9pt7b = 20;
 
     /**
-     * First row text may occupy on the damaged V2 rear panel. The damage is not a
+     * First row text may occupy: Board::OLED_DEAD_TOP_ROWS, 11 on V2 and 0 on V1.
+     * The V2 bench panel is damaged. The damage is not a
      * solid strip: every *even* row from 0 to 12 is dead (alternating COM lines),
      * measured on the device 2026-09-18. 13 would clear it completely, but 11 is
      * the chosen floor - only the stripe at row 12 then crosses a glyph, and one
      * missing line is hard to notice, while the two rows saved keep the 3-row menu
      * spacing closer to even.
      *
-     * Any text that would land above is pushed down by exactly the deficit; set to
-     * 0 to restore the original layout, no other edit needed. Global on purpose -
-     * the shift is invisible on a healthy panel, so a per-board split would not
-     * earn itself.
+     * Any text that would land above is pushed down by exactly the deficit; 0
+     * restores the original layout. V1's healthy panel has 0, which frees its top
+     * strip for drawBatteryPercent().
      */
-    constexpr static uint8_t DEAD_TOP_ROWS = 11;
+    constexpr static uint8_t DEAD_TOP_ROWS = Board::OLED_DEAD_TOP_ROWS;
 
     Adafruit_SSD1306 *screen;
 
@@ -158,9 +159,28 @@ public:
         drawThiccTopToBottomLine(77, 128 - 83, 3);
     }
 
+    /**
+     * Small right-aligned "85%" in the built-in 5x7 font, in the top strip above the
+     * menu's first row (row 0 of the 9 pt menu starts at y 10, this spans y 1..7).
+     * Only meaningful where that strip is lit (DEAD_TOP_ROWS == 0). Restores the
+     * current GFX font so the caller's next draw is unaffected.
+     */
+    void drawBatteryPercent(const uint8_t percent) const {
+        char text[6];
+        snprintf(text, sizeof(text), "%u%%", percent);
+        const int16_t width = static_cast<int16_t>(strlen(text)) * 6 - 1;
+
+        screen->setFont(nullptr);
+        screen->setTextSize(1);
+        screen->setCursor(126 - width, DEAD_TOP_ROWS + 1);
+        screen->print(text);
+        screen->setFont(currentFont);
+    }
+
     void initBigFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMonoBold24pt7b);
+        currentFont = &FreeMonoBold24pt7b;
         currentFontDimensions = {ONE_CHAR_WIDTH_24pt7b, VERTICAL_CURSOR_OFFSET_24pt7b};
         currentFontAscent = measureAscent();
     }
@@ -168,6 +188,7 @@ public:
     void initSmallFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMono9pt7b);
+        currentFont = &FreeMono9pt7b;
         currentFontDimensions = {ONE_CHAR_WIDTH_9pt7b, VERTICAL_CURSOR_OFFSET_9pt7b};
         currentFontAscent = measureAscent();
     }

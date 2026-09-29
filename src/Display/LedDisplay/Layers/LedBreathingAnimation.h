@@ -11,7 +11,7 @@
 /**
  * A grey level easing between minLevel and 255 over periodMs, for Multiply:
  * whatever it covers dims and recovers. One cosf per frame, never per pixel
- * (the S2 has no FPU).
+ * (float is per-pixel cost and would break host/device bit-identity).
  */
 class LedBreathingAnimation : public LedAnimation {
     uint16_t periodMs;

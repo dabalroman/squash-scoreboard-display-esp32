@@ -85,7 +85,7 @@ void PlayerSetupWebUi::registerRoutes(WebServer &webServer) {
         handleSaveDev();
     });
 
-    // POST /update (the image itself - what lolin_s2_mini_ota curls to) and the
+    // POST /update (the image itself - what v1_ota curls to) and the
     // legacy POST /connect are RemoteDevelopmentService's, registered unconditionally.
 }
 

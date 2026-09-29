@@ -65,7 +65,7 @@ LEDs shine through the plastic, creating a smooth, diffused surface. It was my m
 ## Hardware
 | Component       | Description                                                 |
 |-----------------|-------------------------------------------------------------|
-| MCU             | Wemos S2 Mini (ESP32-S2)                                   |
+| MCU             | ESP32-S3-DevKitC-1 N16R8 (ESP32-S3)                        |
 | Display (front) | 112× WS2812B RGB LEDs (4×21 digits + colon + indicators + 24-LED history bar) |
 | Display (rear)  | 0.96" OLED (SSD1306, 128×64)                                |
 | Input           | 433 MHz remote with 4 buttons                               |

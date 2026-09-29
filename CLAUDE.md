@@ -6,12 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Firmware for a squash scoreboard display. Written in C++ using PlatformIO and the Arduino framework. Supports squash, volleyball, and padel scoring. **One source tree builds two boards**, selected by `-DBOARD_REV`:
 
-| | V1 (`lolin_s2_mini`, `BOARD_REV=1`) | V2 (`esp32s3_devkitc`, `BOARD_REV=2`) |
+| | V1 (`v1` / `v1_ota`, `BOARD_REV=1`) | V2 (`v2`, `BOARD_REV=2`) |
 |---|---|---|
-| Board | Wemos S2 Mini (ESP32-S2) | ESP32-S3-DevKitC-1 N16R8 |
+| Board | ESP32-S3-DevKitC-1 N16R8 (a Wemos S2 Mini until 2026-09-30) | ESP32-S3-DevKitC-1 N16R8 |
 | Front | 112 WS2812B: 4 seven-segment digits, colon, player indicators, 24-LED history bar | 74 slots: 4 nine-segment digits + split centre border around a 2.9" e-paper |
-| Back | OLED | OLED + 2 player indicator LEDs |
-| Extra | - | battery voltage sense |
+| Back | OLED (+ battery percent in the menus) | OLED + 2 player indicator LEDs |
+| Extra | battery voltage sense | battery voltage sense |
+
+**Both boards are the same module on one pinout**; `BOARD_REV` now means "which front panel",
+not "which MCU". Board settings live in platformio.ini's `[s3]` section. The swap is recorded in
+`docs/v1-s3-mcu-swap.md` (research), `docs/v1-s3-first-flash.md` (runbook) and
+`docs/v1-s3-hw-cheatsheet.md` (wiring + checklist).
 
 `V2 Guidelines.md` (untracked, user-maintained) holds the V2 design record and hardware facts.
 
@@ -23,8 +28,10 @@ Firmware for a squash scoreboard display. Written in C++ using PlatformIO and th
 platform = espressif32@6.13.0    ; Arduino core 2.0.17, GCC 8.4
 ```
 
-Moving to Arduino core 3.x / IDF 5.x **corrupts the LED output**: wrong colours
-*and* wrong shapes, independent of WiFi. Tried and rolled back on 2026-09-04.
+Moving to Arduino core 3.x / IDF 5.x **corrupted the LED output**: wrong colours
+*and* wrong shapes, independent of WiFi. Tried and rolled back on 2026-09-04, when V1
+was still an S2 - the S2-specific facts below are history. Both boards are S3 now and
+core 3.x on the S3 is **untested** (task #74), so the pin stays until that study passes.
 
 Cause: FastLED silently picks its RMT driver from the IDF version, with no way to
 override it.
@@ -51,7 +58,10 @@ fails in `fl/gfx/crgb.h`, 3.10.3 fails on `fl::fl_map`, and installing 3.10.3 fr
 the registry crashes PlatformIO's library manager. The registry is stale at 3.10.3
 anyway; upstream GitHub has 3.10.4.
 
-**WiFi glitches on V1 (measured 2026-09-29, task #58).** With WiFi on, 1-2 LEDs
+**WiFi glitches on the S2 V1 (measured 2026-09-29, task #58; history - re-measure on the
+S3 V1 is task #72).** On the S3, WiFi runs on core 0 and loop()/FastLED/the RMT ISR on
+core 1, so the one-core scan stall below is expected to be gone; both fixes stay regardless.
+With WiFi on, 1-2 LEDs
 flash a wrong colour. Mechanism, from `rmt_4/idf4_rmt_impl.cpp`: the refill ISR has
 one half-buffer of slack (`PULSES_PER_FILL x 1.25 us`). More than 50 % late ->
 `fillNext` **bails** (frame cut short; the rest of the chain keeps the identical
@@ -81,13 +91,16 @@ S2 @2 blocks 40 / 80 us, S2 @4 blocks 80 / 160 us, S3 @2 blocks 30 / 60 us.
 
 (V2 is on the bench and flashes over native USB, COM8. Never flash V1 casually.)
 
-A bad image means taking the unit apart. Before any toolchain, platform, or LED
-library change, run these checks **before** uploading:
+The S3 V1's one USB flash was the `v1_bootstrap` image on the naked board (2026-09-30,
+`docs/v1-s3-first-flash.md`); from then on it is `v1_ota` only. A bad image means taking
+the unit apart. Before any toolchain, platform, or LED library change, run these checks
+**before** uploading:
 
 | Check | Why |
 |---|---|
 | `partitions.bin` old vs new is identical | OTA writes only the app image; the device keeps its own table. A changed NVS offset loses WiFi credentials and the device falls back to AP mode, unreachable. |
-| New image fits the app slot | `app0` and `app1` are 1280 KB each. Current build: 69.7% (913,298 bytes as reported by `pio run`; the `.bin` on disk is 913,664). Core 3.x pushed this to 81%. |
+| New image fits the app slot | `app0` and `app1` are 6.25 MB each (`default_16MB.csv`). V1 is ~920 KB (14%), V2 ~963 KB. |
+| Board marker is `Ok` | `python helpers/check_firmware_image.py .pio/build/v1_ota/firmware.bin v1` must print `verdict Ok`. V1 **refuses unmarked images**, so an image whose marker failed to link is refused - and a V1 running such firmware would refuse every correct image after it. |
 | Failure mode is safe | `Update.end(true)` switches the boot partition **only on success**, so a corrupt or partial upload leaves the running firmware bootable. |
 
 Then verify with a **two-cycle OTA test**: flash the new firmware, then flash
@@ -101,13 +114,27 @@ Run from Windows PowerShell; `pio` is on PATH and the working directory is
 already the project root.
 
 ```powershell
-pio run -e lolin_s2_mini -e esp32s3_devkitc   # ALWAYS build both after a change
-pio run -t upload -e esp32s3_devkitc       # V2: flash via native USB (COM8)
-pio run -e lolin_s2_mini                   # build V1 only
-pio run -t upload -e lolin_s2_mini         # flash via USB (COM4) - needs disassembly
-pio run -t upload -e lolin_s2_mini_ota     # flash via OTA (192.168.0.129) - normal path
-pio device monitor                         # serial monitor (COM3, 115200)
+pio run -e v1 -e v2                     # ALWAYS build both after a change
+pio run -t upload -e v2                 # V2: flash via native USB (COM8)
+pio run -e v1                           # build V1 only
+pio run -t upload -e v1_ota             # V1: flash via OTA (192.168.0.129) - normal path
+pio run -t upload -e v1 --upload-port COMx          # V1 via USB - needs disassembly
+pio run -t upload -e v1_bootstrap --upload-port COMx # naked board only, see below
+pio device monitor                      # USB CDC serial, 115200 (both boards)
 ```
+
+- `v1_bootstrap` is the first-flash image of a **naked** V1 (empty NVS, no remote to reach
+  Dev Mode): `helpers/wifi_bootstrap.py` reads `SCOREBOARD_WIFI_SSID` /
+  `SCOREBOARD_WIFI_PASSWORD` from the environment (build fails if unset or over 63 bytes)
+  into `.pio/build/v1_bootstrap/bootstrap/BootstrapWifi.generated.h`, on that env's include
+  path only. `PreferencesManager::read()` seeds them with `enableDevMode = 1` **only when
+  no valid blob exists** (`PrefsBootstrap::seed`, `test_prefs_bootstrap`). No other image
+  contains the credentials. Delete that build dir afterwards; never upload it over OTA.
+- The S3's USB-Serial/JTAG maps DTR/RTS to BOOT/EN: opening or closing a terminal can park
+  the chip in `waiting for download`. Reset with `esptool.py --chip esp32s3 -p COMx --after
+  hard_reset read_mac`. HW CDC's `Serial` is false (logs suppressed) unless DTR is held.
+- The swapped V1 (MAC 28:84:85:51:E9:70) got 192.168.0.136 from DHCP; `v1_ota` assumes the
+  router reservation for .129 has moved to it - pass `--upload-port <ip>` otherwise.
 
 Verify an OTA landed: `curl http://192.168.0.129/api/device` returns `{"fw":...,"ssid":...}`
 from any screen - compare `fw` with `version.txt` (the gated JSON `/api/roster` and
@@ -130,8 +157,8 @@ python helpers/led_positions.py v1 --check; python helpers/led_positions.py v2 -
 - Fixtures are `-text` in `.gitattributes`. A golden mismatch writes the actual output to `.pio/test-out/<env>/` and names the first differing line. Rebaseline only by copying that output over the fixture on purpose, with the reason in the commit; a mismatch caused by the toolchain is never rebaselined.
 - **`[env]` sets `test_ignore = *` - never remove it.** Without it a bare `pio test` builds Unity images for the firmware envs and uploads them, to V1 over OTA included.
 
-Logs: `printLn` goes to telnet (port 23); on V2 it is also mirrored to USB serial
-(COM8, 115200) whenever a host is attached (`Board::SERIAL_LOG`).
+Logs: `printLn` goes to telnet (port 23) and, on both boards, to USB CDC (115200)
+whenever a host is attached (`if (Serial)` in `LoggerHelper.h`).
 
 **Toolchain gotcha, only relevant if this repo is ever moved off 6.13.0:** the
 `pio` on PATH runs under Python 3.10, while `~/.platformio/penv` is Python 3.14.
@@ -223,10 +250,10 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   - Images: full-screen only. Greyscale artwork goes through `helpers/eink_dither.py <png>` first (flatten on white, autocontrast 1 %, Floyd-Steinberg -> `<name>_dither.png`; it reproduces the splash's dither exactly). `helpers/eink_image.py [--oled] <png> [out]` converts a **128×296, pure black/white, pre-dithered** PNG (authored upright, no alpha) into a committed `PROGMEM` header under `src/Display/EInk/Images/`; the converter never thresholds or dithers, it rejects anything else. The generated header is committed so a build needs neither Python nor Pillow; the source art is in git under `assets/eink/` (bajgiel `.xcf`/`.png`/`_dither.png`, the QR placard PNG) except the splash (`splash-text*` is ignored and stays local) - rerun the scripts after changing any of it. The boot splash is one such image and holds the panel for `SPLASH_HOLD_MS` (4 s) — `show*` return early meanwhile — until `dismissSplash()`, which `main.cpp` calls on any remote press.
   - The firmware version is shown only in the CONFIG menu footer, `V`-prefixed on line 2 under the battery, with the IP on line 3. Never on the splash.
 - `BackDisplay` — wraps the rear 0.96" OLED (Adafruit SSD1306 128×64). Provides helper methods like `renderScoreWidget()`. Rotation is `Board::OLED_ROTATION` (V1 2, V2 0).
-  - **The V2 bench panel is damaged: every *even* pixel row from 0 to 12 is dead** (alternating COM lines, measured with a staircase ruler 2026-09-18) - not a solid strip, which is why a small shift looks like no change at all. `BackDisplay::DEAD_TOP_ROWS` (11) is the first row text may occupy; 13 would clear the damage completely, but at 11 only the stripe at row 12 crosses a glyph and one missing line is hard to notice. Set it to 0 to revert the whole workaround - no other edit. Global on both boards on purpose, no `BOARD_REV` split: it costs V1's healthy panel 10 px on the big font and that is not worth a second code path.
+  - **The V2 bench panel is damaged: every *even* pixel row from 0 to 12 is dead** (alternating COM lines, measured with a staircase ruler 2026-09-18) - not a solid strip, which is why a small shift looks like no change at all. `BackDisplay::DEAD_TOP_ROWS` is the first row text may occupy and reads `Board::OLED_DEAD_TOP_ROWS` (V2 11, V1 0 - so `BackDisplay` carries no `#if`); 13 would clear V2's damage completely, but at 11 only the stripe at row 12 crosses a glyph and one missing line is hard to notice. Set V2's to 0 to revert the whole workaround - no other edit. It was global until V1 needed its healthy top strip for the battery readout (user's call, 2026-09-29).
   - The clamp lives in `clearDeadTop()`, called from `print()`/`println()` - **the one point every OLED text draw passes through**, so no cursor setter can be missed. Anything bypassing it must clamp for itself: `Overlay::printBuiltIn` does (built-in font's cursor y is the glyph top, not a baseline). `BackDisplay::drawBitmap()` (full-screen 128x64 art) deliberately does **not** clamp: artwork uses the whole panel (user's call, 2026-09-28).
   - The drop comes from the **font's** ascent, measured once per `initBigFont`/`initSmallFont` from a sample string, never from the individual string. Fitting each string exactly makes the top score hop 1-2 px as its value changes (`1` and `4` ascend 28/27 against 29 for the rest) and puts the menu's `>` marker a pixel off its label. Line 0 big-font baseline is therefore a fixed 40, small-font 21.
-  - **No battery readout on the OLED.** It sat wholly inside the dead rows and the 3-row menu leaves it nowhere to move, so it was removed for good - the e-paper already carries it on both screens that showed it. That removal is *not* part of the `DEAD_TOP_ROWS` revert.
+  - **Battery on the OLED: V1 only.** The mode selector and CONFIG call `BackDisplay::drawBatteryPercent` (built-in 5x7 font, right-aligned, y 1..7, above the menu's first row at y 10), gated on `!EInkDisplay::available() && batteryMonitor.available()` - never `BOARD_REV`. V2's percent lives on the e-paper; its OLED prints none (it sat inside the dead rows). The readout refreshes only when the view re-renders (input, `restoreView`).
 - Bar renderers live in `src/Display/LedDisplay/Renderer/`. Each exposes a static `toLedBarPixels()` returning `std::array<LedBarPixel, LedBar::PIXEL_COUNT>`.
 - **The language standard is C++11** (`-std=gnu++11`, set by the pinned Arduino core's builder, GCC 8.4). Do not raise it: under `-std=gnu++14` some libraries no longer compile. So no C++14 features - `src/Utils.h` backfills `std::make_unique`, and every file that calls it must include `Utils.h` itself rather than rely on another header having pulled it in.
 - `static constexpr` arrays as class members in header-only adapters cause ODR linker errors under C++11 (no inline variables). Declare them as local `constexpr` variables inside the static method instead.
@@ -260,16 +287,16 @@ Member declaration order in that view is load-bearing: `entryIds` feeds `options
 The V1 bar is split into one segment per **visible** row, left to right in menu order, and lights the selected row's segment in its colour: `ModeSwitchingBarRenderer` takes the row's position among visible rows and their count, never a hand-kept slot. A slot column used to live in the table, drifted from the menu order (PADEL lit the rightmost segment) and left PROFILE and CONFIG without one.
 
 ### Pinout
-All pins live in `src/Board.h` (per `BOARD_REV`).
+All pins live in `src/Board.h`, in **one shared block** (both boards are the same module on the same wiring), checked by `pinIsSafe()` static_asserts. Soldering reference: `docs/v1-s3-hw-cheatsheet.md`.
 
-| Function | V1 GPIO | V2 GPIO |
-|---|---|---|
-| Remote A / B / C / D (prev / next / undo / enter) | 14 / 13 / 10 / 8 | **8 / 10 / 13 / 14** (reversed, verified on the device) |
-| WS2812B data | 18 | 18 |
-| Buzzer (active high) | 3 | 3 (via MOSFET) |
-| OLED I2C SDA / SCL | 33 / 34 | 4 / 5 (33-37 are octal PSRAM on N16R8) |
-| E-paper SCK / MOSI / CS / DC / RST / BUSY | - | 12 / 11 / 9 / 15 / 16 / 17 |
-| Battery ADC (ADC1, 10k/10k divider) | - | 6 |
+| Function | GPIO (both boards) |
+|---|---|
+| Remote A / B / C / D (prev / next / undo / enter) | 8 / 10 / 13 / 14 (`INPUT_PULLDOWN`: unwired pins float and fire phantom presses; the receiver drives its output, so it wins) |
+| WS2812B data | 18 |
+| Buzzer (active high) | 3 (V2 via MOSFET, V1 direct) |
+| OLED I2C SDA / SCL | 4 / 5 (26-32 are SPI flash, 33-37 octal PSRAM on N16R8) |
+| E-paper SCK / MOSI / CS / DC / RST / BUSY | 12 / 11 / 9 / 15 / 16 / 17 (unconnected on V1) |
+| Battery ADC (ADC1, 10k/10k divider) | 6 |
 
 **V2 LED slots** (verified on the device 2026-09-17; several differ from the schematic-era notes):
 - 0,1 border bottom-left; 2,3 top-left; **4 back indicator B**; 5,6 bottom-right; 7,8 top-right; **9 back indicator A**.
@@ -289,7 +316,7 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
 - `Buzzer` (`src/Buzzer.h`, GPIO 3) plays a short tone on remote presses and a victory theme on game win (`onMatchOver(CelebrationVariant)`; `main.cpp`'s `playMatchOver()` picks `playBajgiel()` or `playCelebration()`; fired once from the `GameCelebration` case of `handleStateChange()` - never on the summary, never on an overlay restore); toggled via `PrefsData.enableBuzzer`, applied live by the apply-on-save choke point (see Persistence).
 - **Never call `ESP.restart()` directly — use `safeRestart()` (`src/SafeRestart.h`).** Every pad returns to a floating input at reset and GPIO 3 has no default pull, so on V2 the MOSFET gate floats and the buzzer sounds through the reboot. A LOW written before the restart is discarded; `safeRestart()` latches the pad with `gpio_hold_en()`, which survives a *software* reset. `Buzzer::init()` releases it (`pinMode` → `LOW` → `gpio_hold_dis`, in that order — driving before unlatching leaves no floating gap) and runs as the **first** statement of `setup()`, before `Serial`/prefs/`initHardware()`. Crash, watchdog, brownout and power-on resets are not covered; only a hardware pull-down on the gate would fix those. An OTA *downgrade* to firmware without `gpio_hold_dis` leaves the buzzer muted until a power cycle.
 - Powered by 1S2P INR18650-35E battery with 2A boost converter / charger.
-- **Garmin watch as a BLE remote** was researched, not built (task #66): feasible on V2 only (V1's S2 has no Bluetooth), ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work.
+- **Garmin watch as a BLE remote** was researched, not built (task #66): feasible on both boards now that V1 is an S3 (BLE and WiFi never run together), ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work.
 
 ### Persistence & Networking
 - `PreferencesManager` — reads/writes `PrefsData` (WiFi SSID/password, brightness, AP mode) to ESP32 NVS. `wifiIpAddress` is **live state, never persisted**: empty until an interface comes up, set from `WiFi.localIP()` on an STA connect and `WiFi.softAPIP()` in both AP paths, cleared when WiFi is off or an AP drops. The CONFIG footer omits its line while it is empty, which is why it defaults to empty rather than to a placeholder.
@@ -297,7 +324,8 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
   - The CONFIG row is labelled **Dev Mode**, not WiFi: all it exclusively buys is joining the house network at boot, and PROFILE raises its own AP regardless, so "WIFI" read as if the roster editor needed it. The label is the same in both language branches. It is the one CONFIG row with **no LED word** - the 46-glyph table has no W, K, M or V, so neither DEV nor MODE can render; the indicators' green/red carries the state. On the e-paper the label is 2 px wider than the tickbox row allows and is clipped, deliberately - clip-never-shrink.
 - **Apply-on-save choke point.** `PreferencesManager::save()` calls `apply()` after `putBytes`; `main.cpp`'s `applySettings` sets brightness and the buzzer. Every writer (CONFIG exit, the web settings, `/connect`, `/settings/dev`) is therefore live without applying by hand - the CONFIG buzzer toggle no longer needs a reboot. `setup()` calls `apply()` once, after `initHardware()` and before the boot sweep. Dev Mode is deliberately not applied (network topology, read at boot and by `disablePlayerSetupAp()`); the handler must never block, restart or touch WiFi.
 - `PrefsData` lives in `src/PrefsData.h` (host-includable, `static_assert(sizeof == 131)`, plus the level <-> byte helpers `PrefsBrightness::levelToByte` / `byteToLevel`).
-- `RemoteDevelopmentService` — provides OTA firmware updates and WiFi-based serial logging.
+- `RemoteDevelopmentService` — provides OTA firmware updates and WiFi-based serial logging. It logs the boot WiFi outcome (IP or fallback AP): a naked or sealed board has no OLED to read it from.
+- **OTA image check** (`FirmwareImageCheck::Accumulator`, on `POST /update`) judges the first 296 bytes: 0xE9, chip id = sdkconfig's (S3 on both boards, so it only rejects other chips), app descriptor magic, then the **board marker** at file offset 0x120. The marker is `board_marker` (`src/BoardMarker.*`, magic `0xB0A2D5E7` + `BOARD_REV`) in `.rodata_custom_desc`, which IDF 4.4's `sections.ld` places straight after `esp_app_desc_t`. `-Wl,-u,board_marker` in `[s3]` keeps it past `--gc-sections` - never remove it. Other board's rev -> WrongBoard; no marker -> accepted only on V2 (`LEGACY_UNMARKED_REV`, pre-marker V2 builds), MissingMarker on V1; under 296 bytes -> NotFirmware. `?force=1` writes past any verdict. Host suite `test_firmware_image`; `helpers/check_firmware_image.py <bin> v1|v2` mirrors the device's verdict. Verified on the naked V1: the V2 image got HTTP 400.
 - **This file is already Arduino-core-3.x-ready.** Two fixes were applied on
   2026-09-04 and are valid on *both* cores, so do not revert them if the platform
   is ever moved:
@@ -308,11 +336,11 @@ All pins live in `src/Board.h` (per `BOARD_REV`).
      Calling a non-static member without an object was always invalid; GCC 8.4
      tolerated it, GCC 14 does not.
   With those in place the firmware builds clean on core 3.3.11 for **both**
-  `lolin_s2_mini` and `esp32-s3-devkitc-1`. It is the LED driver, not the
+  the S2 V1 and `esp32-s3-devkitc-1`. It is the LED driver, not the
   networking code, that blocks the upgrade.
 
 ### Strings (UI language)
-Every user-visible string is a `constexpr const char* const` in `src/Strings.h`, chosen by `#if LANG_PL` / `#else`. **One language per build**: `-DLANG_PL` is in `build_flags` for both envs (`lolin_s2_mini_ota` inherits via `extends`), so the unselected branch never reaches the preprocessor. Never index a two-row table at runtime - that ships both languages.
+Every user-visible string is a `constexpr const char* const` in `src/Strings.h`, chosen by `#if LANG_PL` / `#else`. **One language per build**: `-DLANG_PL` is in `build_flags` for both boards (in `[s3]`; every firmware env inherits it via `extends`), so the unselected branch never reaches the preprocessor. Never index a two-row table at runtime - that ships both languages.
 
 - The device is Polish. The English table stays as the unbuilt `#else` branch for reference; **edit both sides** or the other language silently rots.
 - **No diacritics anywhere.** Every GFX font declares range `0x20-0x7E` and `GlyphMasks.h` has no accented glyphs, so words that would need one were *replaced*, not stripped: `SIATKA` (not siatkowka), `NISKA` (not slaba).
@@ -320,7 +348,7 @@ Every user-visible string is a `constexpr const char* const` in `src/Strings.h`,
 - Polish numerals decline (1 gracz / 2-4 gracze / 5+ graczy), so a `"%u <noun>"` format string is wrong for some counts. Use a label-colon form (`"W GRZE: %u"`).
 - The `_OLED` variants exist because the OLED list is space-padded for centring at a fixed x (10 chars max, `FreeMono9pt7b`), while the e-paper rows are not.
 - Out of scope: `printLn`/telnet/serial logs, the WiFi config web page, player names, the AP SSID/password, and the `BAT` / `FW` abbreviations.
-- Verify a language change with `grep -ac "<english word>" .pio/build/esp32s3_devkitc/firmware.bin` - it must return 0.
+- Verify a language change with `grep -ac "<english word>" .pio/build/v2/firmware.bin` - it must return 0.
 
 ### Players / profiles
 The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone (see *Roster editor*). The six `FACTORY_PLAYERS` in `main.cpp` are only the fallback, used when NVS holds nothing valid and by "restore factory profiles".
@@ -353,16 +381,17 @@ The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone 
 - The page is **Polish-only and not in `Strings.h`** - it is rendered by a browser, so it carries real diacritics, unlike every GFX-font string. Profile *names* stay printable ASCII because those do reach the LED/OLED/e-paper fonts.
 - The placard has **no title bar** - the two QR codes and their captions need the full 296 px, and the menu entry has just named the screen. It is a baked bitmap and cannot read `Strings.h`; its wording lives in `helpers/player_setup_qr.py`. Regenerate with `python helpers/player_setup_qr.py` (needs `pillow` and `qrcode`) after changing the AP name, password, URL or captions.
 
-### Battery (V2)
-`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. `FACTOR` (2.027) was calibrated against a meter on core 2.0.17. Volts appear only in the log now; both screens show percent.
+### Battery (both boards)
+`BatterySensor` samples GPIO 6 at most every 200 ms into a rolling average (never block in `loop()`), with explicit 11 dB attenuation. `Board::BATTERY_FACTOR` is per board: V2's 2.027 was calibrated against a meter on core 2.0.17; V1 starts at the same value, **uncalibrated** until measured on the soldered unit. Volts appear only in the log (every 10 s, logged even when implausible); screens show percent.
+- `available()` means a **plausible 1S pack**, 2.5-4.5 V: an unsoldered divider floats (a naked board read 5.5 V, then 0.1 V), and either would latch the low state and cap brightness. Out of range, `BatteryMonitor` stops updating and the log line says `(implausible, ignored)`.
 
-`BatteryMonitor` (`src/BatteryMonitor.h`) turns that voltage into what the user sees. Board-agnostic — **no `#if BOARD_REV`**; on V1 the sensor is unavailable, so nothing downstream fires.
+`BatteryMonitor` (`src/BatteryMonitor.h`) turns that voltage into what the user sees. Board-agnostic — **no `#if BOARD_REV`**; the low overlay, cooldown and brightness cap work identically on both boards.
 - `voltsToPercent()` interpolates one curve: the **midpoint** of the resting-OCV and 10 W-load columns for the 1S2P INR18650-35E pack (3.000 V = 0 %, 4.175 V = 100 %, 10 % steps). It is a local `constexpr` inside the static method (a `static constexpr` array member is an ODR link error on GCC 8.4) and the single place to retune the mapping.
 - Two separate numbers, deliberately: the **mapped** percent drives the thresholds, the **shown** percent (5 % steps, only ever falling, jumping up only on a >= 10 point rise) is what displays print — otherwise the readout flickers as LED load sags the cell.
 - Low state: mapped <= 10 % held for 60 s continuously; clears above 15 % (hysteresis), so a single LED-load sag does not trip it. `takeLowWarning()` is the one-shot that fires the overlay.
 - The overlay is additionally rate-limited to one per `WARNING_COOLDOWN_MS` (5 min). Hysteresis alone is not enough: under LED load the voltage still floats across the 10/15 pair, so `low` clears and re-latches and the one-shot re-arms every time. The cooldown gates only the *warning* - `isLow()`, and therefore the brightness cap, keeps tracking the live state.
 - While low, `main.cpp` sets `LedDisplay::setBrightnessCap(31)` (menu level 1). The cap is **not** persisted and callers never see it: `setBrightness()` stores what was requested and applies `min(requested, cap)`, so `ConfigView`'s brightness edits stay capped on their own. Always set brightness through `LedDisplay`, never `FastLED.setBrightness` directly.
-- Shown on the e-paper only: the mode selector footer and the CONFIG menu footer. The rear OLED no longer prints it at all (see `BackDisplay`).
+- Shown in the mode selector and CONFIG: on the e-paper footers (V2) or top right of the OLED (V1, see `BackDisplay`).
 
 ### `lib/` directory
 `lib/` holds only PlatformIO's stock `README` and no code. All project source is under `src/`.

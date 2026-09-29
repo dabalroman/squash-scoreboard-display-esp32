@@ -7,6 +7,9 @@
 /assets/eink/splash-text*
 # Built from web/ by helpers/web_assets.py on every build.
 /src/Web/WebAssets.generated.h
+# Bootstrap WiFi credentials are generated into .pio/build/v1_bootstrap, never into src/.
+# Belt and braces should one ever land here.
+BootstrapWifi.generated.h
 
 # Editor backup files (e.g. Emacs ~ backups left in src/ and lib/)
 *~

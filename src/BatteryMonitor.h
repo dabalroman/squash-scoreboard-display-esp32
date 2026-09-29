@@ -10,9 +10,7 @@
  * Turns the raw pack voltage from BatterySensor into something a user can read:
  * a stable percentage and a low-battery state with hysteresis.
  *
- * Board-agnostic - no `#if BOARD_REV` here. On V1 the sensor reports
- * `available() == false`, `loop()` does nothing and the state never changes, so
- * nothing downstream ever fires.
+ * Board-agnostic - no `#if BOARD_REV` here.
  *
  * Two separate numbers:
  * - the *mapped* percent (raw curve output) drives the low-battery thresholds;
@@ -87,7 +85,7 @@ public:
         return 100;
     }
 
-    // Non-blocking, safe to call on every loop() pass. V1: returns immediately.
+    // Non-blocking, safe to call on every loop() pass.
     void loop(const uint32_t nowMs) {
         if (!sensor.available()) {
             return;

@@ -5,8 +5,8 @@
 #include <FastLED.h>
 
 /**
- * Per-pixel blend of an animation layer onto the base, 8-bit integer only (the
- * S2 has no FPU). Black is the transparent layer colour for every mode except
+ * Per-pixel blend of an animation layer onto the base, 8-bit integer only (host and
+ * device goldens stay bit-identical; it runs per pixel). Black is the transparent layer colour for every mode except
  * Multiply, where it is white - identityFor() gives the scratch fill.
  *
  *   Normal    premultiplied over, alpha = brightest channel of the layer

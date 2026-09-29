@@ -18,7 +18,7 @@
  *
  * Each slot's angle is taken around its own digit's bounding-box centre, once
  * in start() from LedSlotPositions + the caller's elementMap bits - never a
- * hand-kept slot order. Render is integer-only (the S2 has no FPU).
+ * hand-kept slot order. Render is integer-only (host and device stay bit-identical, and it is the per-pixel cost).
  *
  * renderFrame() stays clock-free so the host checks can step it.
  */

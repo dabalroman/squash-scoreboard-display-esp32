@@ -6,18 +6,10 @@
 #include "Board.h"
 
 /**
- * Battery voltage from the BAT+ divider. Call sites never test the board:
- * `if (batterySensor.available())` reads identically in both builds, and on V1
- * everything inlines to constants.
+ * Battery voltage from the BAT+ divider, on both boards (GPIO 6, Board::BATTERY_FACTOR).
  */
 
-#if BOARD_REV == 2
-
 namespace BatterySensorConfig {
-    // Combined divider (measured 1.988) x ADC calibration, measured on core 2.0.17
-    // against a meter (V2 Guidelines, Part 2, Battery sense). Never hard-code x2.
-    constexpr float FACTOR = 2.027f;
-
     constexpr uint32_t SAMPLE_INTERVAL_MS = 200;
 }
 
@@ -59,27 +51,19 @@ public:
         index = (index + 1) % SAMPLE_COUNT;
     }
 
-    static bool available() { return true; }
+    // A plausible 1S pack only: an unsoldered divider floats (a naked board read 5.5 V)
+    // or sits near 0, and either would latch the low-battery state and cap brightness.
+    bool available() const {
+        const float v = volts();
+        return v >= 2.5f && v <= 4.5f;
+    }
 
     // Averaged millivolts at the ADC pin (before the divider factor), for calibration.
     uint32_t rawMilliVolts() const { return sum / SAMPLE_COUNT; }
 
     float volts() const {
-        return static_cast<float>(sum) / SAMPLE_COUNT * BatterySensorConfig::FACTOR / 1000.0f;
+        return static_cast<float>(sum) / SAMPLE_COUNT * Board::BATTERY_FACTOR / 1000.0f;
     }
 };
-
-#else
-
-class BatterySensor {
-public:
-    void begin() {}
-    void loop() {}
-    bool available() const { return false; }
-    uint32_t rawMilliVolts() const { return 0; }
-    float volts() const { return 0.0f; }
-};
-
-#endif
 
 #endif //BATTERY_SENSOR_H
