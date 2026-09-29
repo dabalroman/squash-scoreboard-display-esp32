@@ -32,7 +32,7 @@ override it.
 | | RMT4 (core 2.0.17, works) | RMT5 (core 3.x, breaks) |
 |---|---|---|
 | ISR owner | FastLED's own, tight, IRAM | generic IDF `rmt_tx` + encoder callback |
-| Refill buffer | `FASTLED_RMT_MEM_BLOCKS 2` = **128 symbols** | `mem_block_symbols = 0` -> default **64** |
+| Refill buffer | default `FASTLED_RMT_MEM_BLOCKS 2` = **128 symbols** (now 4, see below) | `mem_block_symbols = 0` -> default **64** |
 | Refill slack (S2) | 64-symbol half = **80 us**; bail at 40 us late, stale replay at 80 us | half the buffer, heavier refill |
 
 Half the buffer and a heavier refill path, against this board's four RF-receiver
@@ -69,10 +69,13 @@ S2 @2 blocks 40 / 80 us, S2 @4 blocks 80 / 160 us, S3 @2 blocks 30 / 60 us.
 - The cause is the fallback leaving **STA enabled**: the core's auto-reconnect re-runs
   `WiFi.begin()` after every NO_AP_FOUND, and each channel-hopping scan holds the one
   S2 core 240-380 us. No RMT buffer covers that; only stopping STA does.
-- Fix on current hardware = fallback AP-only **and** `FASTLED_RMT_MEM_BLOCKS=4` on V1
-  (the S2's 4 TX channels x 64 words all go to channel 0). A second core is not needed.
-  Signal level (3.3 V data, no level shifter) is not the cause: glitches tracked the
-  stale counter exactly.
+- **Fixed (task #64):** every AP path goes through `RemoteDevelopmentService::startApOnly()`
+  (STA off, `WIFI_AP`, `softAP`), and `-DFASTLED_RMT_MEM_BLOCKS=4` is in both firmware
+  envs' `build_flags` (S2: its 4 TX channels x 64 words all go to channel 0; S3 @4
+  blocks is 60 / 120 us). It must stay a build flag - FastLED's own `.cpp` reads it.
+  A fallback AP stays AP-only until reboot: no late STA connect, no periodic retry.
+  A second core is not needed. Signal level (3.3 V data, no level shifter) is not the
+  cause: glitches tracked the stale counter exactly.
 
 ### 2. V1: OTA is the only practical way to flash. USB needs disassembly.
 
@@ -335,7 +338,7 @@ The roster is **data, not code**: up to 32 profiles in NVS, edited from a phone 
 `PlayerSetupMode` + `PlayerSetupView`, reached from the mode selector ("PROFILE"). **One implementation on both boards** (ported to V1 2026-09-23); the only difference is V2's e-paper QR placard, which is a no-op through the `EInkDisplay` stub on V1. Entering **forces the AP up** whatever `enableDevMode` says (`RemoteDevelopmentService::enablePlayerSetupAp()`: tears STA down, no blocking delay); the editor never runs over the house network. The e-paper shows a pre-rendered dual-QR placard (`EInkDisplay::showImage()`, always a full refresh - a ghosted QR will not scan). C or D exits, and it closes itself after 15 minutes idle. The same web UI is also reachable over the house network while Dev Mode is on and STA is connected (see the gate below) - for debugging without the AP step.
 
 - The AP is raised in the mode's **constructor** and dropped in its **destructor**, not in a button handler, so every exit path tears it down identically.
-- **Leaving without saving rejoins the house network without a reboot** - load-bearing on V1, which is flashed only over OTA. `disablePlayerSetupAp()` drops the AP and, only when `enableDevMode` is on, starts a non-blocking `WiFi.begin()` (no delay, no AP fallback); `checkStaReconnect()` in `RemoteDevelopmentService::loop()` sees `WL_CONNECTED` and restores the IP and telnet. If STA has not connected within 10 s (boot's budget) it raises the setup AP without blocking (`WIFI_AP_STA`, so a late STA connect still finishes), so wrong stored credentials never leave the device with neither STA nor AP. `setupOTA()` is idempotent (`if (OTAServer) return;`), so no route is registered twice.
+- **Leaving without saving rejoins the house network without a reboot** - load-bearing on V1, which is flashed only over OTA. `disablePlayerSetupAp()` drops the AP and, only when `enableDevMode` is on, starts a non-blocking `WiFi.begin()` (no delay, no AP fallback); `checkStaReconnect()` in `RemoteDevelopmentService::loop()` sees `WL_CONNECTED` and restores the IP and telnet. If STA has not connected within 10 s (boot's budget) it raises the setup AP without blocking, AP-only like boot's fallback (a retrying STA glitches the LEDs, see READ FIRST), so wrong stored credentials never leave the device with neither STA nor AP; the house network returns only after a reboot. `setupOTA()` is idempotent (`if (OTAServer) return;`), so no route is registered twice.
 - AP identity is one pair, `RemoteDevelopmentService::AP_SSID` / `AP_PASSWORD`, used by both AP paths and by the OLED screen. `helpers/player_setup_qr.py` bakes the same values into the placard - change them together.
 - **OLED discovery screen** (both boards, the only one V1 has): title fixed on line 0, lines 1-2 show one label/value pair per 1.5 s: WiFi/SSID, password, IP. Pairs, not a one-line step, which put a value over the next pair's label. No exit hint - C/D exits and needs no reminder. It renders per tick on its own clock, but a queued render (`restoreView()` after an Overlay) redraws at once. `FreeMono9pt7b` advances 11 px per glyph, so 11 characters fit 128 px - exactly `192.168.4.1`.
 - `PlayerSetupWebUi` (`src/Web/PlayerSetupWebUi.{h,cpp}`, no `#if BOARD_REV`) lives at **file scope in `main.cpp`**, because `WebServer` (core 2.0.17) has no `removeHandler`: a route handler outlives every mode, so no route lambda may capture a view. Requests are refused by a gate, not by unregistering.

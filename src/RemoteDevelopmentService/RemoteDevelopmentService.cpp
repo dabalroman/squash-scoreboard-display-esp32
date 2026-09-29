@@ -248,10 +248,17 @@ void RemoteDevelopmentService::init(PreferencesManager &_preferencesManager, Bac
     setupTelnet();
 }
 
-void RemoteDevelopmentService::enableAP() {
+void RemoteDevelopmentService::startApOnly() {
+    WiFi.disconnect(true, false);
+    WiFi.mode(WIFI_AP);
     WiFi.softAP(AP_SSID, AP_PASSWORD);
 
     preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
+    isAPActive = true;
+}
+
+void RemoteDevelopmentService::enableAP() {
+    startApOnly();
 
     backDisplay->clear();
     backDisplay->setCursorToLine();
@@ -261,8 +268,6 @@ void RemoteDevelopmentService::enableAP() {
     backDisplay->display();
 
     delay(5000);
-
-    isAPActive = true;
 }
 
 void RemoteDevelopmentService::disableAP() {
@@ -278,7 +283,6 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
     isWifiActive = false;
     isTelnetActive = false;
     staReconnectPending = false;
-    staFallbackApUp = false;
 
     if (telnetClient) {
         telnetClient.stop();
@@ -287,12 +291,7 @@ void RemoteDevelopmentService::enablePlayerSetupAp() {
         telnetServer->close();
     }
 
-    WiFi.disconnect(true, false);
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASSWORD);
-
-    preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
-    isAPActive = true;
+    startApOnly();
 
     // Load-bearing: with enableDevMode off (the default on a fresh device) init()
     // returned early and no WebServer exists yet.
@@ -316,7 +315,6 @@ void RemoteDevelopmentService::disablePlayerSetupAp() {
     WiFi.begin(preferencesManager->settings.wifiSSID, preferencesManager->settings.wifiPassword);
     staReconnectPending = true;
     staReconnectStartMs = millis();
-    staFallbackApUp = false;
 }
 
 void RemoteDevelopmentService::handleTelnet() {
@@ -343,14 +341,11 @@ void RemoteDevelopmentService::checkStaReconnect() {
     if (WiFi.status() != WL_CONNECTED) {
         // Wrong or unreachable stored credentials would otherwise leave the device
         // with neither STA nor AP - on a sealed, OTA-only V1 that is the one state
-        // to avoid. Boot's fallback, minus enableAP()'s blocking delay; AP_STA keeps
-        // STA retrying, so a late connect still lands below.
-        if (!staFallbackApUp && millis() - staReconnectStartMs >= STA_RECONNECT_TIMEOUT_MS) {
-            WiFi.mode(WIFI_AP_STA);
-            WiFi.softAP(AP_SSID, AP_PASSWORD);
-            preferencesManager->wifiIpAddress = WiFi.softAPIP().toString();
-            isAPActive = true;
-            staFallbackApUp = true;
+        // to avoid. Boot's fallback, minus enableAP()'s blocking delay. AP-only until
+        // reboot: no late STA connect, which would cost LED glitches while it retries.
+        if (millis() - staReconnectStartMs >= STA_RECONNECT_TIMEOUT_MS) {
+            staReconnectPending = false;
+            startApOnly();
             ::printLn("WiFi: no STA after roster editor exit, fallback AP up at %s",
                       preferencesManager->wifiIpAddress.c_str());
         }

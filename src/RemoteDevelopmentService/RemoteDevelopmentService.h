@@ -59,13 +59,17 @@ class RemoteDevelopmentService {
     bool isNTPActive = false;
 
     // Set by disablePlayerSetupAp() when it starts a non-blocking WiFi.begin();
-    // cleared by checkStaReconnect() once WL_CONNECTED lands, or by
-    // enablePlayerSetupAp() if the editor is reopened before that happens.
+    // cleared by checkStaReconnect() once WL_CONNECTED lands or it gives up and
+    // raises the AP, or by enablePlayerSetupAp() if the editor is reopened first.
     bool staReconnectPending = false;
     uint32_t staReconnectStartMs = 0;
-    bool staFallbackApUp = false;
     // Same budget init() gives STA at boot before it falls back to the AP.
     enum : uint32_t { STA_RECONNECT_TIMEOUT_MS = 10000 };
+
+    // Every AP path goes through here. STA must be off, not merely unconnected: the
+    // core's auto-reconnect rescans after each NO_AP_FOUND, and each scan stalls the
+    // LED refill ISR long enough to glitch the strip (#58).
+    void startApOnly();
 
     static constexpr uint8_t MAX_LOGS = 10;
     static constexpr uint8_t LOG_ENTRY_SIZE = 128;
