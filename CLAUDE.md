@@ -33,7 +33,7 @@ override it.
 |---|---|---|
 | ISR owner | FastLED's own, tight, IRAM | generic IDF `rmt_tx` + encoder callback |
 | Refill buffer | `FASTLED_RMT_MEM_BLOCKS 2` = **128 symbols** | `mem_block_symbols = 0` -> default **64** |
-| Runway before starving | ~160 us | **~80 us** |
+| Refill slack (S2) | 64-symbol half = **80 us**; bail at 40 us late, stale replay at 80 us | half the buffer, heavier refill |
 
 Half the buffer and a heavier refill path, against this board's four RF-receiver
 GPIO ISRs (which fire in *bursts* from RF noise - see Input below) plus I2C.
@@ -50,6 +50,29 @@ There is **no escape hatch**:
 fails in `fl/gfx/crgb.h`, 3.10.3 fails on `fl::fl_map`, and installing 3.10.3 from
 the registry crashes PlatformIO's library manager. The registry is stale at 3.10.3
 anyway; upstream GitHub has 3.10.4.
+
+**WiFi glitches on V1 (measured 2026-09-29, task #58).** With WiFi on, 1-2 LEDs
+flash a wrong colour. Mechanism, from `rmt_4/idf4_rmt_impl.cpp`: the refill ISR has
+one half-buffer of slack (`PULSES_PER_FILL x 1.25 us`). More than 50 % late ->
+`fillNext` **bails** (frame cut short; the rest of the chain keeps the identical
+previous frame, invisible). More than 100 % late -> the RMT **replays the stale half**
+(8 bytes = 2.67 LEDs, channels rotate) - the visible glitch. Thresholds (bail / stale):
+S2 @2 blocks 40 / 80 us, S2 @4 blocks 80 / 160 us, S3 @2 blocks 30 / 60 us.
+
+| V1 WiFi state | Blocks | Stale replays | Max lateness |
+|---|---|---|---|
+| STA connected (+ AP), HTTP load | 2 | 0 in 30k frames | 54 us |
+| **Failing STA + AP** (Dev Mode boot fallback) | 2 / 4 | one every ~2 s | 379 us (>= 240 us) |
+| AP only, STA off | 2 | 2 in ~7k frames | 120-160 us |
+| AP only, STA off | 4 | **0** in 21k frames (2 bails) | < 160 us |
+
+- The cause is the fallback leaving **STA enabled**: the core's auto-reconnect re-runs
+  `WiFi.begin()` after every NO_AP_FOUND, and each channel-hopping scan holds the one
+  S2 core 240-380 us. No RMT buffer covers that; only stopping STA does.
+- Fix on current hardware = fallback AP-only **and** `FASTLED_RMT_MEM_BLOCKS=4` on V1
+  (the S2's 4 TX channels x 64 words all go to channel 0). A second core is not needed.
+  Signal level (3.3 V data, no level shifter) is not the cause: glitches tracked the
+  stale counter exactly.
 
 ### 2. V1: OTA is the only practical way to flash. USB needs disassembly.
 
@@ -213,7 +236,9 @@ An `Overlay` (`src/Display/Overlay.h`) is the one thing that outranks the active
   method, because naming the peripheral explicitly avoids the silent
   driver-swap-by-IDF-version that caused the core 3.x regression. Not yet decided -
   only forced if V2's LED output misbehaves (V2 shares the pinned platform, so it
-  also runs RMT4; the S3 fallback is `FASTLED_USES_ESP32S3_I2S`).
+  also runs RMT4). `FASTLED_USES_ESP32S3_I2S` is **not** a fallback on the pinned
+  core: the build warns that `esp_memory_utils.h` is missing and the parallel
+  clockless I2S driver is unavailable.
 - **Glyph layer:** `GlyphMasks.h` is the one 9-bit mask table for both boards (46 glyphs; indices 0..36 frozen, append only). `LedGlyph` is `LedGlyphT<ActiveGlyphProfile>` (`DisplayProfile.h`): `SevenSegmentProfile` (V1 hand-written zig-zag tables, `mask & 0x7F`) or `NineSegmentProfile` (one per-module table + module offset). To add a character: `Glyph` enum + mask, then `python helpers/preview_glyphs.py`.
   - `LedText::toWord()` (`LedText.h`) maps a string to the 4 digit glyphs, so LED words live in `Strings.h` as text. Case-sensitive where the table has both forms (C/c, H/h, I/i, L/l, U/u), case-folding where it has one; write the word as it lights up (`"buZZ"`, `"oPCJ"`). Unmapped letters render blank. Call sites use `LedDisplay::setGlyphsText()`.
   - The 7-segment collapse keeps bit 3 (`CENTER`) and drops `MID_LEFT`/`MID_RIGHT`; never OR (renders `0` as `8`) or AND them.
