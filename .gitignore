@@ -13,3 +13,5 @@ BootstrapWifi.generated.h
 
 # Editor backup files (e.g. Emacs ~ backups left in src/ and lib/)
 *~
+# Machine/network-local PlatformIO settings (OTA address, COM ports) - see platformio.local.ini.example.
+/platformio.local.ini

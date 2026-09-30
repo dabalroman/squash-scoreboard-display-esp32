@@ -89,7 +89,7 @@ S2 @2 blocks 40 / 80 us, S2 @4 blocks 80 / 160 us, S3 @2 blocks 30 / 60 us.
 
 ### 2. V1: OTA is the only practical way to flash. USB needs disassembly.
 
-(V2 is on the bench and flashes over native USB, COM8. Never flash V1 casually.)
+(V2 is on the bench and flashes over native USB. Never flash V1 casually.)
 
 The S3 V1's one USB flash was the `v1_bootstrap` image on the naked board (2026-09-30,
 `docs/v1-s3-first-flash.md`); from then on it is `v1_ota` only. A bad image means taking
@@ -115,9 +115,9 @@ already the project root.
 
 ```powershell
 pio run -e v1 -e v2                     # ALWAYS build both after a change
-pio run -t upload -e v2                 # V2: flash via native USB (COM8)
+pio run -t upload -e v2                 # V2: flash via native USB
 pio run -e v1                           # build V1 only
-pio run -t upload -e v1_ota             # V1: flash via OTA (192.168.0.129) - normal path
+pio run -t upload -e v1_ota             # V1: flash via OTA - normal path
 pio run -t upload -e v1 --upload-port COMx          # V1 via USB - needs disassembly
 pio run -t upload -e v1_bootstrap --upload-port COMx # naked board only, see below
 pio device monitor                      # USB CDC serial, 115200 (both boards)
@@ -133,10 +133,13 @@ pio device monitor                      # USB CDC serial, 115200 (both boards)
 - The S3's USB-Serial/JTAG maps DTR/RTS to BOOT/EN: opening or closing a terminal can park
   the chip in `waiting for download`. Reset with `esptool.py --chip esp32s3 -p COMx --after
   hard_reset read_mac`. HW CDC's `Serial` is false (logs suppressed) unless DTR is held.
-- The swapped V1 (MAC 28:84:85:51:E9:70) got 192.168.0.136 from DHCP; `v1_ota` assumes the
-  router reservation for .129 has moved to it - pass `--upload-port <ip>` otherwise.
+- **Never commit machine- or network-local values** - IPs, MACs, COM ports, SSIDs, user paths -
+  not in config, docs or comments: the repo is public. Ports and the V1 OTA address live in the
+  gitignored `platformio.local.ini` (template `platformio.local.ini.example`, loaded through
+  `[platformio] extra_configs`); without it, pass `--upload-port`. The V1's DHCP address can
+  change; find it via the USB log's `WiFi: connected ... IP` line.
 
-Verify an OTA landed: `curl http://192.168.0.129/api/device` returns `{"fw":...,"ssid":...,"hw":"V1 ESP32-S3"}`
+Verify an OTA landed: `curl http://<v1-ip>/api/device` returns `{"fw":...,"ssid":...,"hw":"V1 ESP32-S3"}`
 from any screen - compare `fw` with `version.txt` (the gated JSON `/api/roster` and
 `/api/settings` answer 503 outside PROFILE and Dev Mode). Port 23 is the telnet log. The device reboots after an upload and takes
 ~20-40 s to rejoin, so poll rather than assuming failure.
@@ -164,7 +167,7 @@ whenever a host is attached (`if (Serial)` in `LoggerHelper.h`).
 `pio` on PATH runs under Python 3.10, while `~/.platformio/penv` is Python 3.14.
 The pioarduino platform's builder imports `littlefs`, whose compiled extension is
 `cp314`, so PATH `pio` dies with `ImportError: cannot import name 'lfs'`. Use
-`& "C:/Users/rd/.platformio/penv/Scripts/pio.exe"` in that case. **This does not
+`& "$HOME/.platformio/penv/Scripts/pio.exe"` in that case. **This does not
 affect the current 6.13.0 setup** - PATH `pio` is verified working here.
 
 A pre-build script (`helpers/version_increment.py`) auto-increments the firmware version on each build - once **per env**, so a two-env build bumps it twice. It tolerates a UTF-8 BOM in `version.txt` (a BOM once broke every build).

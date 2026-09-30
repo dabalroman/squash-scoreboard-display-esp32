@@ -7,8 +7,7 @@ The swapped V1 gets USB exactly once, as a **naked DevKitC-1** (nothing soldered
 After that it is sealed and OTA is the only way in. Everything that proves the
 board can take updates must therefore happen on the naked board.
 
-**Status 2026-09-30:** steps 1 and 2 done on the naked board (MAC 28:84:85:51:e9:70,
-DHCP gave 192.168.0.136). Bootstrap seeded Dev Mode + WiFi, the V2 image was refused
+**Status 2026-09-30:** steps 1 and 2 done on the naked board. Bootstrap seeded Dev Mode + WiFi, the V2 image was refused
 with HTTP 400, and two OTA cycles landed (0.6.141, 0.6.142). Next: step 3.
 
 Serial gotcha on the naked board: the S3's USB-Serial/JTAG maps DTR/RTS to BOOT/EN, so
@@ -18,7 +17,7 @@ while the terminal holds DTR (HW CDC's `Serial` is false otherwise).
 
 ## 0. Before the swap (old S2 unit, still running)
 
-- Save the roster: `curl http://192.168.0.129/api/roster > logs/roster-before-swap.json`
+- Save the roster: `curl http://<old-v1-ip>/api/roster > logs/roster-before-swap.json`
   (gated: open PROFILE on the device first, or have Dev Mode on and STA connected).
 - Note the house WiFi SSID and password.
 
@@ -46,9 +45,9 @@ pio device monitor -p COMx -b 115200                     # the log prints the IP
 
 ## 2. Naked board: prove it can take updates (two-cycle OTA)
 
-The router gives the new MAC a new address. Either move the DHCP reservation for
-`192.168.0.129` to the new MAC (then power-cycle the board), or pass the address
-explicitly:
+The new MAC gets a new address from DHCP (the USB log prints it). Put it in the gitignored
+`platformio.local.ini` (`[env:v1_ota] upload_port`, see `platformio.local.ini.example`) or
+pass it explicitly:
 
 ```powershell
 curl http://<ip>/api/device                                  # {"fw":..., "ssid":...}

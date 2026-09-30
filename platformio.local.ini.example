@@ -1,0 +1,16 @@
+; Copy to platformio.local.ini (gitignored) and fill in this machine's values.
+; platformio.ini loads it via [platformio] extra_configs; without it, pass --upload-port.
+; Never put these values in platformio.ini - they differ per PC and per network.
+
+[env:v1]
+; USB port of the V1 board (naked board / disassembled unit only).
+upload_port = COMx
+monitor_port = COMx
+
+[env:v1_ota]
+; The V1 board's IP on your network (GET http://<ip>/api/device answers {"fw":...}).
+upload_port = 192.168.x.y
+
+[env:v2]
+upload_port = COMy
+monitor_port = COMy

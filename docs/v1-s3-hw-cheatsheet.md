@@ -57,9 +57,9 @@ silkscreen before soldering**; board revisions differ in details.
 - [x] Bootstrap flash over USB, WiFi + Dev Mode seeded (2026-09-30)
 - [x] V2 image refused over OTA (HTTP 400)
 - [x] Two-cycle OTA passed (0.6.141, 0.6.142)
-- [ ] Router: move the DHCP reservation for **192.168.0.129** to MAC **28:84:85:51:E9:70**
-      (it currently gets 192.168.0.136), or tell Claude to change `v1_ota`'s `upload_port`
-- [ ] Save the old unit's roster if it is still running: `curl http://192.168.0.129/api/roster`
+- [x] OTA address: the board's IP is in the gitignored `platformio.local.ini`
+      (`[env:v1_ota] upload_port`); if DHCP moves it, update it there or pass `--upload-port`
+- [ ] Save the old unit's roster if it is still running: `curl http://<old-v1-ip>/api/roster`
 
 ### Electrical, before power
 - [ ] RF receiver data outputs are **<= 3.3 V** HIGH. S3 GPIOs are not 5 V tolerant:

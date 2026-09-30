@@ -37,8 +37,8 @@ Decisions made during refinement are in section 12; follow-up tasks in section 1
 
 | ID | Pri | Kind | Item |
 |---|---|---|---|
-| M-01 | high | REQ | Replace `[env:lolin_s2_mini]` (`board = lolin_s2_mini`, COM4/COM3) with an S3 env for V1. Board is `esp32-s3-devkitc-1` plus the module's overrides (see M-03). Envs become `v1` / `v1_ota` / `v2` (D5). |
-| M-02 | high | REQ | `[env:lolin_s2_mini_ota]`: keep the `curl --fail -F update=@...` upload command; **the IP changes** - a new MCU has a new MAC, so the DHCP reservation for `192.168.0.129` must be moved to the new MAC (router side), or update `upload_port`. |
+| M-01 | high | REQ | Replace `[env:lolin_s2_mini]` (`board = lolin_s2_mini`) with an S3 env for V1. Board is `esp32-s3-devkitc-1` plus the module's overrides (see M-03). Envs become `v1` / `v1_ota` / `v2` (D5). |
+| M-02 | high | REQ | `[env:lolin_s2_mini_ota]`: keep the `curl --fail -F update=@...` upload command; **the IP changes** - a new MCU has a new MAC, so the OTA address must be updated (router reservation or `upload_port`). |
 | M-03 | med | SIMP | Factor a shared `[s3]` section: `board = esp32-s3-devkitc-1`, `board_build.arduino.memory_type`, `flash_mode`, `partitions`, `board_upload.flash_size/maximum_size`, `-DBOARD_HAS_PSRAM`, `-DARDUINO_USB_CDC_ON_BOOT=1`, `-DARDUINO_USB_MODE=1`, `-DFASTLED_RMT_MEM_BLOCKS=4`, `-DLANG_PL`. V1 and V2 envs then differ only in `-DBOARD_REV`, `lib_deps` (GxEPD2) and ports. V1 gets the **same N16R8** as V2 (D1), so the entire board block is shared. |
 | M-04 | med | REQ | Partition table. S2 Mini runs `default.csv` (4 MB, 2 x 1280 KB app). V1-S3 takes `default_16MB.csv` (2 x 6.25 MB app), same as V2 (D1). **All three keep NVS at `0x9000`, size `0x5000`** (verified in the framework's `tools/partitions/`), which is what makes M-40 possible. The CLAUDE.md "partitions.bin old vs new identical" OTA check then compares V1-S3 builds against each other, not against the S2. |
 | M-05 | low | SIMP | Native test env `native_v1`: `-DCONFIG_IDF_TARGET_ESP32S2=1` -> `-DCONFIG_IDF_TARGET_ESP32S3=1`. Could move to `[native]` since both boards are S3. |
