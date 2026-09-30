@@ -4,6 +4,7 @@
 #include <WebServer.h>
 #include <string>
 
+#include "Board.h"
 #include "PlayerPalette.h"
 #include "PlayerRoster.h"
 #include "PreferencesManager.h"
@@ -200,12 +201,15 @@ void PlayerSetupWebUi::handleRoster() {
     sendJson(out.data(), out.size());
 }
 
-// {"fw":"1.2.3","ssid":"..."} - ungated: the /update page needs it on a sealed V1.
+// {"fw":"1.2.3","ssid":"...","hw":"V1 ESP32-S3"} - ungated: the /update page needs it on a
+// sealed V1, and hw tells which board a .bin must be built for (V1 refuses a V2 image).
 void PlayerSetupWebUi::handleDevice() {
     std::string out = "{\"fw\":";
     WebJson::appendString(out, FW_VERSION);
     out += ",\"ssid\":";
     WebJson::appendString(out, preferencesManager.settings.wifiSSID);
+    out += ",\"hw\":";
+    WebJson::appendString(out, Board::NAME);
     out += '}';
     sendJson(out.data(), out.size());
 }

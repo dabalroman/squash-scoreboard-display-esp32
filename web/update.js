@@ -124,7 +124,7 @@ el('otaforce').onclick = function () {
     }
     send(bad, true);
 };
-// Version from the ungated /api/device.
+// Versions from the ungated /api/device; hw is Board::NAME ("V1 ESP32-S3").
 (function () {
     var x = new XMLHttpRequest();
     x.open('GET', '/api/device', true);
@@ -134,6 +134,9 @@ el('otaforce').onclick = function () {
         }
         var d = JSON.parse(x.responseText);
         el('fwver').textContent = d.fw;
+        if (d.hw) {
+            el('hwver').textContent = d.hw;
+        }
     };
     x.send();
 })();
