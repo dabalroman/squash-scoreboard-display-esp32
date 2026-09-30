@@ -49,6 +49,10 @@ public:
         remoteDevelopmentService.disablePlayerSetupAp();
     }
 
+    bool isInMatch() const override {
+        return false;
+    }
+
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);

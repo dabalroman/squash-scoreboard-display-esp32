@@ -37,6 +37,12 @@ public:
     virtual void loop() = 0;
 
     /**
+     * True where the "in match" buzzer mode sounds: a sport mode past its player selector.
+     * Pure, so a new mode has to state its answer.
+     */
+    virtual bool isInMatch() const = 0;
+
+    /**
      * Long-press back: step one level up this mode's state machine. false means there is
      * nowhere to go back to from here, and main.cpp then stays silent - that silence is
      * how the user is told this screen is a root.

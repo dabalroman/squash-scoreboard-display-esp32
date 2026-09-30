@@ -27,6 +27,7 @@ function renderLevel () {
 function render () {
     renderLevel();
     el('bz1').classList.toggle('on', V.buzzer == 1);
+    el('bz2').classList.toggle('on', V.buzzer == 2);
     el('bz0').classList.toggle('on', V.buzzer == 0);
     el('dm1').classList.toggle('on', V.devMode == 1);
     el('dm0').classList.toggle('on', V.devMode == 0);
@@ -116,6 +117,10 @@ function levelAt (e) {
 })();
 el('bz1').onclick = function () {
     V.buzzer = 1;
+    render();
+};
+el('bz2').onclick = function () {
+    V.buzzer = 2;
     render();
 };
 el('bz0').onclick = function () {

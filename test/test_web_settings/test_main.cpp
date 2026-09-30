@@ -74,7 +74,7 @@ static FakeForm validForm() {
 static PrefsData storedSettings() {
     PrefsData settings;
     settings.brightness = 223;
-    settings.enableBuzzer = 1;
+    settings.buzzerMode = 1;
     settings.enableDevMode = 0;
     strcpy(settings.wifiSSID, "Dom");
     strcpy(settings.wifiPassword, "tajne123");
@@ -126,7 +126,7 @@ static void test_valid_save_writes_only_the_three_fields() {
     TEST_ASSERT_NULL_MESSAGE(error, error);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(159, settings.brightness, "level 5");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, settings.enableBuzzer, "buzzer off");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, settings.buzzerMode, "buzzer off");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, settings.enableDevMode, "dev mode on");
 
     const PrefsData stored = storedSettings();
@@ -154,15 +154,22 @@ static void test_level_bounds() {
 }
 
 static void test_flag_values() {
-    const char *const bad[] = {"2", "", "a", "01", "true", "-1", " 1"};
+    const char *const bad[] = {"3", "", "a", "01", "true", "-1", " 1"};
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
         assertRejected(validForm().set("buzzer", bad[i]), BAD_BUZZER, strf("buzzer \"%s\"", bad[i]).c_str());
         assertRejected(validForm().set("devMode", bad[i]), BAD_DEV_MODE, strf("devMode \"%s\"", bad[i]).c_str());
     }
+    // Buzzer is tri-state (0 off, 1 always, 2 in match); devMode stays a flag.
+    assertRejected(validForm().set("devMode", "2"), BAD_DEV_MODE, "devMode 2");
+    {
+        PrefsData inMatch = storedSettings();
+        TEST_ASSERT_NULL(SettingsValidator::stage(validForm().set("buzzer", "2"), inMatch));
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(2, inMatch.buzzerMode, "buzzer 2");
+    }
 
     PrefsData settings = storedSettings();
     TEST_ASSERT_NULL(SettingsValidator::stage(validForm().set("buzzer", "1").set("devMode", "0"), settings));
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, settings.enableBuzzer, "buzzer 1");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, settings.buzzerMode, "buzzer 1");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, settings.enableDevMode, "devMode 0");
 }
 

@@ -4,13 +4,42 @@
 #include <stdint.h>
 #include <string.h>
 
+// The stored buzzer byte. 1 is what the old on/off flag stored for "on", so existing
+// blobs keep sounding everywhere until changed by hand.
+namespace PrefsBuzzer {
+    enum : uint8_t { OFF = 0, ALWAYS = 1, IN_MATCH = 2 };
+
+    // Display order of the CONFIG row (NIE -> MECZ -> TAK). An unknown byte is treated as
+    // ALWAYS, which is how older firmware reads any non-zero byte.
+    inline uint8_t order(const uint8_t mode) {
+        return mode == OFF ? 0 : mode == IN_MATCH ? 1 : 2;
+    }
+
+    inline uint8_t fromOrder(const uint8_t position) {
+        return position == 0 ? OFF : position == 1 ? IN_MATCH : ALWAYS;
+    }
+
+    // The byte as the CONFIG tickbox and /api/settings show it: an unknown one reads ALWAYS.
+    inline uint8_t normalize(const uint8_t mode) {
+        return mode == OFF || mode == IN_MATCH ? mode : ALWAYS;
+    }
+
+    inline uint8_t next(const uint8_t mode) {
+        return fromOrder(static_cast<uint8_t>((order(mode) + 1) % 3));
+    }
+
+    inline uint8_t prev(const uint8_t mode) {
+        return fromOrder(static_cast<uint8_t>((order(mode) + 2) % 3));
+    }
+}
+
 /**
  * The NVS "set" blob. Split from PreferencesManager.h (which needs <Preferences.h>)
  * so the host tests can stage it.
  */
 struct PrefsData {
     uint8_t brightness = 127;
-    uint8_t enableBuzzer = 1;
+    uint8_t buzzerMode = PrefsBuzzer::IN_MATCH;
     // Joins the house network at boot, for OTA and telnet without standing at the
     // device. Default OFF: with an empty or invalid NVS blob a fresh device would
     // otherwise spend ~15 s failing STA against an empty SSID and then raise an open

@@ -15,7 +15,7 @@
 
 enum Settings {
     brightness = 0,
-    enableBuzzer = 1,
+    buzzer = 1,
     devMode = 2,
     reboot = 3,
     goBack = 4,
@@ -89,8 +89,8 @@ public:
                 case Settings::devMode:
                     preferencesManager.settings.enableDevMode = !preferencesManager.settings.enableDevMode;
                     break;
-                case Settings::enableBuzzer:
-                    preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
+                case Settings::buzzer:
+                    preferencesManager.settings.buzzerMode = PrefsBuzzer::prev(preferencesManager.settings.buzzerMode);
                     break;
                 default:
                     break;
@@ -108,8 +108,8 @@ public:
                 case Settings::devMode:
                     preferencesManager.settings.enableDevMode = !preferencesManager.settings.enableDevMode;
                     break;
-                case Settings::enableBuzzer:
-                    preferencesManager.settings.enableBuzzer = !preferencesManager.settings.enableBuzzer;
+                case Settings::buzzer:
+                    preferencesManager.settings.buzzerMode = PrefsBuzzer::next(preferencesManager.settings.buzzerMode);
                     break;
                 case Settings::reboot:
                     quitConfig(true);
@@ -147,9 +147,8 @@ public:
                     ledDisplay.setGlyphsGlyph(word);
                 }
                 break;
-            case Settings::enableBuzzer:
-                value = preferencesManager.settings.enableBuzzer;
-                color = value ? Colors::Green : Colors::Red;
+            case Settings::buzzer:
+                color = ConfigBarRenderer::buzzerColor(preferencesManager.settings.buzzerMode);
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_BUZZER);
                 break;
             case Settings::devMode:
@@ -175,7 +174,7 @@ public:
         ledDisplay.setIndicatorAppearancePlayerB(color);
         ledDisplay.setLedBarState([&] { return ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
-            preferencesManager.settings.enableBuzzer,
+            preferencesManager.settings.buzzerMode,
             preferencesManager.settings.enableDevMode
         ); });
         ledDisplay.display();
@@ -193,10 +192,12 @@ public:
         snprintf(brightnessLevel, sizeof(brightnessLevel), "%u/8", settings.brightness / 32 + 1);
 
         // Index-aligned with `Settings` / optionsList. The two toggles show a
-        // tickbox here; the rear OLED keeps its TAK/NIE value column.
+        // tickbox here (the buzzer's third state is an "M" in it); the rear OLED lists
+        // labels only.
         const EInkMenuRow rows[] = {
             {Str::CONFIG_ROW_BRIGHTNESS_LABEL, brightnessLevel, -1},
-            {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(settings.enableBuzzer ? 1 : 0)},
+            // check 0 / 1 / 2 is the stored byte itself.
+            {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(PrefsBuzzer::normalize(settings.buzzerMode))},
             {Str::CONFIG_ROW_DEV_MODE_LABEL, nullptr, static_cast<int8_t>(settings.enableDevMode ? 1 : 0)},
             {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},

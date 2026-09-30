@@ -19,6 +19,21 @@ namespace {
         return nullptr;
     }
 
+    const char *parseBuzzer(const FormLookup &form, uint8_t &mode) {
+        const char *error = "Błędne ustawienie dźwięku.";
+        if (!form.has("buzzer")) {
+            return error;
+        }
+
+        const std::string value = form.get("buzzer");
+        if (value != "0" && value != "1" && value != "2") {
+            return error;
+        }
+
+        mode = static_cast<uint8_t>(value[0] - '0');
+        return nullptr;
+    }
+
     const char *parseFlag(const FormLookup &form, const char *key, const char *error, uint8_t &flag) {
         if (!form.has(key)) {
             return error;
@@ -37,7 +52,7 @@ namespace {
 const char *SettingsValidator::validate(const FormLookup &form, Patch &out) {
     const char *error = parseLevel(form, out.brightness);
     if (error == nullptr) {
-        error = parseFlag(form, "buzzer", "Błędne ustawienie dźwięku.", out.enableBuzzer);
+        error = parseBuzzer(form, out.buzzerMode);
     }
     if (error == nullptr) {
         error = parseFlag(form, "devMode", "Błędne ustawienie trybu deweloperskiego.", out.enableDevMode);
@@ -53,7 +68,7 @@ const char *SettingsValidator::stage(const FormLookup &form, PrefsData &settings
     }
 
     settings.brightness = patch.brightness;
-    settings.enableBuzzer = patch.enableBuzzer;
+    settings.buzzerMode = patch.buzzerMode;
     settings.enableDevMode = patch.enableDevMode;
     return nullptr;
 }

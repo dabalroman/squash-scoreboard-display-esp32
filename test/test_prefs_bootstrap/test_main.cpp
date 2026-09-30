@@ -19,11 +19,18 @@ void test_seed_sets_credentials_and_dev_mode() {
 void test_seed_resets_the_rest_to_defaults() {
     PrefsData d;
     d.brightness = 5;
-    d.enableBuzzer = 0;
+    d.buzzerMode = 0;
     PrefsBootstrap::seed(d, "a", "");
     TEST_ASSERT_EQUAL_UINT8(PrefsData().brightness, d.brightness);
-    TEST_ASSERT_EQUAL_UINT8(PrefsData().enableBuzzer, d.enableBuzzer);
+    TEST_ASSERT_EQUAL_UINT8(PrefsData().buzzerMode, d.buzzerMode);
     TEST_ASSERT_EQUAL_STRING("", d.wifiPassword);  // open network
+}
+
+void test_default_buzzer_is_in_match() {
+    TEST_ASSERT_EQUAL_UINT8(PrefsBuzzer::IN_MATCH, PrefsData().buzzerMode);
+    PrefsData d;
+    PrefsBootstrap::seed(d, "a", "");
+    TEST_ASSERT_EQUAL_UINT8(PrefsBuzzer::IN_MATCH, d.buzzerMode);
 }
 
 void test_seed_max_length_keeps_the_nul() {
@@ -51,6 +58,7 @@ int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_seed_sets_credentials_and_dev_mode);
     RUN_TEST(test_seed_resets_the_rest_to_defaults);
+    RUN_TEST(test_default_buzzer_is_in_match);
     RUN_TEST(test_seed_max_length_keeps_the_nul);
     RUN_TEST(test_seed_truncates_overlong_input_terminated);
     return UNITY_END();

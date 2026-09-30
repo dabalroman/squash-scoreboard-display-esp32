@@ -2,13 +2,21 @@
 #define CONFIG_BAR_ADAPTER_H
 
 #include <Color.h>
+#include "PrefsData.h"
 #include "../LedBar.h"
 
 class ConfigBarRenderer {
 public:
+    // Off red, in match yellow, always green; an unknown byte reads as always.
+    static Color buzzerColor(const uint8_t buzzerMode) {
+        return buzzerMode == PrefsBuzzer::OFF
+                   ? Colors::Red
+                   : buzzerMode == PrefsBuzzer::IN_MATCH ? Colors::Yellow : Colors::Green;
+    }
+
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const uint8_t selectedOption,
-        const bool enableBuzzer,
+        const uint8_t buzzerMode,
         const bool enableDevMode
     ) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
@@ -18,7 +26,7 @@ public:
 
         const Color colors[OPTION_COUNT] = {
             Colors::White,                               // Brightness
-            enableBuzzer ? Colors::Green : Colors::Red,  // Buzzer
+            buzzerColor(buzzerMode),                    // Buzzer
             enableDevMode ? Colors::Green : Colors::Red, // Dev Mode
             Colors::Pink,                                // Reboot
             Colors::Aqua,                                // Return

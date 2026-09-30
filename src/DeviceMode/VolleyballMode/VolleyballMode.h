@@ -114,6 +114,10 @@ public:
         setState(VolleyballModeState::TournamentChoosePlayers);
     }
 
+    bool isInMatch() const override {
+        return state != VolleyballModeState::TournamentChoosePlayers;
+    }
+
     bool goBack() override {
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:

@@ -105,7 +105,7 @@ PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager, [](const uin
 // save() also runs inside POST /connect, where touching WiFi would race its restart.
 void applySettings(const PrefsData &settings) {
     ledDisplay.setBrightness(settings.brightness);
-    gBuzzer.setEnabled(settings.enableBuzzer);
+    gBuzzer.setMode(settings.buzzerMode);
 }
 
 void initHardware() {
@@ -331,7 +331,7 @@ void setup() {
     printLn("%s ready. FW version: %s, %s %s\n", Board::NAME, FW_VERSION, __DATE__, __TIME__);
     printLn("Read from config:");
     printLn("  enableDevMode: %d", preferencesManager.settings.enableDevMode);
-    printLn("  enableBuzzer: %d", preferencesManager.settings.enableBuzzer);
+    printLn("  buzzerMode: %d", preferencesManager.settings.buzzerMode);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
     if (wifiSeeded) {
@@ -430,6 +430,10 @@ void loop() {
             deviceMode->restoreView();
         }
     }
+
+    // Before the long-C beep and the view's own press handling: the gate judges a sound
+    // by the mode that is on screen when it is requested.
+    gBuzzer.setInMatch(deviceMode && deviceMode->isInMatch());
 
     // Handle long press C
     if (remoteInputManager.buttonC.takeLongPressIfPossible()) {

@@ -13,11 +13,11 @@
 namespace SettingsValidator {
     struct Patch {
         uint8_t brightness;
-        uint8_t enableBuzzer;
+        uint8_t buzzerMode;
         uint8_t enableDevMode;
     };
 
-    // level 1-8, buzzer and devMode exactly "0"/"1", all required. Returns nullptr
+    // level 1-8, buzzer exactly "0"/"1"/"2", devMode "0"/"1", all required. Returns nullptr
     // with `out` filled, or the Polish reason for a 400.
     const char *validate(const FormLookup &form, Patch &out);
 

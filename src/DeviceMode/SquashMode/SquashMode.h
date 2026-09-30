@@ -113,6 +113,10 @@ public:
         setState(SquashModeState::TournamentChoosePlayers);
     }
 
+    bool isInMatch() const override {
+        return state != SquashModeState::TournamentChoosePlayers;
+    }
+
     bool goBack() override {
         switch (state) {
             case SquashModeState::TournamentChoosePlayers:

@@ -30,7 +30,7 @@
 
 /**
  * One menu row. `value` is drawn right-aligned (nullptr = none). `check` draws a
- * checkbox in front of the label: -1 none, 0 empty, 1 ticked.
+ * checkbox in front of the label: -1 none, 0 empty, 1 ticked, 2 boxed "M".
  */
 struct EInkMenuRow {
     const char *label;
@@ -491,7 +491,7 @@ private:
 
         if (row.check >= 0) {
             const int16_t boxTop = top + (EInkLayout::ROW_PITCH - EInkLayout::CHECKBOX_SIZE) / 2;
-            EInkWidgets::drawTickbox(g, x, boxTop, EInkLayout::CHECKBOX_SIZE, row.check > 0);
+            EInkWidgets::drawTickbox(g, x, boxTop, EInkLayout::CHECKBOX_SIZE, row.check);
             x += EInkLayout::CHECKBOX_SIZE + 5;
         }
 

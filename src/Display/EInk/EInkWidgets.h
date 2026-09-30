@@ -88,13 +88,20 @@ namespace EInkWidgets {
         printCentered(g, title, EInkLayout::TITLE_BASELINE, &FreeSansBold12pt7b);
     }
 
-    // A square outline with an inset fill when ticked. Used by menu rows and by
-    // the player selectors for in/out membership.
+    // A square outline: empty (0), inset fill (1), or an "M" inside it (2, the buzzer's
+    // "in match"). Used by menu rows and by the player selectors for in/out membership.
     inline void drawTickbox(GFXcanvas1 &g, const int16_t x, const int16_t y,
-                            const int16_t size, const bool ticked) {
+                            const int16_t size, const int8_t state) {
         g.drawRect(x, y, size, size, INK);
-        if (ticked) {
+        if (state == 1) {
             g.fillRect(x + 3, y + 3, size - 6, size - 6, INK);
+        } else if (state == 2) {
+            // Built-in 5x7 font: the cursor is the glyph's top-left, not a baseline.
+            g.setFont(nullptr);
+            g.setTextSize(1);
+            g.setTextColor(INK);
+            g.setCursor(x + (size - 5) / 2, y + (size - 7) / 2);
+            g.print('M');
         }
     }
 

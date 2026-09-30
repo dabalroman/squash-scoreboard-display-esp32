@@ -37,6 +37,10 @@ public:
         return true;
     }
 
+    bool isInMatch() const override {
+        return false;
+    }
+
     void loop() override {
         if (activeView) {
             activeView->handleInput(remoteInputManager);

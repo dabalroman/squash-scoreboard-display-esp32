@@ -4,10 +4,13 @@
 #include <Arduino.h>
 #include <driver/gpio.h>
 
+#include "PrefsData.h"
+
 class Buzzer {
     uint8_t gpio;
     ulong offAtMs = 0;
-    bool enabled = true;
+    uint8_t mode = PrefsBuzzer::IN_MATCH;
+    bool inMatch = false;
 
     const uint16_t *pattern = nullptr;
 
@@ -60,11 +63,12 @@ class Buzzer {
         return steps;
     }
 
-    void playPattern(const uint16_t *steps) {
-        if (!enabled) {
-            return;
-        }
+    // Unknown mode bytes sound, like ALWAYS.
+    bool audible() const {
+        return mode == PrefsBuzzer::OFF ? false : mode == PrefsBuzzer::IN_MATCH ? inMatch : true;
+    }
 
+    void playPattern(const uint16_t *steps) {
         pattern = steps;
         patternIndex = 0;
         patternPlaying = true;
@@ -81,12 +85,17 @@ public:
         gpio_hold_dis(static_cast<gpio_num_t>(gpio));
     }
 
-    void setEnabled(const bool value) {
-        enabled = value;
+    void setMode(const uint8_t value) {
+        mode = value;
+    }
+
+    // main.cpp sets this every loop pass, before any sound is requested.
+    void setInMatch(const bool value) {
+        inMatch = value;
     }
 
     void trigger(const ulong durationMs = 40) {
-        if (!enabled || patternPlaying) {
+        if (!audible() || patternPlaying) {
             return;
         }
 
@@ -95,18 +104,31 @@ public:
     }
 
     void playCelebration() {
+        if (!audible()) {
+            return;
+        }
         playPattern(celebrationPattern());
     }
 
     void playBajgiel() {
+        if (!audible()) {
+            return;
+        }
         playPattern(bajgielPattern());
     }
 
+    // A warning, not feedback: only Off silences it, whatever screen is showing.
     void playLowBattery() {
+        if (mode == PrefsBuzzer::OFF) {
+            return;
+        }
         playPattern(lowBatteryPattern());
     }
 
     void playBack() {
+        if (!audible()) {
+            return;
+        }
         playPattern(backPattern());
     }
 

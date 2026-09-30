@@ -297,13 +297,13 @@ void PlayerSetupWebUi::handlePreview() {
     server->send(204, TEXT_PLAIN_PL, "");
 }
 
-// {"level":1-8,"buzzer":0|1,"devMode":0|1} - the stored values, never a preview.
+// {"level":1-8,"buzzer":0|1|2,"devMode":0|1} - the stored values, never a preview.
 void PlayerSetupWebUi::handleSettings() {
     const PrefsData &settings = preferencesManager.settings;
     char out[48];
     const int length = snprintf(out, sizeof(out), "{\"level\":%u,\"buzzer\":%u,\"devMode\":%u}",
                                 static_cast<unsigned>(PrefsBrightness::byteToLevel(settings.brightness)),
-                                static_cast<unsigned>(settings.enableBuzzer ? 1 : 0),
+                                static_cast<unsigned>(PrefsBuzzer::normalize(settings.buzzerMode)),
                                 static_cast<unsigned>(settings.enableDevMode ? 1 : 0));
     sendJson(out, static_cast<size_t>(length));
 }
