@@ -7,7 +7,7 @@
  * identical public API on V1, so call sites never test the board.
  *
  * Shares nothing with BackDisplay (the OLED) - no base class, helpers or
- * interface, and neither calls the other. See "V2 Guidelines.md", Part 2.
+ * interface, and neither calls the other.
  *
  * Usage:
  *   begin()   once in setup(), blocking ~3 s (initial full refresh + splash).

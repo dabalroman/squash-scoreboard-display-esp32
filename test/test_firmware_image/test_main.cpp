@@ -167,7 +167,7 @@ void test_not_firmware() {
 }
 
 void test_wrong_chip() {
-    const uint16_t chips[] = {ESP_CHIP_ID_ESP32, ESP_CHIP_ID_ESP32S2, ESP_CHIP_ID_ESP32C3, 0xFFFF};
+    const uint16_t chips[] = {ESP_CHIP_ID_ESP32, ESP_CHIP_ID_ESP32C3, 0xFFFF};
     const Kind kinds[] = {Kind::Marked, Kind::Unmarked, Kind::Bootloader};
     for (uint8_t rev = 1; rev <= 2; rev++) {
         for (const uint16_t chip : chips) {

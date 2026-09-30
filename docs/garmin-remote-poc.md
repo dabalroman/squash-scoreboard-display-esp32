@@ -285,4 +285,4 @@ write `A`/`B`/`U` and change the score. Options for a real feature, none tested 
 - **Budget:** ~50 KB heap at init; flash cost to be measured against V2's app partition.
 - **Confirm the RMT result on real V2 LEDs** (74 slots, OLED, e-paper SPI all running) - the
   bare-board result (never >5 us late of 60 us) is strong evidence, not proof.
-- **V1** is also an ESP32-S3 now (N16R8, V2's pinout), so it has Bluetooth too; the same integration applies to both boards.
+- **V1** is the same ESP32-S3 N16R8 on V2's pinout; the same integration applies to both boards.

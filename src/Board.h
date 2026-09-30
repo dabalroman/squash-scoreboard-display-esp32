@@ -98,7 +98,7 @@ namespace Board {
     constexpr uint8_t OLED_DEAD_TOP_ROWS = 11;
 
     // Combined divider (measured 1.988) x ADC calibration, measured on core 2.0.17
-    // against a meter (V2 Guidelines, Part 2, Battery sense). Never hard-code x2.
+    // against a meter. Never hard-code x2.
     constexpr float BATTERY_FACTOR = 2.027f;
 
     // LED chain, in slots (94 LEDs fitted; digit modules share slots).

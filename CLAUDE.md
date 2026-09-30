@@ -8,17 +8,13 @@ Firmware for a squash scoreboard display. Written in C++ using PlatformIO and th
 
 | | V1 (`v1` / `v1_ota`, `BOARD_REV=1`) | V2 (`v2`, `BOARD_REV=2`) |
 |---|---|---|
-| Board | ESP32-S3-DevKitC-1 N16R8 (a Wemos S2 Mini until 2026-09-30) | ESP32-S3-DevKitC-1 N16R8 |
+| Board | ESP32-S3-DevKitC-1 N16R8 | ESP32-S3-DevKitC-1 N16R8 |
 | Front | 112 WS2812B: 4 seven-segment digits, colon, player indicators, 24-LED history bar | 74 slots: 4 nine-segment digits + split centre border around a 2.9" e-paper |
 | Back | OLED (+ battery percent in the menus) | OLED + 2 player indicator LEDs |
 | Extra | battery voltage sense | battery voltage sense |
 
-**Both boards are the same module on one pinout**; `BOARD_REV` now means "which front panel",
-not "which MCU". Board settings live in platformio.ini's `[s3]` section. The swap is recorded in
-`docs/v1-s3-mcu-swap.md` (research), `docs/v1-s3-first-flash.md` (runbook) and
-`docs/v1-s3-hw-cheatsheet.md` (wiring + checklist).
-
-`V2 Guidelines.md` (untracked, user-maintained) holds the V2 design record and hardware facts.
+**Both boards are the same module on one pinout**; `BOARD_REV` means "which front panel".
+Board settings live in platformio.ini's `[s3]` section.
 
 ## READ FIRST: two things that will break this device
 
@@ -29,9 +25,8 @@ platform = espressif32@6.13.0    ; Arduino core 2.0.17, GCC 8.4
 ```
 
 Moving to Arduino core 3.x / IDF 5.x **corrupted the LED output**: wrong colours
-*and* wrong shapes, independent of WiFi. Tried and rolled back on 2026-09-04, when V1
-was still an S2 - the S2-specific facts below are history. Both boards are S3 now and
-core 3.x on the S3 is **untested** (task #74), so the pin stays until that study passes.
+*and* wrong shapes, independent of WiFi (tried and rolled back 2026-09-04). Core 3.x on
+the S3 is **untested** (task #74), so the pin stays until that study passes on both boards.
 
 Cause: FastLED silently picks its RMT driver from the IDF version, with no way to
 override it.
@@ -40,17 +35,15 @@ override it.
 |---|---|---|
 | ISR owner | FastLED's own, tight, IRAM | generic IDF `rmt_tx` + encoder callback |
 | Refill buffer | default `FASTLED_RMT_MEM_BLOCKS 2` = **128 symbols** (now 4, see below) | `mem_block_symbols = 0` -> default **64** |
-| Refill slack (S2) | 64-symbol half = **80 us**; bail at 40 us late, stale replay at 80 us | half the buffer, heavier refill |
+| Refill slack (S3, 4 blocks) | half buffer; bail at **60 us** late, stale replay at **120 us** | half the buffer, heavier refill |
 
 Half the buffer and a heavier refill path, against this board's four RF-receiver
 GPIO ISRs (which fire in *bursts* from RF noise - see Input below) plus I2C.
 Refills land late, the RMT starves mid-frame, and the WS2812 stream shifts, so
 every downstream LED receives its neighbour's bytes.
 
-There is **no escape hatch**:
-- `-DFASTLED_RMT5=0` does not compile. FastLED's RMT4 path is unimplemented for
-  ESP32-S2 on IDF 5.x (`"doneOnChannel not yet implemented for ESP32-S2 in idf 5.x"`).
-- RMT5 has no tuning knobs. `memory_block_symbols = with_dma ? 1024 : 0` is
+On core 3.x, `-DFASTLED_RMT5=0` (FastLED's RMT4 path on IDF 5.x) is the first thing
+#74 must try. RMT5 itself has no tuning knobs: `memory_block_symbols = with_dma ? 1024 : 0` is
   hardcoded in `rmt_5/strip_rmt.cpp`, and `.with_dma = false` is hardcoded too.
 
 **FastLED is also pinned at 3.9.16.** Neither newer release builds here: 3.10.4
@@ -58,41 +51,29 @@ fails in `fl/gfx/crgb.h`, 3.10.3 fails on `fl::fl_map`, and installing 3.10.3 fr
 the registry crashes PlatformIO's library manager. The registry is stale at 3.10.3
 anyway; upstream GitHub has 3.10.4.
 
-**WiFi glitches on the S2 V1 (measured 2026-09-29, task #58; history - re-measure on the
-S3 V1 is task #72).** On the S3, WiFi runs on core 0 and loop()/FastLED/the RMT ISR on
-core 1, so the one-core scan stall below is expected to be gone; both fixes stay regardless.
-With WiFi on, 1-2 LEDs
-flash a wrong colour. Mechanism, from `rmt_4/idf4_rmt_impl.cpp`: the refill ISR has
+**WiFi LED glitches (task #58; re-measure on V1 is task #72).** With WiFi on, 1-2 LEDs
+can flash a wrong colour. WiFi runs on core 0, loop()/FastLED/the RMT ISR on core 1. Mechanism, from `rmt_4/idf4_rmt_impl.cpp`: the refill ISR has
 one half-buffer of slack (`PULSES_PER_FILL x 1.25 us`). More than 50 % late ->
 `fillNext` **bails** (frame cut short; the rest of the chain keeps the identical
 previous frame, invisible). More than 100 % late -> the RMT **replays the stale half**
 (8 bytes = 2.67 LEDs, channels rotate) - the visible glitch. Thresholds (bail / stale):
-S2 @2 blocks 40 / 80 us, S2 @4 blocks 80 / 160 us, S3 @2 blocks 30 / 60 us.
+30 / 60 us at 2 blocks, 60 / 120 us at 4.
 
-| V1 WiFi state | Blocks | Stale replays | Max lateness |
-|---|---|---|---|
-| STA connected (+ AP), HTTP load | 2 | 0 in 30k frames | 54 us |
-| **Failing STA + AP** (Dev Mode boot fallback) | 2 / 4 | one every ~2 s | 379 us (>= 240 us) |
-| AP only, STA off | 2 | 2 in ~7k frames | 120-160 us |
-| AP only, STA off | 4 | **0** in 21k frames (2 bails) | < 160 us |
-
-- The cause is the fallback leaving **STA enabled**: the core's auto-reconnect re-runs
-  `WiFi.begin()` after every NO_AP_FOUND, and each channel-hopping scan holds the one
-  S2 core 240-380 us. No RMT buffer covers that; only stopping STA does.
+- The worst case is a fallback leaving **STA enabled**: the core's auto-reconnect re-runs
+  `WiFi.begin()` after every NO_AP_FOUND, and each channel-hopping scan stalls the refill
+  by hundreds of us. No RMT buffer covers that; only stopping STA does.
 - **Fixed (task #64):** every AP path goes through `RemoteDevelopmentService::startApOnly()`
   (STA off, `WIFI_AP`, `softAP`), and `-DFASTLED_RMT_MEM_BLOCKS=4` is in both firmware
-  envs' `build_flags` (S2: its 4 TX channels x 64 words all go to channel 0; S3 @4
-  blocks is 60 / 120 us). It must stay a build flag - FastLED's own `.cpp` reads it.
+  envs' `build_flags`. It must stay a build flag - FastLED's own `.cpp` reads it.
   A fallback AP stays AP-only until reboot: no late STA connect, no periodic retry.
-  A second core is not needed. Signal level (3.3 V data, no level shifter) is not the
+  Signal level (3.3 V data, no level shifter) is not the
   cause: glitches tracked the stale counter exactly.
 
 ### 2. V1: OTA is the only practical way to flash. USB needs disassembly.
 
 (V2 is on the bench and flashes over native USB. Never flash V1 casually.)
 
-The S3 V1's one USB flash was the `v1_bootstrap` image on the naked board (2026-09-30,
-`docs/v1-s3-first-flash.md`); from then on it is `v1_ota` only. A bad image means taking
+V1's one USB flash was the `v1_bootstrap` image on the naked board (2026-09-30); from then on it is `v1_ota` only. A bad image means taking
 the unit apart. Before any toolchain, platform, or LED library change, run these checks
 **before** uploading:
 
@@ -290,7 +271,7 @@ Member declaration order in that view is load-bearing: `entryIds` feeds `options
 The V1 bar is split into one segment per **visible** row, left to right in menu order, and lights the selected row's segment in its colour: `ModeSwitchingBarRenderer` takes the row's position among visible rows and their count, never a hand-kept slot. A slot column used to live in the table, drifted from the menu order (PADEL lit the rightmost segment) and left PROFILE and CONFIG without one.
 
 ### Pinout
-All pins live in `src/Board.h`, in **one shared block** (both boards are the same module on the same wiring), checked by `pinIsSafe()` static_asserts. Soldering reference: `docs/v1-s3-hw-cheatsheet.md`.
+All pins live in `src/Board.h`, in **one shared block** (both boards are the same module on the same wiring), checked by `pinIsSafe()` static_asserts.
 
 | Function | GPIO (both boards) |
 |---|---|
@@ -319,7 +300,7 @@ All pins live in `src/Board.h`, in **one shared block** (both boards are the sam
 - `Buzzer` (`src/Buzzer.h`, GPIO 3) plays a short tone on remote presses and a victory theme on game win (`onMatchOver(CelebrationVariant)`; `main.cpp`'s `playMatchOver()` picks `playBajgiel()` or `playCelebration()`; fired once from the `GameCelebration` case of `handleStateChange()` - never on the summary, never on an overlay restore); toggled via `PrefsData.enableBuzzer`, applied live by the apply-on-save choke point (see Persistence).
 - **Never call `ESP.restart()` directly — use `safeRestart()` (`src/SafeRestart.h`).** Every pad returns to a floating input at reset and GPIO 3 has no default pull, so on V2 the MOSFET gate floats and the buzzer sounds through the reboot. A LOW written before the restart is discarded; `safeRestart()` latches the pad with `gpio_hold_en()`, which survives a *software* reset. `Buzzer::init()` releases it (`pinMode` → `LOW` → `gpio_hold_dis`, in that order — driving before unlatching leaves no floating gap) and runs as the **first** statement of `setup()`, before `Serial`/prefs/`initHardware()`. Crash, watchdog, brownout and power-on resets are not covered; only a hardware pull-down on the gate would fix those. An OTA *downgrade* to firmware without `gpio_hold_dis` leaves the buzzer muted until a power cycle.
 - Powered by 1S2P INR18650-35E battery with 2A boost converter / charger.
-- **Garmin watch as a BLE remote** was researched, not built (task #66): feasible on both boards now that V1 is an S3 (BLE and WiFi never run together), ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work.
+- **Garmin watch as a BLE remote** was researched, not built (task #66): feasible on both boards (BLE and WiFi never run together), ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work.
 
 ### Persistence & Networking
 - `PreferencesManager` — reads/writes `PrefsData` (WiFi SSID/password, brightness, AP mode) to ESP32 NVS. `wifiIpAddress` is **live state, never persisted**: empty until an interface comes up, set from `WiFi.localIP()` on an STA connect and `WiFi.softAPIP()` in both AP paths, cleared when WiFi is off or an AP drops. The CONFIG footer omits its line while it is empty, which is why it defaults to empty rather than to a placeholder.
@@ -338,8 +319,8 @@ All pins live in `src/Board.h`, in **one shared block** (both boards are the sam
   2. `RemoteDevelopmentService.cpp` — `WiFiClass::status()` became `WiFi.status()`.
      Calling a non-static member without an object was always invalid; GCC 8.4
      tolerated it, GCC 14 does not.
-  With those in place the firmware builds clean on core 3.3.11 for **both**
-  the S2 V1 and `esp32-s3-devkitc-1`. It is the LED driver, not the
+  With those in place the firmware builds clean on core 3.3.11 for
+  `esp32-s3-devkitc-1`. It is the LED driver, not the
   networking code, that blocks the upgrade.
 
 ### Strings (UI language)

@@ -38,7 +38,7 @@
  * Back indicators (slots 4, 9) and the dead chain positions (12, 28, 44, 60)
  * are never front-facing / never lit - left at 255 (identity).
  *
- * Parallel dies are full WS2812Bs sharing one data slot (V2 Guidelines.md), so
+ * Parallel dies are full WS2812Bs sharing one data slot, so
  * each die still emits at full brightness - the scale is per SLOT (one factor
  * per addressable pixel, applied once), not per die; die count only feeds the
  * mm^2-per-die measurement above (total area / dies), never anything at runtime.
