@@ -1,122 +1,504 @@
 /* Light on purpose, and pinned: the board lives in a bright hall and the
    page is read at arm's length, so it must not follow a phone's dark mode. */
-:root{color-scheme:light;--bg:#f6f2ea;--card:#fffdf9;--line:#e6dfd2;
---text:#2f2b25;--muted:#8a8175;--accent:#2f7d4f;--danger:#b4472f}
-*{box-sizing:border-box}
-button{font:inherit}
+:root {
+    color-scheme: light;
+    --bg: #f6f2ea;
+    --card: #fffdf9;
+    --line: #e6dfd2;
+    --text: #2f2b25;
+    --muted: #8a8175;
+    --accent: #2f7d4f;
+    --danger: #b4472f
+}
+
+* {
+    box-sizing: border-box
+}
+
+button {
+    font: inherit
+}
 
 /* One skeleton on every page: nav, header, main of .card panels. Spacing is
    flex gaps only; children carry no margins of their own. */
-body{margin:0;padding:16px 16px 40px;background:var(--bg);color:var(--text);
-font:16px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
--webkit-text-size-adjust:100%;display:flex;flex-direction:column;gap:18px}
-nav,header,main{width:100%;max-width:520px;margin:0 auto}
-nav{display:flex;gap:8px}
-nav a{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;
-padding:10px 8px;font-size:13px;line-height:1.25;text-decoration:none;color:var(--muted);
-background:var(--card);border:1px solid var(--line);border-radius:12px}
-nav a.on{color:#fff;background:var(--accent);border-color:var(--accent);font-weight:600}
-header{display:flex;flex-direction:column;gap:4px}
-h1{font-size:24px;margin:0;letter-spacing:-.01em}
-.sub{margin:0;color:var(--muted);font-size:14px}
-main{display:flex;flex-direction:column;gap:16px}
+body {
+    margin: 0;
+    padding: 16px 16px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px
+}
 
-.card{display:flex;flex-direction:column;gap:16px;background:var(--card);
-border:1px solid var(--line);border-radius:14px;padding:16px;
-box-shadow:0 1px 2px rgba(60,50,30,.05)}
-.card h2{font-size:17px;margin:0}
-.card.dev{border-color:var(--danger)}
-.card.dev h2{color:var(--danger)}
-.field{display:flex;flex-direction:column;gap:6px}
-.field label{font-size:13px;color:var(--muted)}
-.actions{display:flex;flex-direction:column;gap:10px}
-.note{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;
-padding:14px 16px;color:var(--muted);font-size:14px}
-.hint{margin:0;color:var(--muted);font-size:13px}
-.warn{margin:0;padding:10px 12px;border-radius:12px;font-size:13px;text-align:center;
-background:#fff3cd;color:#7a5200;border:1px solid #f0d58a}
+nav, header, main {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto
+}
+
+nav {
+    display: flex;
+    gap: 8px
+}
+
+nav a {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px 8px;
+    font-size: 13px;
+    line-height: 1.25;
+    text-decoration: none;
+    color: var(--muted);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px
+}
+
+nav a.on {
+    color: #fff;
+    background: var(--accent);
+    border-color: var(--accent);
+    font-weight: 600
+}
+
+header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px
+}
+
+h1 {
+    font-size: 24px;
+    margin: 0;
+    letter-spacing: -.01em
+}
+
+.sub {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px
+}
+
+main {
+    display: flex;
+    flex-direction: column;
+    gap: 16px
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(60, 50, 30, .05)
+}
+
+.card h2 {
+    font-size: 17px;
+    margin: 0
+}
+
+.card.dev {
+    border-color: var(--danger)
+}
+
+.card.dev h2 {
+    color: var(--danger)
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px
+}
+
+.field label {
+    font-size: 13px;
+    color: var(--muted)
+}
+
+.actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+.note {
+    margin: 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    color: var(--muted);
+    font-size: 14px
+}
+
+.hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px
+}
+
+.warn {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    text-align: center;
+    background: #fff3cd;
+    color: #7a5200;
+    border: 1px solid #f0d58a
+}
+
 /* A panel's message line: neutral, .ok or .err. */
-.msg{text-align:center;font-size:14px;color:var(--muted);word-break:break-word}
-.msg.ok{color:var(--accent)}
-.msg.err{color:var(--danger)}
-/* Out of the flex flow until there is something to say - an empty line read as a gap. */
-.msg:empty{display:none}
+.msg {
+    text-align: center;
+    font-size: 14px;
+    color: var(--muted);
+    word-break: break-word
+}
 
-input[type=text],input[type=password],.row input{width:100%;min-width:0;padding:11px 12px;
-font-size:16px;color:var(--text);background:#fff;border:1px solid var(--line);border-radius:10px}
-input[type=text]:focus,input[type=password]:focus,.row input:focus{outline:2px solid var(--accent);
-outline-offset:1px;border-color:transparent}
-input[type=file]{width:100%;padding:12px;font-size:15px;background:#fff;
-border:1px dashed var(--line);border-radius:12px}
-progress{width:100%;height:14px}
+.msg.ok {
+    color: var(--accent)
+}
+
+.msg.err {
+    color: var(--danger)
+}
+
+/* Out of the flex flow until there is something to say - an empty line read as a gap. */
+.msg:empty {
+    display: none
+}
+
+input[type=text], input[type=password], .row input {
+    width: 100%;
+    min-width: 0;
+    padding: 11px 12px;
+    font-size: 16px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px
+}
+
+input[type=text]:focus, input[type=password]:focus, .row input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: transparent
+}
+
+input[type=file] {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    background: #fff;
+    border: 1px dashed var(--line);
+    border-radius: 12px
+}
+
+progress {
+    width: 100%;
+    height: 14px
+}
 
 /* Buttons: .btn plus exactly one of .primary, .danger (restarts the board into
    something risky) or .quiet. Toggles are .seg and never use these names. */
-.btn{display:block;width:100%;padding:14px;font-size:16px;font-weight:600;
-border-radius:14px;cursor:pointer;border:1px solid transparent}
-.btn.primary{color:#fff;background:var(--accent);box-shadow:0 2px 6px rgba(47,125,79,.28)}
-.btn.danger{color:#fff;background:var(--danger);box-shadow:0 2px 6px rgba(180,71,47,.28)}
-.btn.quiet{color:var(--muted);background:transparent;border-color:var(--line);font-weight:400}
-.btn:disabled{opacity:.55;cursor:default}
+.btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 14px;
+    cursor: pointer;
+    border: 1px solid transparent
+}
 
-.seg{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px}
-.seg button{flex:1;padding:11px 6px;border:0;border-radius:10px;background:transparent;
-color:var(--muted);font-size:14px;cursor:pointer}
-.seg button.on{background:var(--accent);color:#fff;font-weight:600}
+.btn.primary {
+    color: #fff;
+    background: var(--accent);
+    box-shadow: 0 2px 6px rgba(47, 125, 79, .28)
+}
+
+.btn.danger {
+    color: #fff;
+    background: var(--danger);
+    box-shadow: 0 2px 6px rgba(180, 71, 47, .28)
+}
+
+.btn.quiet {
+    color: var(--muted);
+    background: transparent;
+    border-color: var(--line);
+    font-weight: 400
+}
+
+.btn:disabled {
+    opacity: .55;
+    cursor: default
+}
+
+.seg {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 14px
+}
+
+.seg button {
+    flex: 1;
+    padding: 11px 6px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    cursor: pointer
+}
+
+.seg button.on {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600
+}
+
 /* Dev Mode is the dangerous toggle: red outline, red when selected. */
-.seg.red{border-color:var(--danger)}
-.seg.red button.on{background:var(--danger);color:#fff}
+.seg.red {
+    border-color: var(--danger)
+}
+
+.seg.red button.on {
+    background: var(--danger);
+    color: #fff
+}
 
 /* Profile rows. */
-#rows{display:flex;flex-direction:column;gap:10px}
-.row{display:flex;align-items:center;gap:10px;background:#fff;
-border:1px solid var(--line);border-radius:12px;padding:8px}
-.sw{width:40px;height:40px;border-radius:12px;flex:none;padding:0;cursor:pointer;
-border:2px solid rgba(0,0,0,.14);box-shadow:inset 0 0 0 2px #fff}
-.row input{flex:1;font-size:17px;padding:9px 10px}
-.ic{width:38px;height:38px;flex:none;padding:0;font-size:16px;line-height:1;
-background:#f3efe6;color:var(--muted);border:1px solid var(--line);border-radius:10px;
-cursor:pointer}
-.ic:active{background:#e9e3d6}
-.ic.del{color:var(--danger)}
-#cnt{text-align:center;color:var(--muted);font-size:13px}
+#rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 8px
+}
+
+.sw {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    flex: none;
+    padding: 0;
+    cursor: pointer;
+    border: 2px solid rgba(0, 0, 0, .14);
+    box-shadow: inset 0 0 0 2px #fff
+}
+
+.row input {
+    flex: 1;
+    font-size: 17px;
+    padding: 9px 10px
+}
+
+.ic {
+    width: 38px;
+    height: 38px;
+    flex: none;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    background: #f3efe6;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer
+}
+
+.ic:active {
+    background: #e9e3d6
+}
+
+.ic.del {
+    color: var(--danger)
+}
+
+#cnt {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px
+}
 
 /* The picker is a tap-to-open sheet rather than a dropdown: a colour is
    far easier to recognise than its name, and 16 swatches do not fit in a row. */
-#pal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(47,43,37,.45);
-display:none;align-items:flex-end;justify-content:center;z-index:10}
-#palbox{display:flex;flex-direction:column;gap:14px;background:var(--card);
-border-radius:20px 20px 0 0;padding:18px 16px 24px;width:100%;max-width:520px;
-max-height:92vh;overflow-y:auto;box-shadow:0 -4px 24px rgba(60,50,30,.18)}
-#palbox h2{font-size:17px;margin:0;text-align:center}
-#palgrid{grid-template-columns:repeat(4,1fr);gap:12px}
-.pc{background:none;border:0;padding:0;cursor:pointer}
-.pc i{display:block;width:100%;height:56px;border-radius:14px;
-border:3px solid rgba(0,0,0,.10)}
-.pc.on i{border-color:var(--accent)}
-.pc span{display:block;font-size:11px;color:var(--muted);margin-top:5px;overflow:hidden;
-text-overflow:ellipsis;white-space:nowrap}
+#pal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(47, 43, 37, .45);
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 10
+}
+
+#palbox {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    background: var(--card);
+    border-radius: 20px 20px 0 0;
+    padding: 18px 16px 24px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 92vh;
+    overflow-y: auto;
+    box-shadow: 0 -4px 24px rgba(60, 50, 30, .18)
+}
+
+#palbox h2 {
+    font-size: 17px;
+    margin: 0;
+    text-align: center
+}
+
+#palgrid {
+    grid-template-columns:repeat(4, 1fr);
+    gap: 12px
+}
+
+.pc {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer
+}
+
+.pc i {
+    display: block;
+    width: 100%;
+    height: 56px;
+    border-radius: 14px;
+    border: 3px solid rgba(0, 0, 0, .10)
+}
+
+.pc.on i {
+    border-color: var(--accent)
+}
+
+.pc span {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
 /* Own picker: Android's native <input type=color> only opens a fixed
    swatch dialog, no free choice - so HSV lives inline instead.
    Phone-only, and not <input type=range>: a finger drifting off a native
    range drops the drag and the handle snaps back. .sl is a 56 px touch
    zone that captures the pointer, so only the horizontal position counts
    until the finger lifts. Side margins keep the 44 px handle on screen at 0/max. */
-#hsvbox{flex-direction:column;gap:12px}
-.sl{position:relative;height:56px;margin:0 22px;touch-action:none;user-select:none;
--webkit-user-select:none}
-.sl i{position:absolute;left:-8px;right:-8px;top:20px;height:16px;border-radius:8px;background:#000}
-#hh{background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
-.sl b{position:absolute;top:6px;left:0;width:44px;height:44px;margin-left:-22px;
-border-radius:50%;background:#fff;pointer-events:none;
-border:3px solid rgba(0,0,0,.25);box-shadow:0 2px 5px rgba(0,0,0,.35)}
-.hsvsw{display:flex;align-items:center;gap:10px}
-.hsvsw i{display:block;width:40px;height:40px;border-radius:12px;flex:none;
-border:2px solid rgba(0,0,0,.14)}
-.hsvsw span{font-size:14px;color:var(--muted);font-family:monospace}
-.palbtns{display:flex;gap:10px}
+#hsvbox {
+    flex-direction: column;
+    gap: 12px
+}
+
+.sl {
+    position: relative;
+    height: 56px;
+    margin: 0 22px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none
+}
+
+.sl i {
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 20px;
+    height: 16px;
+    border-radius: 8px;
+    background: #000
+}
+
+#hh {
+    background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)
+}
+
+.sl b {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    border-radius: 50%;
+    background: #fff;
+    pointer-events: none;
+    border: 3px solid rgba(0, 0, 0, .25);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, .35)
+}
+
+.hsvsw {
+    display: flex;
+    align-items: center;
+    gap: 10px
+}
+
+.hsvsw i {
+    display: block;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    flex: none;
+    border: 2px solid rgba(0, 0, 0, .14)
+}
+
+.hsvsw span {
+    font-size: 14px;
+    color: var(--muted);
+    font-family: monospace
+}
+
+.palbtns {
+    display: flex;
+    gap: 10px
+}
+
 /* Settings: the 8 CONFIG brightness levels as one snapping .sl slider (same
    pointer-capture pattern as the HSV ones). The handle shows the level itself. */
-#lvsl i{background:var(--accent)}
-#lvsl b{display:flex;align-items:center;justify-content:center;font-size:15px;
-font-weight:700;color:var(--text)}
+#lvsl i {
+    background: var(--accent)
+}
+
+#lvsl b {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text)
+}

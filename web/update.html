@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aktualizacja oprogramowania</title>
-<link rel="stylesheet" href="/app.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Aktualizacja oprogramowania</title>
+    <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <!--
@@ -17,20 +17,22 @@
   the bypass appears only after a refusal - offered up front it would simply be
   pressed. Served ungated, whatever screen the board shows.
 -->
-<nav><a href="/">Profile</a><a href="/settings">Ustawienia</a><a class="on" href="/update">Aktualizacja oprogramowania</a></nav>
+<nav><a href="/">Profile</a><a href="/settings">Ustawienia</a><a class="on" href="/update">Aktualizacja
+    oprogramowania</a></nav>
 <header><h1>Aktualizacja oprogramowania</h1>
-<p class="sub">Wybierz plik firmware.bin i wyślij go na tablicę.</p></header>
+    <p class="sub">Wybierz plik firmware.bin i wyślij go na tablicę.</p></header>
 <main>
-<section class="card">
-<h2>Plik oprogramowania</h2>
-<p class="hint">Wersja oprogramowania tablicy: <b id="fwver"></b></p>
-<input type="file" id="fw" accept=".bin">
-<progress id="otabar" max="100" value="0" style="display:none"></progress>
-<div class="actions">
-<button type="button" id="otasend" class="btn primary">Wgraj i zrestartuj</button>
-<button type="button" id="otaforce" class="btn danger" style="display:none">Wgraj mimo to</button></div>
-<div id="otamsg" class="msg"></div>
-</section>
+    <section class="card">
+        <h2>Plik oprogramowania</h2>
+        <p class="hint">Wersja oprogramowania tablicy: <b id="fwver"></b></p>
+        <input type="file" id="fw" accept=".bin">
+        <progress id="otabar" max="100" value="0" style="display:none"></progress>
+        <div class="actions">
+            <button type="button" id="otasend" class="btn primary">Wgraj i zrestartuj</button>
+            <button type="button" id="otaforce" class="btn danger" style="display:none">Wgraj mimo to</button>
+        </div>
+        <div id="otamsg" class="msg"></div>
+    </section>
 </main>
 <script src="/update.js"></script>
 </body>

@@ -1,49 +1,63 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Profile</title>
-<link rel="stylesheet" href="/app.css">
+    <meta charset="utf-8">
+    <meta content="width=device-width,initial-scale=1" name="viewport">
+    <title>Profile</title>
+    <link href="/app.css" rel="stylesheet">
 </head>
 <body>
-<nav><a class="on" href="/">Profile</a><a href="/settings">Ustawienia</a><a href="/update">Aktualizacja oprogramowania</a></nav>
+<nav><a class="on" href="/">Profile</a><a href="/settings">Ustawienia</a><a href="/update">Aktualizacja
+    oprogramowania</a></nav>
 <header><h1>Profile</h1>
-<p class="sub">Do 32 pozycji. Zapis zrestartuje tablicę.</p></header>
+    <p class="sub">Do 32 pozycji. Zapis zrestartuje tablicę.</p></header>
 <main>
-<!-- Shown on /api/roster's 503: the editor is shut, the other pages stay one tap away. -->
-<p id="closed" class="note" style="display:none">Edycja jest dostępna na ekranie <b>PROFILE</b> albo w trybie deweloperskim w sieci Wi-Fi.</p>
+    <!-- Shown on /api/roster's 503: the editor is shut, the other pages stay one tap away. -->
+    <p class="note" id="closed" style="display:none">Edycja jest dostępna na ekranie <b>PROFILE</b> albo w trybie
+        deweloperskim w sieci Wi-Fi.</p>
 
-<section id="editor" class="card" style="display:none">
-<h2>Profile graczy</h2>
-<div id="rows"></div>
-<button type="button" id="add" class="btn quiet">+ Dodaj profil</button>
-<div id="cnt"></div>
-<div class="actions">
-<button type="button" id="save" class="btn primary">Zapisz i zrestartuj</button>
-<button type="button" id="reset" class="btn quiet">Przywróć profile fabryczne</button></div>
-<div id="msg" class="msg"></div>
-</section>
+    <section class="card" id="editor" style="display:none">
+        <h2>Profile graczy</h2>
+        <div id="rows"></div>
+        <button class="btn quiet" id="add" type="button">+ Dodaj profil</button>
+        <div id="cnt"></div>
+        <div class="actions">
+            <button class="btn primary" id="save" type="button">Zapisz i zrestartuj</button>
+            <button class="btn quiet" id="reset" type="button">Przywróć profile fabryczne</button>
+        </div>
+        <div class="msg" id="msg"></div>
+    </section>
 </main>
 
-<div id="pal"><div id="palbox">
-<p class="warn" id="palwarn" style="display:none">Ten kolor jest bardzo jasny, użycie go skróci czas pracy urządzenia.</p>
-<p class="warn" id="paldark" style="display:none">Ten kolor jest bardzo ciemny, nie będzie go widać!</p>
-<h2>Wybierz kolor</h2>
-<div class="seg"><button type="button" id="tabpal">Paleta kolorów</button>
-<button type="button" id="tabcus">Własny kolor</button></div>
-<div id="palgrid"></div>
-<div id="hsvbox" style="display:none">
-<div class="field"><label>Odcień</label>
-<div class="sl"><i id="hh"></i><b></b></div></div>
-<div class="field"><label>Nasycenie</label>
-<div class="sl"><i id="hs"></i><b></b></div></div>
-<div class="field"><label>Jasność</label>
-<div class="sl"><i id="hv"></i><b></b></div></div>
-<div class="hsvsw"><i id="hswi"></i><span id="hswt"></span></div></div>
-<div class="palbtns"><button type="button" id="palclose" class="btn quiet">Anuluj</button>
-<button type="button" id="palok" class="btn primary">Wybierz</button></div>
-</div></div>
+<div id="pal">
+    <div id="palbox">
+        <p class="warn" id="palwarn" style="display:none">Ten kolor jest bardzo jasny, użycie go skróci czas pracy
+            urządzenia.</p>
+        <p class="warn" id="paldark" style="display:none">Ten kolor jest bardzo ciemny, nie będzie go widać!</p>
+        <h2>Wybierz kolor</h2>
+        <div class="seg">
+            <button id="tabpal" type="button">Paleta kolorów</button>
+            <button id="tabcus" type="button">Własny kolor</button>
+        </div>
+        <div id="palgrid"></div>
+        <div id="hsvbox" style="display:none">
+            <div class="field"><label>Odcień</label>
+                <div class="sl"><i id="hh"></i><b></b></div>
+            </div>
+            <div class="field"><label>Nasycenie</label>
+                <div class="sl"><i id="hs"></i><b></b></div>
+            </div>
+            <div class="field"><label>Jasność</label>
+                <div class="sl"><i id="hv"></i><b></b></div>
+            </div>
+            <div class="hsvsw"><i id="hswi"></i><span id="hswt"></span></div>
+        </div>
+        <div class="palbtns">
+            <button class="btn quiet" id="palclose" type="button">Anuluj</button>
+            <button class="btn primary" id="palok" type="button">Wybierz</button>
+        </div>
+    </div>
+</div>
 <script src="/profile.js"></script>
 </body>
 </html>
