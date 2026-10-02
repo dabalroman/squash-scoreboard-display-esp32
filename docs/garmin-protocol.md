@@ -344,7 +344,7 @@ write response arrives.
 | `0x09` | UNDO | `side` u8 | 4 | PLAYING | undo that side's last point (C = left, D = right); padel: also steps back across gems. At 0:0 with nothing to step back -> MATCH_START, as the board's C/D does |
 | `0x0A` | SKIP | - | 3 | INTRO, CELEBRATION | INTRO -> PLAYING; CELEBRATION -> GAME_OVER |
 | `0x0B` | NEXT_GAME | - | 3 | GAME_OVER | -> MATCH_START, same pair (C/D) |
-| `0x0C` | END_MATCH | - | 3 | GAME_OVER | -> CHOOSE_PLAYERS (new transition, see Open questions) |
+| `0x0C` | *(unused)* | - | - | - | never sent; the board answers UNKNOWN_CMD. Leaving a match is BACK, as on the fob (see Open questions 6) |
 | `0x0D` | SYNC | - | 3 | every screen, incl. busy | no state change; re-push the full state |
 
 `side` other than 0/1 -> INVALID. Scoring through BLE bypasses the RF receiver's debounce;
@@ -431,7 +431,7 @@ Screens:
 | `0x12` | INTRO | `MatchIntro` | the pair, SKIP |
 | `0x13` | PLAYING | `GamePlaying` | score, left/right point, undo |
 | `0x14` | CELEBRATION | `GameCelebration` | result, SKIP |
-| `0x15` | GAME_OVER | `GameOver` | result, NEXT_GAME / END_MATCH |
+| `0x15` | GAME_OVER | `GameOver` | result, NEXT_GAME / BACK |
 | other | - | - | board busy |
 
 ### 11.3 Screen data
@@ -684,13 +684,16 @@ Unauthenticated read of STATE or ROSTER (1 B): `00`
 5. **Additions not in the locked lists:** `ackStatus` beside `ackSeq` (the watch needs to know a
    press was rejected to roll back); SYNC (`0x0D`) for re-requesting a full state; the pairing
    request carries the chosen code; the state header carries `sport` on every screen.
-6. **END_MATCH** = GAME_OVER -> CHOOSE_PLAYERS is a new board transition: today no button goes
-   there (C/D and long C both land on MATCH_START). Confirm, or map it elsewhere.
+6. **END_MATCH dropped (resolved 2026-10-02).** It would have been a new GAME_OVER ->
+   CHOOSE_PLAYERS transition no button has. The watch mirrors the fob instead: NEXT_GAME (C/D)
+   -> MATCH_START, then BACK walks MATCH_START -> CHOOSE_PLAYERS -> MENU. `0x0C` stays unused
+   so SYNC keeps `0x0D`.
 7. PLAYING, MATCH_START, CELEBRATION and GAME_OVER take 2 notifications because they carry
    4-byte uids (locked). If #81 measures that the second chunk costs a Connect IQ tick, v0
    can switch the state to 1-byte roster indexes (commands keep uids) and fit PLAYING in one.
 8. Connect IQ's per-profile characteristic limit is undocumented; the POC used 2, this uses 6
    (+ 2 CCCDs). Check in #81's first spike.
-9. Not protocol, for #80: WiFi and BLE coexisting (locked) was never measured against the RMT
-   (the POC measured BLE alone, and its report assumed "never both"). Four connections at
-   7.5 ms intervals were never measured either.
+9. Not protocol, for #80: WiFi + BLE against the RMT was **measured on V1 (2026-10-02)**: Dev
+   Mode STA, advertising, 2 subscribed centrals at 20 notifies/s and fob presses in a match
+   gave 0 bails, 0 stale, max 5 us late. Four connections were not measured (judged
+   unrealistic by the user).
