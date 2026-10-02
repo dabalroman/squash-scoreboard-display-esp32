@@ -104,6 +104,11 @@ pio run -t upload -e v1_bootstrap --upload-port COMx # naked board only, see bel
 pio device monitor                      # USB CDC serial, 115200 (both boards)
 ```
 
+- `v1_ota_rmtdiag` = `v1_ota` + `helpers/rmtdiag_patch.py`, which patches **only that env's own**
+  FastLED copy (`.pio/libdeps/v1_ota_rmtdiag`) with RMT refill counters (`extern "C" rmtdiag_*`:
+  fills, bails, stale replays, max lateness in cycles, a 10-bucket histogram). The instrument for
+  #58/#72/#74-style measurements; the code that logs the counters is per measurement and is not
+  kept. Never leave it as V1's running image - flash `v1_ota` back afterwards.
 - `v1_bootstrap` is the first-flash image of a **naked** V1 (empty NVS, no remote to reach
   Dev Mode): `helpers/wifi_bootstrap.py` reads `SCOREBOARD_WIFI_SSID` /
   `SCOREBOARD_WIFI_PASSWORD` from the environment (build fails if unset or over 63 bytes)
@@ -303,7 +308,8 @@ All pins live in `src/Board.h`, in **one shared block** (both boards are the sam
   - CONFIG cycles NIE -> MECZ -> TAK (D forward, C back, wrapping), Red / Yellow / Green on the glyphs, indicators and V1 bar (`ConfigBarRenderer::buzzerColor`); LEDs keep `buZZ`, the OLED lists labels only.
 - **Never call `ESP.restart()` directly — use `safeRestart()` (`src/SafeRestart.h`).** Every pad returns to a floating input at reset and GPIO 3 has no default pull, so on V2 the MOSFET gate floats and the buzzer sounds through the reboot. A LOW written before the restart is discarded; `safeRestart()` latches the pad with `gpio_hold_en()`, which survives a *software* reset. `Buzzer::init()` releases it (`pinMode` → `LOW` → `gpio_hold_dis`, in that order — driving before unlatching leaves no floating gap) and runs as the **first** statement of `setup()`, before `Serial`/prefs/`initHardware()`. Crash, watchdog, brownout and power-on resets are not covered; only a hardware pull-down on the gate would fix those. An OTA *downgrade* to firmware without `gpio_hold_dis` leaves the buzzer muted until a power cycle.
 - Powered by 1S2P INR18650-35E battery with 2A boost converter / charger.
-- **Garmin watch as a BLE remote** was researched, not built (task #66): feasible on both boards (BLE and WiFi never run together), ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work; the Garmin App Remote wire protocol (advertising, GATT, auth, pairing, commands, state) is specified in `docs/garmin-protocol.md` - #80 and #81 implement it, change it there first.
+- **Garmin App Remote (#80, in progress on `garmin-app-remote`).** NimBLE-Arduino is pinned at **1.4.3** in `[common]`; `[s3]` sets `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=4` and a 6144 B host task stack (host on core 0, off loop()'s core). Unreferenced, it adds nothing to either image. WiFi/BT software coexistence is on in the core's sdkconfig. **RMT gate passed on V1 (2026-10-02)**: Dev Mode STA + BLE advertising + 2 subscribed centrals (FR970, a phone) at 20 notifies/s + fob presses, in a match: 207,844 refills, 0 bails, 0 stale, max 5 us late; NimBLE took 51.7 KB heap, min free 191 KB. A raw `ble_gattc_notify_custom` from loop() took up to ~1 ms.
+- The Garmin watch as a BLE remote was researched first (task #66): feasible on both boards, ~0.5 s latency fixed by Connect IQ, needs explicit watch<->board pairing. Read `docs/garmin-remote-poc.md` before any BLE work; the Garmin App Remote wire protocol (advertising, GATT, auth, pairing, commands, state) is specified in `docs/garmin-protocol.md` - #80 and #81 implement it, change it there first.
 
 ### Persistence & Networking
 - `PreferencesManager` — reads/writes `PrefsData` (WiFi SSID/password, brightness, AP mode) to ESP32 NVS. `wifiIpAddress` is **live state, never persisted**: empty until an interface comes up, set from `WiFi.localIP()` on an STA connect and `WiFi.softAPIP()` in both AP paths, cleared when WiFi is off or an AP drops. The CONFIG footer omits its line while it is empty, which is why it defaults to empty rather than to a placeholder.
