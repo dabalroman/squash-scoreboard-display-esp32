@@ -29,6 +29,8 @@
 #include "Display/EInk/EInkDisplay.h"
 #include "Web/PlayerSetupWebUi.h"
 #include "PlayerRoster.h"
+#include "Garmin/GarminService.h"
+#include "Garmin/WatchSport.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 
@@ -96,6 +98,9 @@ const FactoryPlayer FACTORY_PLAYERS[] = {
 constexpr uint8_t FACTORY_PLAYER_COUNT = sizeof(FACTORY_PLAYERS) / sizeof(FACTORY_PLAYERS[0]);
 
 PlayerRoster playerRoster;
+
+// Garmin App Remote. Off by default; while off every hook below is a cheap no-op.
+GarminService garminService;
 PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager, [](const uint8_t brightness) {
     ledDisplay.setBrightness(brightness);
 });
@@ -256,6 +261,8 @@ void setup() {
     const bool wifiSeeded = preferencesManager.read();
     // Before any mode is built: every mode is handed playerRoster.profiles().
     playerRoster.load(FACTORY_PLAYERS, FACTORY_PLAYER_COUNT);
+    garminService.load();
+    garminService.setRoster(playerRoster.profiles());
     initHardware();
     // Stored brightness before the boot sweep, buzzer state before anything can sound.
     preferencesManager.apply();
@@ -333,6 +340,7 @@ void setup() {
     printLn("  enableDevMode: %d", preferencesManager.settings.enableDevMode);
     printLn("  buzzerMode: %d", preferencesManager.settings.buzzerMode);
     printLn("  brightness: %d", preferencesManager.settings.brightness);
+    printLn("  garmin: %d", garminService.isEnabled() ? 1 : 0);
     printLn("  wifiSSID: %s", preferencesManager.settings.wifiSSID);
     if (wifiSeeded) {
         printLn("Bootstrap: empty NVS seeded with WiFi credentials, Dev Mode on");
@@ -343,6 +351,12 @@ void setup() {
             batterySensor.available() ? "" : " (implausible, ignored)");
 
     buildDeviceMode(DeviceModeState::ModeSwitchingMode);
+
+    // Last, after the web server and OTA are up: init runs in a core-0 task and never
+    // blocks here, and a BLE failure only leaves the feature off.
+    if (garminService.isEnabled()) {
+        garminService.begin();
+    }
 }
 
 /**
@@ -366,8 +380,61 @@ void showLowBatteryOverlay() {
     gBuzzer.playLowBattery();
 }
 
+/**
+ * One watch command per tick, through the active mode, with the sound a fob press makes
+ * (the buzzer mode gates both alike). SYNC never gets here: the service answers it.
+ */
+void applyWatchCommand() {
+    uint16_t handle;
+    WatchCommand command;
+    if (!deviceMode || !garminService.takeCommand(handle, command)) {
+        return;
+    }
+
+    // Busy screens take nothing (spec 10.2): ConfigMode::goBack() saves and leaves, which a
+    // watch must not trigger. PROFILE takes BACK only.
+    const WatchModeInfo info = WatchSport::fromModeState(deviceState);
+    const bool screenTakesIt = info.viewDescribes
+                               || (info.screen == Garmin::ScreenId::Profile && command.id == Garmin::CommandId::Back);
+    const Garmin::AckStatus status = screenTakesIt
+                                         ? deviceMode->handleWatchCommand(command)
+                                         : Garmin::AckStatus::WrongScreen;
+    garminService.acknowledge(handle, command.seq, status);
+
+    if (status != Garmin::AckStatus::Applied) {
+        return;
+    }
+
+    if (command.id == Garmin::CommandId::Back) {
+        // What the long-C branch plays.
+        gBuzzer.playBack();
+        return;
+    }
+
+    // What setOnActionTaken does for an accepted fob press.
+    gBuzzer.trigger();
+    einkDisplay.dismissSplash();
+}
+
+void publishWatchState() {
+    if (!deviceMode) {
+        return;
+    }
+
+    WatchState state;
+    const WatchModeInfo info = WatchSport::fromModeState(deviceState);
+    if (info.viewDescribes) {
+        deviceMode->describeForWatch(state);
+    } else {
+        state.setBusy(info.screen);
+    }
+    state.setSport(info.sport);
+    garminService.publish(state, lastUpdate);
+}
+
 void loop() {
     einkDisplay.update();
+    garminService.loop(millis());
     gRemoteDevelopmentService->loop();
     playerSetupWebUi.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);
@@ -404,6 +471,9 @@ void loop() {
     // pending score commit lands on the first frame after.
     if (overlay.active(lastUpdate)) {
         overlay.render(ledDisplay, *backDisplay, einkDisplay);
+        // Watch commands are not queued for later: each is answered BUSY at once.
+        garminService.rejectQueued();
+        garminService.publishAcks(lastUpdate);
         return;
     }
 
@@ -436,16 +506,28 @@ void loop() {
     gBuzzer.setInMatch(deviceMode && deviceMode->isInMatch());
 
     // Handle long press C
+    bool longPressHandled = false;
     if (remoteInputManager.buttonC.takeLongPressIfPossible()) {
-        const bool handled = deviceMode && deviceMode->goBack();
+        longPressHandled = deviceMode && deviceMode->goBack();
 
-        if (handled) {
+        if (longPressHandled) {
             gBuzzer.playBack();
             remoteInputManager.preventTriggerForMs();
         }
     }
 
+    // After a long-C back the view on screen is about to be replaced; a watch command waits a
+    // tick for its successor rather than act on the outgoing one. (A requested mode change was
+    // already applied above, and one requested by this command lands before the next.)
+    if (garminService.running() && !longPressHandled) {
+        applyWatchCommand();
+    }
+
     if (deviceMode) {
         deviceMode->loop();
+    }
+
+    if (garminService.running()) {
+        publishWatchState();
     }
 }

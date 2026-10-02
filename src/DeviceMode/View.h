@@ -3,6 +3,8 @@
 
 #include "Display/BackDisplay.h"
 #include "Display/EInk/EInkDisplay.h"
+#include "Garmin/WatchCommand.h"
+#include "Garmin/WatchState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
@@ -35,6 +37,20 @@ public:
      */
     virtual void renderEInkDisplay(EInkDisplay &einkDisplay) {
         einkDisplay.showBlank();
+    }
+
+    /**
+     * A watch command (Garmin App Remote), applied in loop() like a fob press. A view that
+     * takes commands calls the same action methods as its button handlers. Default: this
+     * screen takes none.
+     */
+    virtual Garmin::AckStatus handleWatchCommand(const WatchCommand &) {
+        return Garmin::AckStatus::WrongScreen;
+    }
+
+    // The screen the watches see. Default: board busy.
+    virtual void describeForWatch(WatchState &state) const {
+        state.setBusy(Garmin::ScreenId::Booting);
     }
 
     void queueRender() {

@@ -5,6 +5,8 @@
 
 #include "DeviceModeState.h"
 #include "View.h"
+#include "Garmin/WatchCommand.h"
+#include "Garmin/WatchState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/BackDisplay.h"
 #include "Display/EInk/EInkDisplay.h"
@@ -49,6 +51,28 @@ public:
      */
     virtual bool goBack() {
         return false;
+    }
+
+    /**
+     * BACK is the long-C chain, so it lives here; everything else belongs to the view.
+     * GamePlaying's goBack() is false, which is what keeps a watch from discarding a game.
+     */
+    virtual Garmin::AckStatus handleWatchCommand(const WatchCommand &command) {
+        if (command.id == Garmin::CommandId::Back) {
+            return goBack() ? Garmin::AckStatus::Applied : Garmin::AckStatus::WrongScreen;
+        }
+        if (!activeView) {
+            return Garmin::AckStatus::Busy;
+        }
+        return activeView->handleWatchCommand(command);
+    }
+
+    virtual void describeForWatch(WatchState &state) const {
+        if (activeView) {
+            activeView->describeForWatch(state);
+        } else {
+            state.setBusy(Garmin::ScreenId::Booting);
+        }
     }
 
     /**
