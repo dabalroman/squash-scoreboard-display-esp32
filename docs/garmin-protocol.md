@@ -554,7 +554,7 @@ ROSTER read - 19 B, or 3 B past the end:
 | Side | API | Status |
 |---|---|---|
 | Board | mbedtls 2.28.7 in the pinned Arduino core 2.0.17 (`framework-arduinoespressif32` 3.20017, IDF 4.4): `mbedtls_md_hmac()` / `mbedtls_md_hmac_starts()` (`mbedtls/md.h`), `MBEDTLS_MD_C` and `MBEDTLS_SHA256_C` enabled, `CONFIG_MBEDTLS_HARDWARE_SHA` 1 on the S3. Random: `esp_fill_random()` (true RNG while the radio is on, which BLE ensures) | **verified** by reading the installed core's headers and sdkconfig; not compiled |
-| Watch | `Toybox.Cryptography.HashBasedMessageAuthenticationCode` (`:algorithm => HASH_SHA256`, `:key`; `update()`, `digest()`), API 3.0.0; `Cryptography.randomBytes(size)`, API 3.0.0. The POC's manifest targets `minApiLevel` 6.0.0, so both exist | **verified** from developer.garmin.com API docs; not run on a watch. Native HMAC, so no RFC 2104 construction from `Hash` is needed. Whether a manifest permission is required is not stated on the class page - check in #81 |
+| Watch | `Toybox.Cryptography.HashBasedMessageAuthenticationCode` (`:algorithm => HASH_SHA256`, `:key`; `update()`, `digest()`), API 3.0.0; `Cryptography.randomBytes(size)`, API 3.0.0. The POC's manifest targets `minApiLevel` 6.0.0, so both exist | **verified on the FR970** (#81 Gate 0, 2026-10-03): the 16.2 MACs match byte for byte, `randomBytes(8)` works. Native HMAC, so no RFC 2104 construction from `Hash` is needed. No manifest permission is needed (SDK 9.2 has no crypto permission) |
 
 The MACs are standard HMAC-SHA256 (RFC 2104), truncated to the first 8 bytes. Test vectors in
 section 16 were computed with Python's `hmac` / `hashlib`.
@@ -679,14 +679,14 @@ Unauthenticated read of STATE or ROSTER (1 B): `00`
    impostors are stopped by authentication either way. Rejected alternatives: dropping
    manufacturer fields (would lose board id, version or pairing code, all locked); a 16-bit
    UUID (needs a SIG assignment). Accepted by the user 2026-10-02.
-2. **Connect IQ manufacturer-data parsing is unverified on any watch.** The POC proved only
-   `getServiceUuids()` from `ADV_IND` on the FR970. A bug report (fenix 8, Aug 2026, status
-   Acknowledged) has `getManufacturerSpecificData()` / `getRawData()` returning null for
-   essentially every result. First spike for #81: advertise 16.1 from a bare S3 and log both
-   calls on the FR970. If manufacturer data is unreadable, the fallback is service data or
-   the UUID in `ADV_IND` with a shorter identity - a v0 redesign of section 4.
-3. The forum claim that Connect IQ truncates the advertising record to 20 B is unverified;
-   the layout keeps the identifying 16 B first so it would not matter.
+2. **Manufacturer data is readable (FR970, #81 Gate 0, 2026-10-03).** `getManufacturerSpecificData(0xFFFF)`
+   returned V1's payload **without** the company bytes (magic at offset 0); `getRawData()` was non-null for
+   every result. The pairing flag and code were read from the advertising and the watch paired with them.
+   Other devices' manufacturer data (another company id) reads null for `0xFFFF`, as expected. The
+   watch's parser still accepts the magic at offset 0 or 2. Other watch models are unverified (the bug
+   report was a fenix 8).
+3. The forum claim that Connect IQ truncates the advertising record to 20 B: the FR970 returned the
+   whole record (no truncation seen); the layout keeps the identifying 16 B first anyway.
 4. **UNDO carries a side.** The locked list has `UNDO` without arguments, but the board's
    undo is per side (C left, D right, `losePoint(side)`); there is no "undo the last point".
 5. **Additions not in the locked lists:** `ackStatus` beside `ackSeq` (the watch needs to know a
@@ -697,10 +697,11 @@ Unauthenticated read of STATE or ROSTER (1 B): `00`
    -> MATCH_START, then BACK walks MATCH_START -> CHOOSE_PLAYERS -> MENU. `0x0C` stays unused
    so SYNC keeps `0x0D`.
 7. PLAYING, MATCH_START, CELEBRATION and GAME_OVER take 2 notifications because they carry
-   4-byte uids (locked). If #81 measures that the second chunk costs a Connect IQ tick, v0
-   can switch the state to 1-byte roster indexes (commands keep uids) and fit PLAYING in one.
-8. Connect IQ's per-profile characteristic limit is undocumented; the POC used 2, this uses 6
-   (+ 2 CCCDs). Check in #81's first spike.
+   4-byte uids (locked). **Measured on the FR970 (#81 Gate 0):** 132 two-chunk states, gap chunk 0 ->
+   chunk 1 min 6 / median 22 / max 247 ms, typically 6-9 ms. The second chunk does not cost a tick,
+   so the state stays as specified.
+8. Connect IQ's per-profile characteristic limit is undocumented; this profile (6 characteristics
+   + 2 CCCDs) registered and every entry resolved on the FR970 (#81 Gate 0).
 9. Not protocol, for #80: WiFi + BLE against the RMT was **measured on V1 (2026-10-02)**: Dev
    Mode STA, advertising, 2 subscribed centrals at 20 notifies/s and fob presses in a match
    gave 0 bails, 0 stale, max 5 us late. Four connections were not measured (judged
