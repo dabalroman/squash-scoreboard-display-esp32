@@ -528,6 +528,12 @@ ROSTER read - 19 B, or 3 B past the end:
 - With nothing pending the watch always adopts the board's state.
 - Every other command waits for the board's state; the watch shows no change until it arrives.
 - Presses while disconnected, unauthenticated or before the first state are ignored.
+- **Input debounce is the watch's job; the protocol stays fast.** The board applies a command per
+  50 ms tick with no debounce of its own (BLE has no RF bounce). A court is a misclick
+  environment, so the watch drops presses the way the board's fob does: SCORE / UNDO 750 ms per
+  input, other actions 500 ms, and after a screen-changing command (SELECT_SPORT,
+  START_TOURNAMENT, START_MATCH, SKIP, NEXT_GAME, BACK) every input for 1000 ms and until the
+  board's state shows the new screen. Dropped presses are not queued.
 
 ## 14. Limits
 
