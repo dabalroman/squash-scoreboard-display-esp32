@@ -8,6 +8,7 @@
 #include "Strings.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
+#include "Garmin/WatchSport.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ModeSwitchingBarRenderer.h"
 #include "Display/Scrollable.h"
@@ -67,9 +68,33 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            // The callback destroys this view, so nothing may touch `this` after it.
-            onDeviceModeChange(selectedEntry().target);
+            selectEntry(scrollable.getSelectedOptionId());
         }
+    }
+
+    // `index` among the visible rows. Only requests the change; main.cpp swaps the mode next tick.
+    void selectEntry(const uint8_t index) {
+        onDeviceModeChange(entryAt(index).target);
+    }
+
+    // The same request D makes on that row; a sport the menu does not list is INVALID.
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (command.id != Garmin::CommandId::SelectSport) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+
+        DeviceModeState mode;
+        if (!WatchSport::modeForSport(command.sport, mode)) {
+            return Garmin::AckStatus::Invalid;
+        }
+
+        for (uint8_t i = 0; i < entryIds.size(); i++) {
+            if (entryAt(i).target == mode) {
+                selectEntry(i);
+                return Garmin::AckStatus::Applied;
+            }
+        }
+        return Garmin::AckStatus::Invalid;
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
@@ -129,12 +154,31 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-        if (!EInkDisplay::available() && batteryMonitor.available()) {
-            backDisplay.drawBatteryPercent(batteryMonitor.percent());
+        // The main screen alone carries the status header (battery, watches); V2's sits in the
+        // e-paper footer instead.
+        if (!EInkDisplay::available()) {
+            if (batteryMonitor.available()) {
+                backDisplay.drawBatteryPercent(batteryMonitor.percent());
+            }
+            backDisplay.drawWatchBadge();
         }
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    // Enabled sport rows in menu order; the cursor is 0 on PROFILE / CONFIG.
+    void describeForWatch(WatchState &state) const override {
+        Garmin::SportId sports[MAX_ENTRIES];
+        uint8_t count = 0;
+        for (uint8_t i = 0; i < entryIds.size() && count < MAX_ENTRIES; i++) {
+            const Garmin::SportId sport = WatchSport::fromModeState(entryAt(i).target).sport;
+            if (sport != Garmin::SportId::None) {
+                sports[count++] = sport;
+            }
+        }
+
+        state.setMenu(WatchSport::fromModeState(selectedEntry().target).sport, sports, count);
     }
 
 private:

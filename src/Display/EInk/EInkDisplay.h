@@ -65,6 +65,7 @@ struct EInkFooter {
 
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold24pt7b.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include "EInkAsync.h"
 #include "EInkWidgets.h"
@@ -132,6 +133,12 @@ public:
      * so a button skips the boot image; the press still does its normal job.
      */
     void dismissSplash() { splashHoldUntilMs = 0; }
+
+    /**
+     * Connected Garmin watches; 0 hides the badge. It is drawn beside the battery reading
+     * in a menu footer, so only such a screen repaints when it changes.
+     */
+    void setWatchCount(const uint8_t count) { watchCount = count; }
 
     void showBlank() {
         if (splashHoldActive()) {
@@ -230,12 +237,49 @@ public:
     }
 
     /**
+     * A short code to read off the panel (Garmin pairing): title bar, the code in the
+     * 24 pt font (4 characters fit), and up to two centred lines under it. Callers pass
+     * coarse values only - every change is a partial refresh.
+     */
+    void showCode(const char *title, const char *code, const char *line1, const char *line2) {
+        if (splashHoldActive()) {
+            return;
+        }
+
+        uint32_t h = hashAdd(HASH_SEED, SCREEN_CODE);
+        h = hashText(h, title);
+        h = hashText(h, code);
+        h = hashText(h, line1);
+        h = hashText(h, line2);
+        if (!commit(h)) {
+            return;
+        }
+
+        GFXcanvas1 &g = eink.gfx();
+        g.fillScreen(PAPER);
+        g.setTextWrap(false);
+
+        EInkWidgets::drawHeader(g, title);
+
+        g.setTextColor(INK);
+        EInkWidgets::printCentered(g, code, CODE_BASELINE, &FreeMonoBold24pt7b);
+        if (hasText(line1)) {
+            EInkWidgets::printCentered(g, line1, CODE_LINE1_BASELINE, &FreeSans12pt7b);
+        }
+        if (hasText(line2)) {
+            EInkWidgets::printCentered(g, line2, CODE_LINE2_BASELINE, &FreeSans9pt7b);
+        }
+
+        present(SCREEN_CODE);
+    }
+
+    /**
      * A scrolling menu: title bar, rows with the selected one inverted, optional
      * footer. The visible window is this renderer's own state (the OLED keeps its
      * own); it follows the selection and resets when the title changes.
      *
      * Each extra footer line makes the footer taller, but all three heights leave
-     * 6 rows visible, so the 6-entry MODE menu and the 5-row CONFIG menu fit
+     * 6 rows visible, so the 6-entry MODE menu and the 6-row CONFIG menu fit
      * without scrolling whatever their footer holds. A 7th MODE entry would start
      * scrolling it.
      */
@@ -273,6 +317,8 @@ public:
             contentHash = hashText(contentHash, extra[i]);
         }
         contentHash = hashAdd(contentHash, hasFooter && footer.batteryPercent >= 0 ? 1u : 0u);
+        // The watch badge sits beside the battery reading, so only a battery footer repaints on it.
+        contentHash = hashAdd(contentHash, hasFooter && footer.batteryPercent >= 0 ? watchCount : 0u);
         contentHash = hashAdd(contentHash, selected);
         contentHash = hashAdd(contentHash, menuOffset);
         contentHash = hashAdd(contentHash, rowCount);
@@ -324,7 +370,7 @@ public:
 
         if (hasFooter) {
             EInkWidgets::drawFooter(g, g.height() - footerHeight, footer.line1, extra, extraCount,
-                                    effectiveBatteryPercent);
+                                    effectiveBatteryPercent, watchCount);
         }
 
         present(SCREEN_MENU);
@@ -398,8 +444,14 @@ private:
         MATCH_BOTTOM_NAME_BASELINE = 288,
     };
 
+    // showCode(), in canvas y: the code under the title bar, its two lines below.
+    enum : int16_t { CODE_BASELINE = 130, CODE_LINE1_BASELINE = 190, CODE_LINE2_BASELINE = 225 };
+
     // Screen types for change detection and the ghosting policy.
-    enum : uint8_t { SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE, SCREEN_IMAGE };
+    enum : uint8_t {
+        SCREEN_NONE = 0, SCREEN_SPLASH, SCREEN_BLANK, SCREEN_MATCH, SCREEN_MENU, SCREEN_MESSAGE, SCREEN_IMAGE,
+        SCREEN_CODE
+    };
 
     // True if `hash` differs from what is on the panel; the caller then redraws.
     bool commit(const uint32_t hash) {
@@ -414,6 +466,7 @@ private:
     // Queue the drawn canvas: full refresh on a screen-type change once partials
     // piled up, or at the hard limit; partial otherwise.
     void present(const uint8_t screen) {
+
         const bool transition = screen != shownScreen;
         shownScreen = screen;
 
@@ -546,6 +599,7 @@ private:
     uint32_t lastMenuContentHash = 0;
     int16_t displayedBatteryPercent = -1;
     uint32_t lastBatteryRefreshMs = 0;
+    uint8_t watchCount = 0;
 };
 
 #else
@@ -559,6 +613,7 @@ public:
     void update() {}
     void flushRefresh() {}
     void dismissSplash() {}
+    void setWatchCount(const uint8_t) {}
 
     void showBlank() {}
     void showMatchScore(const char *, const uint8_t, const char *, const uint8_t, const char *) {}
@@ -566,6 +621,7 @@ public:
                   const EInkFooter & = EInkFooter()) {}
     void showMessage(const char *, const char *, const bool = false) {}
     void showImage(const uint8_t *) {}
+    void showCode(const char *, const char *, const char *, const char *) {}
 
     uint32_t refreshes() const { return 0; }
     uint32_t fullRefreshes() const { return 0; }

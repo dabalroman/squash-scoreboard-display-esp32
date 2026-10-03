@@ -43,16 +43,33 @@ public:
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
         // Evaluated one by one, so every pending press is consumed, not just the first.
-        bool skip = remoteInputManager.buttonA.takeActionIfPossible();
-        skip = remoteInputManager.buttonB.takeActionIfPossible() || skip;
-        skip = remoteInputManager.buttonC.takeActionIfPossible() || skip;
-        skip = remoteInputManager.buttonD.takeActionIfPossible() || skip;
+        bool pressed = remoteInputManager.buttonA.takeActionIfPossible();
+        pressed = remoteInputManager.buttonB.takeActionIfPossible() || pressed;
+        pressed = remoteInputManager.buttonC.takeActionIfPossible() || pressed;
+        pressed = remoteInputManager.buttonD.takeActionIfPossible() || pressed;
 
-        if (skip) {
+        if (pressed) {
             // Otherwise the same press scores or undoes on GamePlaying.
             remoteInputManager.preventTriggerForMs();
-            onStateChange(StateEnum::GamePlaying);
+            skip();
         }
+    }
+
+    void skip() {
+        onStateChange(StateEnum::GamePlaying);
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (match == nullptr) {
+            return Garmin::AckStatus::Busy;
+        }
+
+        if (command.id != Garmin::CommandId::Skip) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+
+        skip();
+        return Garmin::AckStatus::Applied;
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
@@ -125,6 +142,15 @@ public:
             playerRight->getName(), result.scoreOf(playerRight->getId()),
             einkLabel
         );
+    }
+
+    void describeForWatch(WatchState &state) const override {
+        if (match == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        state.setIntro(playerLeft->getUid(), playerRight->getUid());
     }
 };
 

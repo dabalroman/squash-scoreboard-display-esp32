@@ -284,6 +284,7 @@ public:
                 if (ok) {
                     c->authed = true;
                     c->authSlot = static_cast<int8_t>(proof.slotId);
+                    if (c->paired) completedPairings_++;
                     c->authReply = Garmin::buildAuthResultOk(boardMac);
                     c->needPush = true;
                     GarminPairingStore::touch(data, proof.slotId);
@@ -453,6 +454,11 @@ public:
         return n;
     }
 
+    uint32_t completedPairings() const {
+        Guard g;
+        return completedPairings_;
+    }
+
     uint8_t authedCount() const {
         Guard g;
         uint8_t n = 0;
@@ -589,6 +595,8 @@ private:
 
     GarminData data;
     bool dataDirty = false;
+    // Watches that paired and then authenticated with the new key: a pairing that finished.
+    uint32_t completedPairings_ = 0;
 
     Conn conns[Garmin::MAX_CONNECTIONS];
 

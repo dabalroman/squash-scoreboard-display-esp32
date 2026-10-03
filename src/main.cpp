@@ -182,7 +182,8 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 preferencesManager,
-                batteryMonitor
+                batteryMonitor,
+                garminService
             );
             break;
 
@@ -417,7 +418,9 @@ void applyWatchCommand() {
 }
 
 void publishWatchState() {
-    if (!deviceMode) {
+    // A swap requested this pass: the outgoing view is stale (a winning commit freed its
+    // Game), so the watches keep the last state until the next view describes itself.
+    if (!deviceMode || deviceMode->viewChangePending()) {
         return;
     }
 
@@ -430,6 +433,30 @@ void publishWatchState() {
     }
     state.setSport(info.sport);
     garminService.publish(state, lastUpdate);
+}
+
+/**
+ * The watch badge on the OLED and the e-paper. Both draw it at their own choke point
+ * (BackDisplay::display(), EInkDisplay's hash); this only feeds the count, and queues an
+ * OLED render because event-driven views would otherwise keep the old badge. The e-paper
+ * needs none: every view passes its values each frame.
+ */
+uint8_t shownWatchCount = 0;
+
+void updateWatchBadge() {
+    const uint8_t count = garminService.running() ? garminService.authedCount() : 0;
+    if (count == shownWatchCount) {
+        return;
+    }
+
+    shownWatchCount = count;
+    // The OLED badge only where there is no e-paper, like the battery percent: V2's OLED
+    // has no free corner below its dead rows (the right score reaches y 11).
+    backDisplay->setWatchCount(EInkDisplay::available() ? 0 : count);
+    einkDisplay.setWatchCount(count);
+    if (deviceMode) {
+        deviceMode->queueBackRender();
+    }
 }
 
 void loop() {
@@ -465,6 +492,9 @@ void loop() {
     }
 
     lastUpdate = millis();
+
+    // Before the overlay gate, so an overlay frame shows the current count as well.
+    updateWatchBadge();
 
     // While an overlay runs it owns all three displays and the active mode is
     // paused - no input, no rendering. Its state and timers are untouched, so a

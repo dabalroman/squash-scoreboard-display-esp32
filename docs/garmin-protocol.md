@@ -286,8 +286,10 @@ all", NVS wiped): the watch shows "pair again" rather than "untrusted".
    auto-reconnect target) and continues with authentication (section 7 step 4) on the same
    connection.
 
-Several watches may pair within one window. The window closes after 120 s or when the user
-leaves the screen. "Forget all" clears every slot. The code is not a secret (it is advertised);
+One watch pairs per window: the board closes it (and leaves the pairing screen) once a watch that
+paired has authenticated with its new key - not at key delivery, which would wipe the result
+before the watch read it. It also closes after 120 s or when the user leaves the screen; pair
+another watch by opening the window again. "Forget all" clears every slot. The code is not a secret (it is advertised);
 it only makes the user pick the board in front of them. The key crosses the air in plaintext
 once, inside the user-opened window - an accepted risk. Security rests on the keys, never on the
 protocol being secret: this spec is public.
@@ -334,7 +336,7 @@ write response arrives.
 | Id | Name | Args | Size | Valid on | Board effect (equivalent today) |
 |---|---|---|---|---|---|
 | `0x01` | SELECT_SPORT | `sport` u8 | 4 | MENU | enter that sport's CHOOSE_PLAYERS (cursor to the row + D). Sport not in the menu -> INVALID |
-| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | `DeviceMode::goBack()`: CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER -> MATCH_START; PROFILE -> MENU (its C/D exit, which drops the setup AP). Never on PLAYING (a game must not be discarded) |
+| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | `DeviceMode::goBack()`: CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER -> MATCH_START; PROFILE -> MENU through its C/D exit, not `goBack()` (which drops the setup AP; a long C there stays a no-op). Never on PLAYING (a game must not be discarded) |
 | `0x03` | TOGGLE_PLAYER | `uid` u32 | 7 | CHOOSE_PLAYERS | add / remove that profile (D on its row). Unknown uid -> INVALID |
 | `0x04` | START_TOURNAMENT | - | 3 | CHOOSE_PLAYERS | -> MATCH_START (D on START). Fewer than 2 selected -> INVALID |
 | `0x05` | SET_PAIR | `leftUid` u32, `rightUid` u32 | 11 | MATCH_START | make the match between them with `leftUid` on the left. Not both selected, or equal -> INVALID |
@@ -367,7 +369,7 @@ write response arrives.
 | 1 | WRONG_SCREEN (not valid on the current screen) |
 | 2 | INVALID (bad argument or precondition) |
 | 3 | UNKNOWN_CMD |
-| 4 | BUSY (an overlay owns the displays, or a mode change is pending) |
+| 4 | BUSY (an overlay owns the displays, or the screen is being replaced: a mode change or an in-mode view swap is pending, e.g. the intro ending on its timer) |
 | 5 | MALFORMED (frame too short) |
 
 A rejected command produces a state push too, so the watch can roll back an optimistic press.

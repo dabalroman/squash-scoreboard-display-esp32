@@ -3,6 +3,7 @@
 
 #include "Strings.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/SquashMode/SquashModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "../../../Display/LedDisplay/Renderer/GameScoreHistoryBarRenderer.h"
@@ -42,41 +43,27 @@ public:
         bool checkExit = false;
 
         if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
-            game->scorePoint(GameSide::a);
-            lastPointScoredBy = &match->getLeftCourtSidePlayer();
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            score(GameSide::a, now);
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
-            game->scorePoint(GameSide::b);
-            lastPointScoredBy = &match->getRightCourtSidePlayer();
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            score(GameSide::b, now);
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
-            if (game->getTemporaryScore(GameSide::a) == 0 && game->getTemporaryScore(GameSide::b) == 0) {
+            if (undo(GameSide::a, now)) {
                 checkExit = true;
             }
-
-            game->losePoint(GameSide::a);
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
-            if (game->getTemporaryScore(GameSide::a) == 0 && game->getTemporaryScore(GameSide::b) == 0) {
+            if (undo(GameSide::b, now)) {
                 checkExit = true;
             }
-
-            game->losePoint(GameSide::b);
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
         }
 
         if (checkExit) {
-            onStateChange(SquashModeState::MatchStartGame);
+            leaveToMatchStart();
             return;
         }
 
@@ -88,9 +75,57 @@ public:
             if (commitResultWinner != GameSide::none) {
                 remoteInputManager.preventTriggerForMs();
                 match->finishGame();
+                game = nullptr; // finishGame() freed it; the view lives until the next loop()
                 onStateChange(SquashModeState::GameCelebration);
                 return;
             }
+        }
+    }
+
+    // GameSide::a is the left court player in this view.
+    void score(const GameSide side, const uint32_t now) {
+        game->scorePoint(side);
+        lastPointScoredBy = side == GameSide::a ? &match->getLeftCourtSidePlayer() : &match->getRightCourtSidePlayer();
+        lastPointScoredAtMs = now;
+        shouldUpdateLedBarState = true;
+    }
+
+    // True when the undo came at 0:0: the caller leaves for MatchStartGame.
+    bool undo(const GameSide side, const uint32_t now) {
+        const bool atZero = game->getTemporaryScore(GameSide::a) == 0 && game->getTemporaryScore(GameSide::b) == 0;
+
+        game->losePoint(side);
+        lastPointScoredAtMs = now;
+        shouldUpdateLedBarState = true;
+        return atZero;
+    }
+
+    void leaveToMatchStart() {
+        onStateChange(SquashModeState::MatchStartGame);
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (game == nullptr) {
+            return Garmin::AckStatus::Busy;
+        }
+
+        switch (command.id) {
+            case Garmin::CommandId::Score:
+                if (!command.hasValidSide()) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                score(WatchSupport::sideOf(command), millis());
+                return Garmin::AckStatus::Applied;
+            case Garmin::CommandId::Undo:
+                if (!command.hasValidSide()) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                if (undo(WatchSupport::sideOf(command), millis())) {
+                    leaveToMatchStart();
+                }
+                return Garmin::AckStatus::Applied;
+            default:
+                return Garmin::AckStatus::WrongScreen;
         }
     }
 
@@ -185,6 +220,22 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    // Game ball on the committed score, as the breathing above.
+    void describeForWatch(WatchState &state) const override {
+        if (game == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        WatchState::Playing p = WatchSupport::playing(*match, *playerLeft, *playerRight);
+        p.uncommitted = game->hasUncommitedPoints();
+        p.gameBallLeft = game->willWinOnNextPointScored(GameSide::a);
+        p.gameBallRight = game->willWinOnNextPointScored(GameSide::b);
+        p.leftScore = game->getTemporaryScore(GameSide::a);
+        p.rightScore = game->getTemporaryScore(GameSide::b);
+        state.setPlaying(p);
     }
 };
 

@@ -3,6 +3,7 @@
 
 #include <functional>
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/Celebration/CelebrationVariant.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/EInk/Images/Bajgiel.h"
@@ -61,8 +62,25 @@ public:
         if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             // Otherwise the same press also leaves the summary.
             remoteInputManager.preventTriggerForMs();
-            onStateChange(StateEnum::GameOver);
+            skip();
         }
+    }
+
+    void skip() {
+        onStateChange(StateEnum::GameOver);
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (gameResult == nullptr) {
+            return Garmin::AckStatus::Busy;
+        }
+
+        if (command.id != Garmin::CommandId::Skip) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+
+        skip();
+        return Garmin::AckStatus::Applied;
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
@@ -159,6 +177,15 @@ public:
             playerRight->getName(), result.scoreOf(playerRight->getId()),
             einkLabel
         );
+    }
+
+    void describeForWatch(WatchState &state) const override {
+        if (gameResult == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        state.setCelebration(WatchSupport::result(*match, *gameResult, *playerLeft, *playerRight, leftScore, rightScore));
     }
 };
 

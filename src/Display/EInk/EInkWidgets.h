@@ -105,6 +105,31 @@ namespace EInkWidgets {
         }
     }
 
+    /**
+     * The connected-watch badge: a 5x7 watch and the count in the built-in 5x7 font, on a
+     * box of `bg` so it stays legible over whatever is under it. 13 x 9 px, (x, y) is its
+     * top-left. `fg`/`bg` swap on the inverted title bar.
+     */
+    inline void drawWatchBadge(GFXcanvas1 &g, const int16_t x, const int16_t y, const uint8_t count,
+                               const uint16_t fg, const uint16_t bg) {
+        constexpr uint8_t icon[7] = {0x0E, 0x1F, 0x11, 0x15, 0x11, 0x1F, 0x0E};
+
+        g.fillRect(x, y, 13, 9, bg);
+        for (int16_t row = 0; row < 7; row++) {
+            for (int16_t col = 0; col < 5; col++) {
+                if (icon[row] & (0x10 >> col)) {
+                    g.drawPixel(x + 1 + col, y + 1 + row, fg);
+                }
+            }
+        }
+
+        g.setFont(nullptr);
+        g.setTextSize(1);
+        g.setTextColor(fg);
+        g.setCursor(x + 7, y + 1);
+        g.print(static_cast<char>('0' + (count > 9 ? 9 : count)));
+    }
+
     inline void drawBatteryIcon(GFXcanvas1 &g, const int16_t x, const int16_t y, const int16_t percent) {
         constexpr int16_t bodyWidth = EInkLayout::BATTERY_ICON_WIDTH - 3;
         g.drawRect(x, y, bodyWidth, EInkLayout::BATTERY_ICON_HEIGHT, INK);
@@ -125,13 +150,22 @@ namespace EInkWidgets {
         }
     }
 
-    inline void drawBatteryReading(GFXcanvas1 &g, const int16_t baseline, const int16_t percent) {
+    // Centred alone; with watches connected the watch badge takes the left edge and the
+    // reading moves to the right edge, so both fit 128 px.
+    inline void drawBatteryReading(GFXcanvas1 &g, const int16_t baseline, const int16_t percent,
+                                   const uint8_t watchCount) {
         char text[6];
         snprintf(text, sizeof(text), "%d%%", percent);
 
         constexpr int16_t gap = 5;
+        constexpr int16_t margin = 4;
         const int16_t total = EInkLayout::BATTERY_ICON_WIDTH + gap + textWidth(g, text, &FreeSans12pt7b);
-        const int16_t x = (g.width() - total) / 2;
+        int16_t x = (g.width() - total) / 2;
+        if (watchCount > 0) {
+            x = g.width() - margin - total;
+            drawWatchBadge(g, margin, baseline - EInkLayout::BATTERY_ICON_HEIGHT, watchCount, INK, PAPER);
+            g.setTextColor(INK);
+        }
 
         drawBatteryIcon(g, x, baseline - EInkLayout::BATTERY_ICON_HEIGHT, percent);
         printAt(g, text, x + EInkLayout::BATTERY_ICON_WIDTH + gap, baseline, &FreeSans12pt7b);
@@ -151,14 +185,14 @@ namespace EInkWidgets {
      */
     inline void drawFooter(GFXcanvas1 &g, const int16_t top, const char *line1,
                            const char *const *extra, const uint8_t extraCount,
-                           const int16_t batteryPercent) {
+                           const int16_t batteryPercent, const uint8_t watchCount) {
         g.fillRect(0, top, g.width(), 2, INK);
         g.setTextColor(INK);
 
         const int16_t baseline = top + EInkLayout::FOOTER_BASELINE;
 
         if (batteryPercent >= 0) {
-            drawBatteryReading(g, baseline, batteryPercent);
+            drawBatteryReading(g, baseline, batteryPercent, watchCount);
         } else if (line1 != nullptr && line1[0] != 0) {
             printCentered(g, line1, baseline, &FreeSans12pt7b);
         }

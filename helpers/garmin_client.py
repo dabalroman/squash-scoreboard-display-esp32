@@ -197,6 +197,11 @@ class Session:
 
     async def authenticate(self):
         challenge = await self.client.read_gatt_char(AUTH)
+        if len(challenge) >= 3 and challenge[0] == PROTO and challenge[1] == 0x02 and challenge[2] == 0:
+            # Windows keeps the BLE link up for a while after a disconnect, so a quick rerun lands
+            # on the board's already-authenticated connection; it is still the same trusted link.
+            print("link already authenticated (connection reused by the OS)")
+            return
         if len(challenge) < 10 or challenge[0] != PROTO or challenge[1] != 0x00:
             raise RuntimeError(f"unexpected AUTH read {challenge.hex(' ')}")
         nb = bytes(challenge[2:10])
@@ -276,7 +281,9 @@ async def main():
     ap.add_argument("args", nargs="*")
     ap.add_argument("--keys", default=str(DEFAULT_KEYS))
     ap.add_argument("--board", help="board id (hex) from the key store")
-    ap.add_argument("--seq", type=int, default=1)
+    # Not a fixed 1: Windows reuses the board connection across quick reruns, and the board
+    # dedupes seq per connection, so a repeated seq would be acked but not applied.
+    ap.add_argument("--seq", type=int, default=int(time.time() * 10) % 255 + 1)
     opts = ap.parse_args()
     store = load_keys(opts.keys)
 

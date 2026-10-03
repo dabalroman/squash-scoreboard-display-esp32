@@ -284,6 +284,7 @@ void test_pairing_window() {
         putAt(link, &Link::writePairing, other, "00 01 af 10", 2000);
         TEST_ASSERT_EQUAL(20, link.readPairing(other).len);
     }
+    TEST_ASSERT_EQUAL(0, link.completedPairings()); // keys delivered, none used yet
     g_fills.push_back(seq(0x00, 16));
     putAt(link, &Link::writePairing, 1, "00 01 af 10", 3000);
     expectFrame("00 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f", link.readPairing(1), "spec 16.3");
@@ -295,6 +296,7 @@ void test_pairing_window() {
     // The new key authenticates on the same connection (spec 9 step 5).
     putAt(link, &Link::writeAuth, 1, SPEC_PROOF, 3000);
     expectFrame("00 02 00 18 57 e1 b4 a9 6e bf 5a", link.readAuth(1), "auth after pairing");
+    TEST_ASSERT_EQUAL(1, link.completedPairings()); // the board leaves the pairing screen
 
     // Expiry closes the window and the key is no longer readable.
     TEST_ASSERT_EQUAL(1000, link.pairingRemainingMs(120000));

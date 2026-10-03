@@ -544,6 +544,10 @@ uint8_t GarminService::authedCount() const {
     return gLink.authedCount();
 }
 
+uint32_t GarminService::completedPairings() const {
+    return gLink.completedPairings();
+}
+
 uint8_t GarminService::pairedCount() const {
     return gLink.pairedCount();
 }

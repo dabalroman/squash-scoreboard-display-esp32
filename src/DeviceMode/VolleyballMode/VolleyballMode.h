@@ -118,6 +118,11 @@ public:
         return state != VolleyballModeState::TournamentChoosePlayers;
     }
 
+    // setState() swaps the view at the next loop(); until then a watch command gets BUSY.
+    bool viewChangePending() const override {
+        return state != previousState;
+    }
+
     bool goBack() override {
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
@@ -151,6 +156,11 @@ public:
 
         if (activeView) {
             activeView->handleInput(remoteInputManager);
+            // A swap the input requested lands next loop, and the outgoing view must not draw
+            // again: a winning commit's finishGame() has freed the Game it points at.
+            if (state != previousState) {
+                return;
+            }
             activeView->renderLedDisplay(ledDisplay);
             activeView->renderBackDisplay(backDisplay);
             activeView->renderEInkDisplay(einkDisplay);

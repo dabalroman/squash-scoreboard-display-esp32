@@ -5,6 +5,7 @@
 
 #include "DeviceModeState.h"
 #include "View.h"
+#include "WatchSupport.h"
 #include "Garmin/WatchCommand.h"
 #include "Garmin/WatchState.h"
 #include "Display/LedDisplay/LedDisplay.h"
@@ -54,17 +55,24 @@ public:
     }
 
     /**
+     * A mode that defers its view swap to its next loop() (setState) says so here: the
+     * view still on screen is then the outgoing one, and a watch command gets BUSY.
+     */
+    virtual bool viewChangePending() const {
+        return false;
+    }
+
+    /**
      * BACK is the long-C chain, so it lives here; everything else belongs to the view.
      * GamePlaying's goBack() is false, which is what keeps a watch from discarding a game.
      */
     virtual Garmin::AckStatus handleWatchCommand(const WatchCommand &command) {
-        if (command.id == Garmin::CommandId::Back) {
-            return goBack() ? Garmin::AckStatus::Applied : Garmin::AckStatus::WrongScreen;
-        }
-        if (!activeView) {
-            return Garmin::AckStatus::Busy;
-        }
-        return activeView->handleWatchCommand(command);
+        return WatchSupport::route(
+            command,
+            viewChangePending() || !activeView,
+            [this] { return goBack(); },
+            [this, &command] { return activeView->handleWatchCommand(command); }
+        );
     }
 
     virtual void describeForWatch(WatchState &state) const {
@@ -72,6 +80,13 @@ public:
             activeView->describeForWatch(state);
         } else {
             state.setBusy(Garmin::ScreenId::Booting);
+        }
+    }
+
+    // Device-level OLED chrome changed (the watch badge); the view's state is untouched.
+    void queueBackRender() {
+        if (activeView) {
+            activeView->queueBackRender();
         }
     }
 

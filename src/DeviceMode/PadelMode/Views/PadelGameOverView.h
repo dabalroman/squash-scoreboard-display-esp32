@@ -3,6 +3,7 @@
 
 #include "Strings.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Tournament/Tournament.h"
@@ -40,10 +41,28 @@ public:
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonC.takeActionIfPossible() || remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            onStateChange(PadelModeState::MatchStartGame);
-
-            queueRender();
+            nextGame();
         }
+    }
+
+    // Same pair, back to MatchStartGame.
+    void nextGame() {
+        onStateChange(PadelModeState::MatchStartGame);
+
+        queueRender();
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (gameResult == nullptr) {
+            return Garmin::AckStatus::Busy;
+        }
+
+        if (command.id != Garmin::CommandId::NextGame) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+
+        nextGame();
+        return Garmin::AckStatus::Applied;
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
@@ -103,6 +122,15 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    void describeForWatch(WatchState &state) const override {
+        if (gameResult == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        state.setGameOver(WatchSupport::result(*match, *gameResult, *playerLeft, *playerRight, leftScore, rightScore));
     }
 };
 

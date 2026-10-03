@@ -18,6 +18,7 @@ class BackDisplay {
 
     uint32_t tickMs = 0;
     bool isBlinking = false;
+    uint8_t watchCount = 0;
     bool sameSideMode = false;
     Dimensions currentFontDimensions = {0, 0};
     uint8_t currentFontAscent = 0;
@@ -66,6 +67,14 @@ public:
 
     void clear() const {
         screen->clearDisplay();
+    }
+
+    /**
+     * Connected Garmin watches; 0 hides the badge. main.cpp sets it and queues a back
+     * render on change, so event-driven views redraw without the badge too.
+     */
+    void setWatchCount(const uint8_t count) {
+        watchCount = count;
     }
 
     void display() {
@@ -177,6 +186,18 @@ public:
         screen->setFont(currentFont);
     }
 
+    /**
+     * Small left-aligned text in the built-in 5x7 font, on the same top strip as
+     * drawBatteryPercent and with the same gate (only meaningful where it is lit).
+     */
+    void drawTopLeftNote(const char *text) const {
+        screen->setFont(nullptr);
+        screen->setTextSize(1);
+        screen->setCursor(0, DEAD_TOP_ROWS + 1);
+        screen->print(text);
+        screen->setFont(currentFont);
+    }
+
     void initBigFont() {
         screen->setTextSize(1);
         screen->setFont(&FreeMonoBold24pt7b);
@@ -214,6 +235,40 @@ public:
 
     void setCursorToLineRightForNumbers(const String &text, const uint8_t line = 0, const uint8_t offset = 4) const {
         setCursorToLineRight(text, line, offset);
+    }
+
+    // The badge's top-left: on drawBatteryPercent's strip, left of its widest "100%"
+    // (x 103..125). main.cpp feeds a count only on boards without an e-paper.
+    enum : uint8_t { WATCH_BADGE_X = 88, WATCH_BADGE_Y = DEAD_TOP_ROWS + 1 };
+
+    /**
+     * The main screen's header, beside the battery percent: a 5x7 watch (strap, case,
+     * strap) and the count in the built-in 5x7 font. Nothing when no watch is connected.
+     */
+    void drawWatchBadge() const {
+        if (watchCount == 0) {
+            return;
+        }
+
+        constexpr uint8_t icon[7] = {0x0E, 0x1F, 0x11, 0x15, 0x11, 0x1F, 0x0E};
+
+        screen->fillRect(WATCH_BADGE_X - 1, WATCH_BADGE_Y - 1, 13, 9, SSD1306_BLACK);
+        for (uint8_t row = 0; row < 7; row++) {
+            for (uint8_t col = 0; col < 5; col++) {
+                if (icon[row] & (0x10 >> col)) {
+                    screen->drawPixel(WATCH_BADGE_X + col, WATCH_BADGE_Y + row, SSD1306_WHITE);
+                }
+            }
+        }
+
+        const int16_t cursorX = screen->getCursorX();
+        const int16_t cursorY = screen->getCursorY();
+        screen->setFont(nullptr);
+        screen->setTextSize(1);
+        screen->setCursor(WATCH_BADGE_X + 6, WATCH_BADGE_Y);
+        screen->print(static_cast<char>('0' + (watchCount > 9 ? 9 : watchCount)));
+        screen->setFont(currentFont);
+        screen->setCursor(cursorX, cursorY);
     }
 
 private:

@@ -5,6 +5,7 @@
 
 #include "Strings.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/GameScoreHistoryBarRenderer.h"
@@ -155,33 +156,27 @@ public:
         bool checkExit = false;
 
         if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
-            scorer.scoreRally(GameSide::a);
-            lastPointScoredBy = &match->getLeftCourtSidePlayer();
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            score(GameSide::a, now);
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
-            scorer.scoreRally(GameSide::b);
-            lastPointScoredBy = &match->getRightCourtSidePlayer();
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            score(GameSide::b, now);
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
-            undoOrStepBack(GameSide::a, checkExit);
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            if (undo(GameSide::a, now)) {
+                checkExit = true;
+            }
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
-            undoOrStepBack(GameSide::b, checkExit);
-            lastPointScoredAtMs = now;
-            shouldUpdateLedBarState = true;
+            if (undo(GameSide::b, now)) {
+                checkExit = true;
+            }
         }
 
         if (checkExit) {
-            onStateChange(PadelModeState::MatchStartGame);
+            leaveToMatchStart();
             return;
         }
 
@@ -196,6 +191,7 @@ public:
                 if (setWinner != GameSide::none) {
                     remoteInputManager.preventTriggerForMs();
                     match->finishGame();
+                    game = nullptr; // finishGame() freed it; the view lives until the next loop()
                     onStateChange(PadelModeState::GameCelebration);
                     return;
                 }
@@ -203,6 +199,52 @@ public:
                 completedGems.push_back({scorer.scoreHistory(), gemWinner});
                 scorer.reset(isTiebreakNow());
             }
+        }
+    }
+
+    // A rally; GameSide::a is the left court player in this view.
+    void score(const GameSide side, const uint32_t now) {
+        scorer.scoreRally(side);
+        lastPointScoredBy = side == GameSide::a ? &match->getLeftCourtSidePlayer() : &match->getRightCourtSidePlayer();
+        lastPointScoredAtMs = now;
+        shouldUpdateLedBarState = true;
+    }
+
+    // True when there was nothing to undo or step back into: the caller leaves for MatchStartGame.
+    bool undo(const GameSide side, const uint32_t now) {
+        bool checkExit = false;
+        undoOrStepBack(side, checkExit);
+        lastPointScoredAtMs = now;
+        shouldUpdateLedBarState = true;
+        return checkExit;
+    }
+
+    void leaveToMatchStart() {
+        onStateChange(PadelModeState::MatchStartGame);
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (game == nullptr) {
+            return Garmin::AckStatus::Busy;
+        }
+
+        switch (command.id) {
+            case Garmin::CommandId::Score:
+                if (!command.hasValidSide()) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                score(WatchSupport::sideOf(command), millis());
+                return Garmin::AckStatus::Applied;
+            case Garmin::CommandId::Undo:
+                if (!command.hasValidSide()) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                if (undo(WatchSupport::sideOf(command), millis())) {
+                    leaveToMatchStart();
+                }
+                return Garmin::AckStatus::Applied;
+            default:
+                return Garmin::AckStatus::WrongScreen;
         }
     }
 
@@ -336,6 +378,28 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    // Score = gems, games = sets; points as the displays show them (ladder, or raw in the tiebreak).
+    void describeForWatch(WatchState &state) const override {
+        if (game == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        WatchState::Playing p = WatchSupport::playing(*match, *playerLeft, *playerRight);
+        p.uncommitted = scorer.hasUncommittedRallies();
+        p.tiebreak = isTiebreakNow();
+        p.gameBallLeft = breathes(GameSide::a);
+        p.gameBallRight = breathes(GameSide::b);
+        p.leftScore = game->getRealScore(GameSide::a);
+        p.rightScore = game->getRealScore(GameSide::b);
+        state.setPadelPlaying(p, watchPoint(GameSide::a), watchPoint(GameSide::b));
+    }
+
+private:
+    uint8_t watchPoint(const GameSide side) const {
+        return scorer.isTiebreak() ? scorer.getRawPoints(side) : static_cast<uint8_t>(scorer.getPoint(side));
     }
 };
 

@@ -21,6 +21,7 @@
 class PlayerSetupMode final : public DeviceMode {
     RemoteDevelopmentService &remoteDevelopmentService;
     PlayerSetupWebUi &webUi;
+    PlayerSetupView *view = nullptr;
 
 public:
     PlayerSetupMode(
@@ -38,7 +39,10 @@ public:
         remoteDevelopmentService.enablePlayerSetupAp();
         webUi.open(millis());
 
-        activeView = std::make_unique<PlayerSetupView>(webUi, remoteDevelopmentService, onDeviceModeChange);
+        std::unique_ptr<PlayerSetupView> setupView =
+            std::make_unique<PlayerSetupView>(webUi, remoteDevelopmentService, onDeviceModeChange);
+        view = setupView.get();
+        activeView = std::move(setupView);
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
         activeView->initEInkDisplay(einkDisplay);
@@ -51,6 +55,20 @@ public:
 
     bool isInMatch() const override {
         return false;
+    }
+
+    /**
+     * A watch's BACK is the C/D exit (spec 10.2), deliberately not a goBack() override:
+     * that would also make a long C here leave PROFILE, where today it is a silent no-op.
+     */
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (command.id != Garmin::CommandId::Back) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+
+        printLn("Player setup: closed from a watch");
+        view->exitToMenu();
+        return Garmin::AckStatus::Applied;
     }
 
     void loop() override {

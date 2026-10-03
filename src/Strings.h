@@ -43,6 +43,26 @@ namespace Str {
     constexpr const char *const CONFIG_OPTION_DEV_MODE_OLED = "Dev Mode";
     constexpr const char *const CONFIG_OPTION_REBOOT_OLED = " [RESTART]";
     constexpr const char *const CONFIG_OPTION_RETURN_OLED = " [COFNIJ]";
+    constexpr const char *const CONFIG_ROW_GARMIN_LABEL = "GARMIN";
+    constexpr const char *const CONFIG_OPTION_GARMIN_OLED = "GARMIN";
+
+    // GARMIN sub-screen (CONFIG) and its pairing screen. Counts use the label-colon
+    // form (see PLAYERS_FOOTER_COUNT_FMT). The e-paper title bar holds ~8 bold
+    // characters, so the pairing screen is PARUJ, not PAROWANIE.
+    constexpr const char *const GARMIN_MENU_TITLE = "GARMIN";
+    constexpr const char *const GARMIN_ROW_ENABLED_LABEL = "AKTYWNY";
+    constexpr const char *const GARMIN_ROW_PAIR_LABEL = "PARUJ";
+    constexpr const char *const GARMIN_ROW_FORGET_LABEL = "ZAPOMNIJ";
+    constexpr const char *const GARMIN_ROW_FORGET_CONFIRM_LABEL = "NA PEWNO?";
+    constexpr const char *const GARMIN_OPTION_ENABLED_OLED = "AKTYWNY";
+    constexpr const char *const GARMIN_OPTION_PAIR_OLED = " [PARUJ]";
+    constexpr const char *const GARMIN_OPTION_FORGET_OLED = "[ZAPOMNIJ]";
+    constexpr const char *const GARMIN_OPTION_FORGET_CONFIRM_OLED = " NA PEWNO?";
+    constexpr const char *const GARMIN_PAIRED_FMT = "SPAROWANE: %u";
+    constexpr const char *const GARMIN_CONNECTED_FMT = "POLACZONE: %u";
+    constexpr const char *const GARMIN_PAIR_TITLE = "PARUJ";
+    constexpr const char *const GARMIN_PAIR_COUNTDOWN_FMT = "%u s";
+    constexpr const char *const GARMIN_PAIR_COUNTDOWN_OLED_FMT = "CZAS: %u s";
 
     // Mode selector
     constexpr const char *const MODE_MENU_TITLE = "TRYB";
@@ -115,6 +135,10 @@ namespace Str {
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
     constexpr const char *const LED_CONFIG_REBOOT = "rESt";
     constexpr const char *const LED_CONFIG_RETURN = "CoFn";
+    // GARMIN's 4-letter prefix needs an M; the 3-letter one maps, like "otA".
+    constexpr const char *const LED_CONFIG_GARMIN = "GAr";
+    constexpr const char *const LED_GARMIN_PAIR = "PArU";
+    constexpr const char *const LED_GARMIN_FORGET = "ZAPo";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
     constexpr const char *const LED_MODE_VOLLEYBALL = "SIAt";
     constexpr const char *const LED_MODE_SHORT_VOLLEYBALL = "SIA1";
@@ -144,6 +168,24 @@ namespace Str {
     constexpr const char *const CONFIG_OPTION_DEV_MODE_OLED = "Dev Mode";
     constexpr const char *const CONFIG_OPTION_REBOOT_OLED = " [Reboot]";
     constexpr const char *const CONFIG_OPTION_RETURN_OLED = " [Return]";
+    constexpr const char *const CONFIG_ROW_GARMIN_LABEL = "Garmin";
+    constexpr const char *const CONFIG_OPTION_GARMIN_OLED = "Garmin";
+
+    // GARMIN sub-screen (CONFIG) and its pairing screen
+    constexpr const char *const GARMIN_MENU_TITLE = "GARMIN";
+    constexpr const char *const GARMIN_ROW_ENABLED_LABEL = "Enabled";
+    constexpr const char *const GARMIN_ROW_PAIR_LABEL = "Pair";
+    constexpr const char *const GARMIN_ROW_FORGET_LABEL = "Forget all";
+    constexpr const char *const GARMIN_ROW_FORGET_CONFIRM_LABEL = "Sure?";
+    constexpr const char *const GARMIN_OPTION_ENABLED_OLED = "Enabled";
+    constexpr const char *const GARMIN_OPTION_PAIR_OLED = " [Pair]";
+    constexpr const char *const GARMIN_OPTION_FORGET_OLED = " [Forget]";
+    constexpr const char *const GARMIN_OPTION_FORGET_CONFIRM_OLED = " [Sure?]";
+    constexpr const char *const GARMIN_PAIRED_FMT = "PAIRED: %u";
+    constexpr const char *const GARMIN_CONNECTED_FMT = "CONNECTED: %u";
+    constexpr const char *const GARMIN_PAIR_TITLE = "PAIR";
+    constexpr const char *const GARMIN_PAIR_COUNTDOWN_FMT = "%u s";
+    constexpr const char *const GARMIN_PAIR_COUNTDOWN_OLED_FMT = "TIME: %u s";
 
     // Mode selector
     constexpr const char *const MODE_MENU_TITLE = "MODE";
@@ -201,6 +243,9 @@ namespace Str {
     constexpr const char *const LED_CONFIG_BUZZER = "buZZ";
     constexpr const char *const LED_CONFIG_REBOOT = "boot";
     constexpr const char *const LED_CONFIG_RETURN = "rEtu";
+    constexpr const char *const LED_CONFIG_GARMIN = "GAr";
+    constexpr const char *const LED_GARMIN_PAIR = "PAIr";
+    constexpr const char *const LED_GARMIN_FORGET = "ForG";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
     constexpr const char *const LED_MODE_VOLLEYBALL = "bALL";
     constexpr const char *const LED_MODE_SHORT_VOLLEYBALL = "Shor";

@@ -97,9 +97,14 @@ public:
             || remoteInputManager.buttonD.takeActionIfPossible()) {
             printLn("Player setup: closed from the remote");
             remoteInputManager.preventTriggerForMs();
-            onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+            exitToMenu();
             return;
         }
+    }
+
+    // The mode's destructor drops the setup AP.
+    void exitToMenu() {
+        onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {

@@ -58,6 +58,11 @@ public:
         shouldRenderBack = true;
         shouldRenderEInk = true;
     }
+
+    // The OLED only: for chrome drawn outside the view (the watch badge), with no LED effect.
+    void queueBackRender() {
+        shouldRenderBack = true;
+    }
 };
 
 #endif //VIEW_H

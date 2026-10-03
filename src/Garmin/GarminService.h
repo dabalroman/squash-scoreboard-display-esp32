@@ -61,6 +61,8 @@ public:
     uint32_t pairingRemainingMs() const;
 
     uint8_t authedCount() const;
+    // Bumped when a watch that paired authenticates with its new key.
+    uint32_t completedPairings() const;
     uint8_t pairedCount() const;
     void forgetAll();
 

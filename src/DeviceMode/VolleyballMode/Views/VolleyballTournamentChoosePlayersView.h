@@ -6,6 +6,7 @@
 #include "Strings.h"
 #include "UserProfile.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/VolleyballMode/VolleyballModeState.h"
 #include "Tournament/Tournament.h"
 #include "DeviceMode/DeviceModeState.h"
@@ -87,23 +88,55 @@ public:
             const uint8_t selectedOptionId = scrollable->getSelectedOptionId();
 
             if (selectedOptionId == startOptionId) {
-                if (tournament.getPlayers().size() < 2) {
+                if (!canStartTournament()) {
                     return;
                 }
 
                 remoteInputManager.preventTriggerForMs();
-                onStateChange(VolleyballModeState::MatchStartGame);
+                startTournament();
                 return;
             }
 
-            const uint8_t playerId = getPlayerIdFromOptionId(selectedOptionId);
-            if (tournament.isPlayerIn(*users.at(playerId))) {
-                tournament.removePlayer(*users.at(playerId));
-            } else {
-                tournament.addPlayer(*users.at(playerId));
-            }
+            togglePlayer(getPlayerIdFromOptionId(selectedOptionId));
+        }
+    }
 
-            queueRender();
+    bool canStartTournament() const {
+        return tournament.getPlayers().size() >= 2;
+    }
+
+    void startTournament() {
+        onStateChange(VolleyballModeState::MatchStartGame);
+    }
+
+    void togglePlayer(const uint8_t playerId) {
+        if (tournament.isPlayerIn(*users.at(playerId))) {
+            tournament.removePlayer(*users.at(playerId));
+        } else {
+            tournament.addPlayer(*users.at(playerId));
+        }
+
+        queueRender();
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        switch (command.id) {
+            case Garmin::CommandId::TogglePlayer: {
+                const int index = WatchSupport::indexOfUid(users, command.uid);
+                if (index < 0) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                togglePlayer(static_cast<uint8_t>(index));
+                return Garmin::AckStatus::Applied;
+            }
+            case Garmin::CommandId::StartTournament:
+                if (!canStartTournament()) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                startTournament();
+                return Garmin::AckStatus::Applied;
+            default:
+                return Garmin::AckStatus::WrongScreen;
         }
     }
 
@@ -201,6 +234,10 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    void describeForWatch(WatchState &state) const override {
+        state.setChoosePlayers(WatchSupport::selectedMask(tournament.getPlayers()));
     }
 };
 

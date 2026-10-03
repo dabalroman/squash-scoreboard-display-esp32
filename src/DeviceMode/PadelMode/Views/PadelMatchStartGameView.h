@@ -4,6 +4,7 @@
 #include "Strings.h"
 #include "DeviceMode/DeviceModeState.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/WatchSupport.h"
 #include "DeviceMode/PadelMode/PadelModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/MatchResultBarRenderer.h"
@@ -87,19 +88,11 @@ public:
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (players.size() > 2) {
             if (remoteInputManager.buttonA.takeActionIfPossible()) {
-                printLn("Swapping left player");
-                if (UserProfile *nextPlayer = getNextPlayer(playerLeft, playerRight)) {
-                    setMatchByPlayers(nextPlayer, playerRight);
-                    queueRender();
-                }
+                cycleLeft();
             }
 
             if (remoteInputManager.buttonB.takeActionIfPossible()) {
-                printLn("Swapping right player");
-                if (UserProfile *nextPlayer = getNextPlayer(playerRight, playerLeft)) {
-                    setMatchByPlayers(playerLeft, nextPlayer);
-                    queueRender();
-                }
+                cycleRight();
             }
         }
 
@@ -107,19 +100,75 @@ public:
             players.size() == 2
             && (remoteInputManager.buttonA.takeActionIfPossible() || remoteInputManager.buttonB.takeActionIfPossible())
         ) {
-            setMatchByPlayers(playerRight, playerLeft);
-            queueRender();
+            swapSides();
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
-            setMatchByPlayers(playerRight, playerLeft);
-            queueRender();
+            swapSides();
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            onStateChange(PadelModeState::MatchIntro);
+            startMatch();
+        }
+    }
+
+    void cycleLeft() {
+        printLn("Swapping left player");
+        if (UserProfile *nextPlayer = getNextPlayer(playerLeft, playerRight)) {
+            setMatchByPlayers(nextPlayer, playerRight);
             queueRender();
+        }
+    }
+
+    void cycleRight() {
+        printLn("Swapping right player");
+        if (UserProfile *nextPlayer = getNextPlayer(playerRight, playerLeft)) {
+            setMatchByPlayers(playerLeft, nextPlayer);
+            queueRender();
+        }
+    }
+
+    void swapSides() {
+        setMatchByPlayers(playerRight, playerLeft);
+        queueRender();
+    }
+
+    void startMatch() {
+        onStateChange(PadelModeState::MatchIntro);
+        queueRender();
+    }
+
+    // Both must be in the tournament and distinct; `leftUid` takes the left court side.
+    bool setPair(const uint32_t leftUid, const uint32_t rightUid) {
+        const int left = WatchSupport::indexOfUid(players, leftUid);
+        const int right = WatchSupport::indexOfUid(players, rightUid);
+        if (left < 0 || right < 0 || left == right) {
+            return false;
+        }
+
+        setMatchByPlayers(players[left], players[right]);
+        queueRender();
+        return true;
+    }
+
+    Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
+        if (match == nullptr) {
+            return Garmin::AckStatus::Invalid;
+        }
+
+        switch (command.id) {
+            case Garmin::CommandId::SetPair:
+                return setPair(command.leftUid, command.rightUid) ? Garmin::AckStatus::Applied
+                                                                  : Garmin::AckStatus::Invalid;
+            case Garmin::CommandId::SwapSides:
+                swapSides();
+                return Garmin::AckStatus::Applied;
+            case Garmin::CommandId::StartMatch:
+                startMatch();
+                return Garmin::AckStatus::Applied;
+            default:
+                return Garmin::AckStatus::WrongScreen;
         }
     }
 
@@ -205,6 +254,15 @@ public:
         backDisplay.display();
 
         shouldRenderBack = false;
+    }
+
+    void describeForWatch(WatchState &state) const override {
+        if (playerLeft == nullptr || playerRight == nullptr) {
+            View::describeForWatch(state);
+            return;
+        }
+
+        state.setMatchStart(WatchSupport::selectedMask(players), playerLeft->getUid(), playerRight->getUid());
     }
 };
 

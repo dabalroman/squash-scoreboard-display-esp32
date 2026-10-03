@@ -7,6 +7,8 @@
 #include "Strings.h"
 #include "SafeRestart.h"
 #include "DeviceMode/View.h"
+#include "DeviceMode/ConfigMode/ConfigModeState.h"
+#include "Garmin/GarminService.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
 #include "Display/Scrollable.h"
@@ -17,19 +19,23 @@ enum Settings {
     brightness = 0,
     buzzer = 1,
     devMode = 2,
-    reboot = 3,
-    goBack = 4,
+    garmin = 3,
+    reboot = 4,
+    goBack = 5,
 };
 
 class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
     const BatteryMonitor &batteryMonitor;
+    const GarminService &garminService;
+    std::function<void(ConfigModeState)> onStateChange;
 
     const std::vector<String> optionsList = {
         Str::CONFIG_OPTION_BRIGHTNESS_OLED,
         Str::CONFIG_OPTION_BUZZER_OLED,
         Str::CONFIG_OPTION_DEV_MODE_OLED,
+        Str::CONFIG_OPTION_GARMIN_OLED,
         Str::CONFIG_OPTION_REBOOT_OLED,
         Str::CONFIG_OPTION_RETURN_OLED,
     };
@@ -41,10 +47,15 @@ public:
     explicit ConfigView(
         PreferencesManager &preferencesManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
-        const BatteryMonitor &batteryMonitor
+        const BatteryMonitor &batteryMonitor,
+        const GarminService &garminService,
+        const std::function<void(ConfigModeState)> &onStateChange,
+        const uint8_t selectedOption = 0
     )
         : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange),
-          batteryMonitor(batteryMonitor), scrollable(optionsList), scrollableWidget(scrollable) {
+          batteryMonitor(batteryMonitor), garminService(garminService), onStateChange(onStateChange),
+          scrollable(optionsList), scrollableWidget(scrollable) {
+        scrollable.setSelectedOption(selectedOption);
     }
 
     static uint8_t clamp(const uint8_t value, const uint8_t min, const uint8_t max) {
@@ -111,6 +122,10 @@ public:
                 case Settings::buzzer:
                     preferencesManager.settings.buzzerMode = PrefsBuzzer::next(preferencesManager.settings.buzzerMode);
                     break;
+                case Settings::garmin:
+                    // Opens the sub-screen; the flag lives in the "gar" blob, never PrefsData.
+                    onStateChange(ConfigModeState::Garmin);
+                    break;
                 case Settings::reboot:
                     quitConfig(true);
                     break;
@@ -129,6 +144,8 @@ public:
         ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();
         ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
+        // GarminView blinks the forget confirmation; coming back must not carry it over.
+        ledDisplay.setGlyphBlinking(false, false);
         ledDisplay.setPlayersIndicatorsState(true);
         ledDisplay.setBorderEnabled(false);
     }
@@ -157,6 +174,10 @@ public:
                 // No glyph exists for D-E-V or M-O-D-E; the colour carries the state.
                 ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
                 break;
+            case Settings::garmin:
+                color = garminService.isEnabled() ? Colors::Green : Colors::Red;
+                ledDisplay.setGlyphsText(Str::LED_CONFIG_GARMIN);
+                break;
             case Settings::reboot:
                 color = Colors::Pink;
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_REBOOT);
@@ -175,7 +196,8 @@ public:
         ledDisplay.setLedBarState([&] { return ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
             preferencesManager.settings.buzzerMode,
-            preferencesManager.settings.enableDevMode
+            preferencesManager.settings.enableDevMode,
+            garminService.isEnabled()
         ); });
         ledDisplay.display();
     }
@@ -199,15 +221,13 @@ public:
             // check 0 / 1 / 2 is the stored byte itself.
             {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(PrefsBuzzer::normalize(settings.buzzerMode))},
             {Str::CONFIG_ROW_DEV_MODE_LABEL, nullptr, static_cast<int8_t>(settings.enableDevMode ? 1 : 0)},
+            {Str::CONFIG_ROW_GARMIN_LABEL, nullptr, static_cast<int8_t>(garminService.isEnabled() ? 1 : 0)},
             {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},
         };
 
-        const int16_t batteryPercent = batteryMonitor.available()
-                                           ? static_cast<int16_t>(batteryMonitor.percent())
-                                           : -1;
 
-        // Footer lines, top to bottom: battery, firmware version, IP. The version is
+        // Footer lines: firmware version, IP (the battery is the main screen's only). The version is
         // the only place it is shown on the device - the splash is an image now.
         // The IP is a line rather than a row because it is never actionable, and as
         // a row it both cost a scroll stop and was the one label too wide to fit.
@@ -219,7 +239,7 @@ public:
         einkDisplay.showMenu(Str::CONFIG_MENU_TITLE, rows, sizeof(rows) / sizeof(rows[0]),
                              scrollable.getSelectedOptionId(),
                              EInkFooter(nullptr, version,
-                                        ip.length() > 0 ? ip.c_str() : nullptr, batteryPercent));
+                                        ip.length() > 0 ? ip.c_str() : nullptr, -1));
     }
 
     // The battery reaches the OLED only where there is no e-paper to carry it (V1).
@@ -231,9 +251,6 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-        if (!EInkDisplay::available() && batteryMonitor.available()) {
-            backDisplay.drawBatteryPercent(batteryMonitor.percent());
-        }
         backDisplay.display();
 
         shouldRenderBack = false;
