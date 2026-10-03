@@ -17,8 +17,7 @@ public:
     static std::array<LedBarPixel, LedBar::PIXEL_COUNT> toLedBarPixels(
         const uint8_t selectedOption,
         const uint8_t buzzerMode,
-        const bool enableDevMode,
-        const bool garminEnabled
+        const bool enableDevMode
     ) {
         std::array<LedBarPixel, LedBar::PIXEL_COUNT> pixels = {};
 
@@ -29,7 +28,7 @@ public:
             Colors::White,                               // Brightness
             buzzerColor(buzzerMode),                    // Buzzer
             enableDevMode ? Colors::Green : Colors::Red, // Dev Mode
-            garminEnabled ? Colors::Green : Colors::Red, // Garmin
+            Colors::Blue,                                // Garmin (a sub-menu, not a switch)
             Colors::Pink,                                // Reboot
             Colors::Aqua,                                // Return
         };

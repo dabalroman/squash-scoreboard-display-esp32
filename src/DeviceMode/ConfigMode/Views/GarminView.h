@@ -132,7 +132,7 @@ public:
         switch (scrollable.getSelectedOptionId()) {
             case Row::enabled:
                 color = garminService.isEnabled() ? Colors::Green : Colors::Red;
-                ledDisplay.setGlyphsText(Str::LED_CONFIG_GARMIN);
+                ledDisplay.setGlyphsText(garminService.isEnabled() ? Str::LED_GARMIN_ON : Str::LED_GARMIN_OFF);
                 break;
             case Row::pair:
                 color = garminService.running() ? Colors::Blue : Colors::Red;

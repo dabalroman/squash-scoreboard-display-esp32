@@ -137,6 +137,8 @@ namespace Str {
     constexpr const char *const LED_CONFIG_RETURN = "CoFn";
     // GARMIN's 4-letter prefix needs an M; the 3-letter one maps, like "otA".
     constexpr const char *const LED_CONFIG_GARMIN = "GAr";
+    constexpr const char *const LED_GARMIN_ON = "on";
+    constexpr const char *const LED_GARMIN_OFF = "oFF";
     constexpr const char *const LED_GARMIN_PAIR = "PArU";
     constexpr const char *const LED_GARMIN_FORGET = "ZAPo";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";
@@ -244,6 +246,8 @@ namespace Str {
     constexpr const char *const LED_CONFIG_REBOOT = "boot";
     constexpr const char *const LED_CONFIG_RETURN = "rEtu";
     constexpr const char *const LED_CONFIG_GARMIN = "GAr";
+    constexpr const char *const LED_GARMIN_ON = "on";
+    constexpr const char *const LED_GARMIN_OFF = "oFF";
     constexpr const char *const LED_GARMIN_PAIR = "PAIr";
     constexpr const char *const LED_GARMIN_FORGET = "ForG";
     constexpr const char *const LED_MODE_SQUASH = "S0UA";

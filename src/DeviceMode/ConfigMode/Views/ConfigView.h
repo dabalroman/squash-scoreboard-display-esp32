@@ -8,7 +8,6 @@
 #include "SafeRestart.h"
 #include "DeviceMode/View.h"
 #include "DeviceMode/ConfigMode/ConfigModeState.h"
-#include "Garmin/GarminService.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
 #include "Display/Scrollable.h"
@@ -28,7 +27,6 @@ class ConfigView final : public View {
     PreferencesManager &preferencesManager;
     std::function<void(DeviceModeState)> onDeviceModeChange;
     const BatteryMonitor &batteryMonitor;
-    const GarminService &garminService;
     std::function<void(ConfigModeState)> onStateChange;
 
     const std::vector<String> optionsList = {
@@ -48,12 +46,11 @@ public:
         PreferencesManager &preferencesManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         const BatteryMonitor &batteryMonitor,
-        const GarminService &garminService,
         const std::function<void(ConfigModeState)> &onStateChange,
         const uint8_t selectedOption = 0
     )
         : preferencesManager(preferencesManager), onDeviceModeChange(onDeviceModeChange),
-          batteryMonitor(batteryMonitor), garminService(garminService), onStateChange(onStateChange),
+          batteryMonitor(batteryMonitor), onStateChange(onStateChange),
           scrollable(optionsList), scrollableWidget(scrollable) {
         scrollable.setSelectedOption(selectedOption);
     }
@@ -175,7 +172,8 @@ public:
                 ledDisplay.setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
                 break;
             case Settings::garmin:
-                color = garminService.isEnabled() ? Colors::Green : Colors::Red;
+                // A sub-menu entry, not a switch: its on/off lives inside (AKTYWNY).
+                color = Colors::Blue;
                 ledDisplay.setGlyphsText(Str::LED_CONFIG_GARMIN);
                 break;
             case Settings::reboot:
@@ -196,8 +194,7 @@ public:
         ledDisplay.setLedBarState([&] { return ConfigBarRenderer::toLedBarPixels(
             scrollable.getSelectedOptionId(),
             preferencesManager.settings.buzzerMode,
-            preferencesManager.settings.enableDevMode,
-            garminService.isEnabled()
+            preferencesManager.settings.enableDevMode
         ); });
         ledDisplay.display();
     }
@@ -221,7 +218,7 @@ public:
             // check 0 / 1 / 2 is the stored byte itself.
             {Str::CONFIG_ROW_BUZZER_LABEL, nullptr, static_cast<int8_t>(PrefsBuzzer::normalize(settings.buzzerMode))},
             {Str::CONFIG_ROW_DEV_MODE_LABEL, nullptr, static_cast<int8_t>(settings.enableDevMode ? 1 : 0)},
-            {Str::CONFIG_ROW_GARMIN_LABEL, nullptr, static_cast<int8_t>(garminService.isEnabled() ? 1 : 0)},
+            {Str::CONFIG_ROW_GARMIN_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_REBOOT_LABEL, nullptr, -1},
             {Str::CONFIG_ROW_RETURN_LABEL, nullptr, -1},
         };

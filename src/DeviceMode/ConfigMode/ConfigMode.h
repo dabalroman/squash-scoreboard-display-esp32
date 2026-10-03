@@ -57,7 +57,7 @@ class ConfigMode final : public DeviceMode {
 
     std::unique_ptr<View> makeMenu(const uint8_t selectedOption) {
         return std::make_unique<ConfigView>(
-            preferencesManager, onDeviceModeChange, batteryMonitor, garminService,
+            preferencesManager, onDeviceModeChange, batteryMonitor,
             [this](const ConfigModeState newState) { setState(newState); },
             selectedOption);
     }
