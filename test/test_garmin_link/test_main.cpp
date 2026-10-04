@@ -376,11 +376,17 @@ void test_commands_dedupe_and_ack() {
     TEST_ASSERT_EQUAL(0, link.preparePushes(&s, 300, pushes));
     TEST_ASSERT_FALSE(link.takeCommand(q));
 
+    // FOCUS is queued like any command (applied and acked in loop()).
+    put(link, &Link::writeCommand, 1, "00 0e 0c 44 33 22 11");
+    TEST_ASSERT_TRUE(link.takeCommand(q));
+    TEST_ASSERT_TRUE(q.cmd.id == Garmin::CommandId::Focus);
+    TEST_ASSERT_EQUAL_HEX32(0x11223344, q.cmd.target);
+
     // SYNC is answered here, never queued.
-    put(link, &Link::writeCommand, 1, "00 0d 0b");
+    put(link, &Link::writeCommand, 1, "00 0d 0d");
     TEST_ASSERT_FALSE(link.takeCommand(q));
     TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 350, pushes));
-    TEST_ASSERT_EQUAL(11, pushes[0].body[2]);
+    TEST_ASSERT_EQUAL(13, pushes[0].body[2]);
     TEST_ASSERT_EQUAL(0, pushes[0].body[3]);
 }
 
@@ -444,12 +450,17 @@ void test_push_spec_vector_and_retry() {
 
     // A changed state pushes; an identical one does not.
     WatchState choose;
-    choose.setChoosePlayers(0x5);
+    choose.setChoosePlayers(0x5, 0);
     choose.setSport(Garmin::SportId::Squash);
     TEST_ASSERT_EQUAL(1, link.preparePushes(&choose, 2000, pushes));
     TEST_ASSERT_EQUAL(0x10, pushes[0].body[0]);
     TEST_ASSERT_EQUAL(0x01, pushes[0].body[1]);
     TEST_ASSERT_EQUAL(0, link.preparePushes(&choose, 2050, pushes));
+
+    // A cursor move alone is a change: a fob scroll reaches the watch.
+    choose.setChoosePlayers(0x5, 0x11223344);
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&choose, 2100, pushes));
+    TEST_ASSERT_EQUAL(0x11223344u, Garmin::getU32(pushes[0].body + 12));
 
     // Unsubscribed: silent.
     link.subscribe(1, Link::Sub::State, false);

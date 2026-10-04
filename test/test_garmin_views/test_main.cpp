@@ -49,6 +49,12 @@ static WatchCommand pair(const uint32_t left, const uint32_t right) {
     return c;
 }
 
+static WatchCommand focus(const uint32_t target) {
+    WatchCommand c = cmd(CommandId::Focus);
+    c.target = target;
+    return c;
+}
+
 static WatchCommand sport(const uint8_t id) {
     WatchCommand c = cmd(CommandId::SelectSport);
     c.sport = id;
@@ -176,7 +182,7 @@ static void test_squash_choose_players() {
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_BOB)));
 
     const Body body = rig.describe();
-    TEST_ASSERT_EQUAL(12, body.size);
+    TEST_ASSERT_EQUAL(16, body.size);
     TEST_ASSERT_EQUAL_HEX8(0x10, body.screen());
     TEST_ASSERT_EQUAL_HEX32(0x3, u32(body.data()));
 
@@ -497,6 +503,143 @@ static void test_menu_select_sport_and_describe() {
     TEST_ASSERT_EQUAL(DeviceModeState::ShortVolleyballMode, rig.requested[0]);
 }
 
+// --- FOCUS (spec 10.2 0x0E): the fob's A/B cursor move, nothing else ----------------------
+
+static void menuRig(Rig &rig, BatteryMonitor &battery) {
+    g_fakeMillis = 100000;
+    rig.mode.reset(new ModeSwitchingMode(rig.led, rig.back, rig.eink, rig.remote, rig.onModeChange(), battery));
+    rig.tick();
+}
+
+// One fresh frame of each rig at the same instant: the shim's FastLED.clear() wipes only a
+// registered buffer, and the rigs share the fake clock (blink phase).
+static void renderNow(Rig &rig) {
+    FastLED.registerBuffer(rig.leds, Board::LED_COUNT);
+    rig.mode->restoreView();
+    rig.tick(0);
+}
+
+static bool sameLeds(Rig &a, Rig &b) {
+    renderNow(a);
+    renderNow(b);
+    FastLED.registerBuffer(nullptr, 0);
+    return memcmp(a.leds, b.leds, sizeof(a.leds)) == 0;
+}
+
+static void test_menu_focus() {
+    BatterySensor sensor;
+    BatteryMonitor battery(sensor);
+    Rig rig;
+    menuRig(rig, battery);
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0x01)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x01, rig.describe().data()[0]);
+    TEST_ASSERT_EQUAL(0, rig.requested.size());   // a cursor move never selects
+
+    // The same frame a fob B press from padel draws.
+    Rig fob;
+    menuRig(fob, battery);
+    fob.remote.buttonB.trigger();
+    fob.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x01, fob.describe().data()[0]);
+    TEST_ASSERT_TRUE_MESSAGE(sameLeds(rig, fob), "FOCUS and fob B light the same LEDs");
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0x01)));   // already there
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(focus(0)));      // PROFILE / CONFIG are not focusable
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(focus(9)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(focus(0x101)));  // only the low byte would match squash
+    TEST_ASSERT_EQUAL_HEX8(0x01, rig.describe().data()[0]);
+
+    // A fob scroll onto a non-sport row reports cursor 0; FOCUS takes it back.
+    rig.tick(600);
+    rig.remote.buttonA.trigger();
+    rig.tick();
+    rig.tick(600);
+    rig.remote.buttonA.trigger();
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x00, rig.describe().data()[0]);
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0x03)));
+    TEST_ASSERT_EQUAL_HEX8(0x03, rig.describe().data()[0]);
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+}
+
+static const uint8_t *cursorOf(const Body &body) {
+    return body.data() + 4;
+}
+
+// START, ANNA, BOB, CEZ: the cursor moves, the selection never does.
+static void checkChooseFocus(Rig &rig) {
+    rig.tick();
+    Body body = rig.describe();
+    TEST_ASSERT_EQUAL(16, body.size);
+    TEST_ASSERT_EQUAL_HEX32(0, u32(cursorOf(body)));
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(UID_BOB)));
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX32(UID_BOB, u32(cursorOf(body)));
+    TEST_ASSERT_EQUAL_HEX32(0, u32(body.data()));
+
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(focus(UID_NOBODY)));
+    TEST_ASSERT_EQUAL_HEX32(UID_BOB, u32(cursorOf(rig.describe())));
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0)));
+    TEST_ASSERT_EQUAL_HEX32(0, u32(cursorOf(rig.describe())));
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+}
+
+static void test_choose_players_focus() {
+    Rig rig;
+    squashRig(rig);
+    checkChooseFocus(rig);
+
+    // FOCUS onto BOB draws what two fob B presses from START draw.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(UID_BOB)));
+    rig.tick();
+    Rig fob;
+    squashRig(fob);
+    fob.tick();
+    fob.remote.buttonB.trigger();
+    fob.tick();
+    fob.tick(600);   // past the fob's debounce
+    fob.remote.buttonB.trigger();
+    fob.tick();
+    TEST_ASSERT_EQUAL_HEX32(UID_BOB, u32(cursorOf(fob.describe())));
+    TEST_ASSERT_TRUE_MESSAGE(sameLeds(rig, fob), "FOCUS and fob B light the same LEDs");
+
+    // Fob A from START wraps to the last profile, and the state reports it.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0)));
+    rig.tick(600);
+    rig.remote.buttonA.trigger();
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX32(UID_CEZ, u32(cursorOf(rig.describe())));
+
+    // A cosmetic command, but only on the list.
+    rig.toMatchStart();
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(focus(UID_ANNA)));
+}
+
+static void test_choose_players_focus_padel_and_volleyball() {
+    Rig padel;
+    padelRig(padel);
+    checkChooseFocus(padel);
+
+    Rig volley;
+    g_fakeMillis = 100000;
+    volley.mode.reset(new VolleyballMode(volley.led, volley.back, volley.eink, volley.remote, volley.onModeChange(),
+                                         volley.users, std::unique_ptr<Rules>(new ShortVolleyballRules()),
+                                         std::function<void(CelebrationVariant)>()));
+    checkChooseFocus(volley);
+}
+
+static void test_focus_wrong_screen_while_playing() {
+    Rig rig;
+    squashRig(rig);
+    rig.toPlaying();
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(focus(0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(focus(UID_ANNA)));
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_route_pending_is_busy_even_for_back);
@@ -513,5 +656,9 @@ int main(int, char **) {
     RUN_TEST(test_padel_undo_with_nothing_to_step_back_leaves);
     RUN_TEST(test_volleyball_scores_through_the_same_path);
     RUN_TEST(test_menu_select_sport_and_describe);
+    RUN_TEST(test_menu_focus);
+    RUN_TEST(test_choose_players_focus);
+    RUN_TEST(test_choose_players_focus_padel_and_volleyball);
+    RUN_TEST(test_focus_wrong_screen_while_playing);
     return UNITY_END();
 }

@@ -18,6 +18,7 @@ struct WatchCommand {
     uint32_t uid;       // TOGGLE_PLAYER
     uint32_t leftUid;   // SET_PAIR
     uint32_t rightUid;  // SET_PAIR
+    uint32_t target;    // FOCUS: a sport id on MENU, a uid (0 = START) on CHOOSE_PLAYERS
 
     bool hasValidSide() const {
         return side <= 1;
@@ -40,6 +41,7 @@ namespace Garmin {
             case CommandId::Undo:
                 return 4;
             case CommandId::TogglePlayer:
+            case CommandId::Focus:
                 return 7;
             case CommandId::SetPair:
                 return 11;
@@ -76,6 +78,9 @@ namespace Garmin {
                 break;
             case CommandId::TogglePlayer:
                 out.uid = getU32(in + 3);
+                break;
+            case CommandId::Focus:
+                out.target = getU32(in + 3);
                 break;
             case CommandId::SetPair:
                 out.leftUid = getU32(in + 3);

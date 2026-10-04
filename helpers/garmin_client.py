@@ -16,9 +16,12 @@ Usage:
   python helpers/garmin_client.py monitor              auth, print every state push until Ctrl+C
   python helpers/garmin_client.py send score 0         auth, send a command, print the ack'd state
   python helpers/garmin_client.py send set_pair 0x<leftUid> 0x<rightUid>   (decimal, or hex with 0x)
+  python helpers/garmin_client.py send focus 1         MENU: move the board's cursor to squash
+  python helpers/garmin_client.py send focus 0x<uid>   CHOOSE_PLAYERS: cursor to that profile (0 = START)
 
 Commands: select_sport <id>, back, toggle_player <uid>, start_tournament, set_pair <l> <r>,
-swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, raw <hex...>.
+swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | uid | 0>,
+raw <hex...>.
 --board <id hex> picks a stored board (default: the last one used); --seq <n> sets the first seq
 (send the same seq twice to test the duplicate path).
 """
@@ -51,7 +54,7 @@ COMMANDS = {
     "select_sport": (0x01, "B"), "back": (0x02, ""), "toggle_player": (0x03, "I"),
     "start_tournament": (0x04, ""), "set_pair": (0x05, "II"), "swap_sides": (0x06, ""),
     "start_match": (0x07, ""), "score": (0x08, "B"), "undo": (0x09, "B"), "skip": (0x0A, ""),
-    "next_game": (0x0B, ""), "sync": (0x0D, ""),
+    "next_game": (0x0B, ""), "sync": (0x0D, ""), "focus": (0x0E, "I"),
 }
 SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10: "CHOOSE_PLAYERS",
            0x11: "MATCH_START", 0x12: "INTRO", 0x13: "PLAYING", 0x14: "CELEBRATION", 0x15: "GAME_OVER"}
@@ -158,6 +161,9 @@ def describe(body, names=None):
             out += f" cursor={SPORTS.get(data[0], data[0])} sports={[SPORTS.get(s, s) for s in data[2:2 + data[1]]]}"
         elif screen == 0x10:
             out += f" selected={struct.unpack_from('<I', data)[0]:#010x}"
+            if len(data) >= 8:
+                cursor = struct.unpack_from("<I", data, 4)[0]
+                out += f" cursor={'START' if cursor == 0 else who(cursor)}"
         elif screen == 0x11:
             mask, left, right = struct.unpack_from("<III", data)
             out += f" selected={mask:#010x} left={who(left)} right={who(right)}"

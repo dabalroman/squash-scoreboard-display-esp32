@@ -92,6 +92,7 @@ namespace Garmin {
         Skip = 0x0A,
         NextGame = 0x0B,
         Sync = 0x0D,
+        Focus = 0x0E,
     };
 
     enum class AuthType : uint8_t { Challenge = 0x00, Proof = 0x01, Result = 0x02 };

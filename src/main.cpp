@@ -383,7 +383,8 @@ void showLowBatteryOverlay() {
 
 /**
  * One watch command per tick, through the active mode, with the sound a fob press makes
- * (the buzzer mode gates both alike). SYNC never gets here: the service answers it.
+ * (the buzzer mode gates both alike), except FOCUS: a watch scrolling its list stays silent.
+ * SYNC never gets here: the service answers it.
  */
 void applyWatchCommand() {
     uint16_t handle;
@@ -413,7 +414,9 @@ void applyWatchCommand() {
     }
 
     // What setOnActionTaken does for an accepted fob press.
-    gBuzzer.trigger();
+    if (command.id != Garmin::CommandId::Focus) {
+        gBuzzer.trigger();
+    }
     einkDisplay.dismissSplash();
 }
 

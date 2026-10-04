@@ -64,9 +64,11 @@ public:
         for (uint8_t i = 0; i < count; i++) put8(static_cast<uint8_t>(sports[i]));
     }
 
-    void setChoosePlayers(const uint32_t selectedMask) {
+    // `cursorUid` 0 = the START row.
+    void setChoosePlayers(const uint32_t selectedMask, const uint32_t cursorUid) {
         begin(Garmin::ScreenId::ChoosePlayers);
         put32(selectedMask);
+        put32(cursorUid);
     }
 
     void setMatchStart(const uint32_t selectedMask, const uint32_t leftUid, const uint32_t rightUid) {

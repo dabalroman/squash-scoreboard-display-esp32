@@ -348,9 +348,19 @@ write response arrives.
 | `0x0B` | NEXT_GAME | - | 3 | GAME_OVER | -> MATCH_START, same pair (C/D) |
 | `0x0C` | *(unused)* | - | - | - | never sent; the board answers UNKNOWN_CMD. Leaving a match is BACK, as on the fob (see Open questions 6) |
 | `0x0D` | SYNC | - | 3 | every screen, incl. busy | no state change; re-push the full state |
+| `0x0E` | FOCUS | `target` u32 | 7 | MENU, CHOOSE_PLAYERS | move the board's cursor to a row without acting on it (A / B scrolling, silent). MENU: `target` = a `sport` id the menu lists; CHOOSE_PLAYERS: a profile's `uid`, or 0 for the START row. A row the screen does not show (MENU: 0, an unlisted sport, anything above 0xFF; CHOOSE_PLAYERS: an unknown uid) -> INVALID. APPLIED also when the cursor already sits there |
 
 `side` other than 0/1 -> INVALID. Scoring through BLE bypasses the RF receiver's debounce;
 `seq` deduplication replaces it.
+
+FOCUS is cosmetic: it never changes the screen, the selection or any score, and the board plays
+no sound for it (a fob scroll beeps; a watch scrolling through a list must not). It exists so the
+board's highlight (OLED, e-paper, LEDs) follows the watch's own list while the user scrolls on
+the watch. One `target` field serves both screens so the frame has one size: a CHOOSE_PLAYERS
+row is named by its `uid` (uids are never 0, so 0 is free for START); a MENU row by its `sport`
+(PROFILE and CONFIG are never shown on the watch, so it cannot focus them). Each
+FOCUS costs the e-paper at most one partial refresh; requests made during a refresh coalesce
+into one, as for fob scrolling.
 
 ### 10.3 Sequence numbers and acknowledgement
 
@@ -448,11 +458,15 @@ MENU (body `10 + n`):
 | 9 | 1 | `n` sports |
 | 10 | n | sport ids in menu order (today `04 01 02 03`: padel, squash, volleyball, short volleyball) |
 
-CHOOSE_PLAYERS (body 12, 1 chunk):
+CHOOSE_PLAYERS (body 16, 1 chunk):
 
 | Off | Size | Field |
 |---|---|---|
 | 8 | 4 | selected: bit `i` = roster index `i` is in the tournament |
+| 12 | 4 | cursor: `uid` of the highlighted profile row, 0 on START |
+
+The rows are START, then one per profile in roster order (there is no exit row; BACK leaves).
+Both cursors (MENU, CHOOSE_PLAYERS) follow the fob's A / B scrolling as well as FOCUS.
 
 MATCH_START (body 20, 2 chunks):
 
@@ -527,6 +541,13 @@ ROSTER read - 19 B, or 3 B past the end:
   state (buzz on APPLIED). A non-zero `ackStatus` rolls back to the board's state.
 - With nothing pending the watch always adopts the board's state.
 - Every other command waits for the board's state; the watch shows no change until it arrives.
+- **FOCUS is the exception: the watch's highlight is its own.** The watch moves its highlight
+  at once and sends FOCUS for the row it lands on; it never waits for or rolls back on the ack.
+  While a FOCUS is unacknowledged the watch ignores the state's cursor (an older cursor would
+  pull the highlight back mid-scroll); with nothing outstanding it may adopt the board's cursor,
+  which is how a fob scroll reaches the watch. With one outstanding request, the watch keeps only
+  the newest row to focus and sends that once the write completes: a fast scroll sends the rows
+  it can, never a backlog. FOCUS is not debounced and does not start the screen-change lockout.
 - Presses while disconnected, unauthenticated or before the first state are ignored.
 - **Input debounce is the watch's job; the protocol stays fast.** The board applies a command per
   50 ms tick with no debounce of its own (BLE has no RF bounce). A court is a misclick
@@ -669,6 +690,24 @@ Hypothetical released watch app with `MIN_BOARD_PROTO = 1`, `MAX_BOARD_PROTO = 2
 
 Unauthenticated read of STATE or ROSTER (1 B): `00`
 
+### 16.9 FOCUS
+
+Roster of 16.4 (ANNA, KRYSTIAN, OLA). On MENU, focus squash, seq 3; the board answers with the
+cursor on squash (body 14, `stateSeq` 2):
+```
+COMMAND write (7 B): 00 0e 03 01 00 00 00
+STATE notify (17 B): 00 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
+```
+On CHOOSE_PLAYERS (squash, ANNA and OLA selected), focus KRYSTIAN, seq 4 (body 16, `stateSeq`
+0x10):
+```
+COMMAND write (7 B): 00 0e 04 44 33 22 11
+STATE notify (19 B): 00 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
+```
+Focus START, seq 5: `00 0e 05 00 00 00 00` (cursor bytes `00 00 00 00`). A uid not in the
+roster, `00 0e 06 78 56 34 12`, is acked 6 INVALID and the cursor stays. A 4-byte FOCUS
+(`00 0e 07 01`) is acked 7 MALFORMED.
+
 ## 17. Open questions and deviations
 
 1. **Service UUID is not in `ADV_IND` (deviation from the locked filter).** UUID + locked
@@ -691,7 +730,8 @@ Unauthenticated read of STATE or ROSTER (1 B): `00`
    undo is per side (C left, D right, `losePoint(side)`); there is no "undo the last point".
 5. **Additions not in the locked lists:** `ackStatus` beside `ackSeq` (the watch needs to know a
    press was rejected to roll back); SYNC (`0x0D`) for re-requesting a full state; the pairing
-   request carries the chosen code; the state header carries `sport` on every screen.
+   request carries the chosen code; the state header carries `sport` on every screen; FOCUS
+   (`0x0E`) and the CHOOSE_PLAYERS cursor, so the board's highlight follows the watch's list.
 6. **END_MATCH dropped (resolved 2026-10-02).** It would have been a new GAME_OVER ->
    CHOOSE_PLAYERS transition no button has. The watch mirrors the fob instead: NEXT_GAME (C/D)
    -> MATCH_START, then BACK walks MATCH_START -> CHOOSE_PLAYERS -> MENU. `0x0C` stays unused

@@ -58,13 +58,11 @@ public:
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
-            scrollable.cycleSelectedOption(-1);
-            queueRender();
+            focusEntry(static_cast<uint8_t>(scrollable.getSelectedOptionId() - 1));
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
-            scrollable.cycleSelectedOption(1);
-            queueRender();
+            focusEntry(static_cast<uint8_t>(scrollable.getSelectedOptionId() + 1));
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
@@ -77,24 +75,31 @@ public:
         onDeviceModeChange(entryAt(index).target);
     }
 
-    // The same request D makes on that row; a sport the menu does not list is INVALID.
+    // The fob's A/B and the watch's FOCUS: `index` among the visible rows, wrapping at both ends.
+    void focusEntry(const uint8_t index) {
+        scrollable.setSelectedOption(index);
+        queueRender();
+    }
+
+    // SELECT_SPORT is the request D makes on that row, FOCUS the cursor move A/B make. A sport
+    // the menu does not list is INVALID.
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
-        if (command.id != Garmin::CommandId::SelectSport) {
+        const bool focus = command.id == Garmin::CommandId::Focus;
+        if (!focus && command.id != Garmin::CommandId::SelectSport) {
             return Garmin::AckStatus::WrongScreen;
         }
 
-        DeviceModeState mode;
-        if (!WatchSport::modeForSport(command.sport, mode)) {
+        const uint32_t sport = focus ? command.target : command.sport;
+        const int index = sport <= 0xFF ? rowOfSport(static_cast<uint8_t>(sport)) : -1;
+        if (index < 0) {
             return Garmin::AckStatus::Invalid;
         }
-
-        for (uint8_t i = 0; i < entryIds.size(); i++) {
-            if (entryAt(i).target == mode) {
-                selectEntry(i);
-                return Garmin::AckStatus::Applied;
-            }
+        if (focus) {
+            focusEntry(static_cast<uint8_t>(index));
+        } else {
+            selectEntry(static_cast<uint8_t>(index));
         }
-        return Garmin::AckStatus::Invalid;
+        return Garmin::AckStatus::Applied;
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
@@ -239,6 +244,20 @@ private:
         uint8_t count = 0;
         const ModeMenuEntry *entries = table(count);
         return entries[entryIds[index < entryIds.size() ? index : 0]];
+    }
+
+    // Visible row of that sport, -1 when the menu does not list it (or for None).
+    int rowOfSport(const uint8_t sport) const {
+        DeviceModeState mode;
+        if (!WatchSport::modeForSport(sport, mode)) {
+            return -1;
+        }
+        for (uint8_t i = 0; i < entryIds.size(); i++) {
+            if (entryAt(i).target == mode) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     const ModeMenuEntry &selectedEntry() const {

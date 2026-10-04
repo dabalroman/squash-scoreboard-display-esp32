@@ -65,13 +65,11 @@ public:
         }
 
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
-            scrollable->cycleSelectedOption(-1);
-            queueRender();
+            focusOption(static_cast<uint8_t>(scrollable->getSelectedOptionId() - 1));
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
-            scrollable->cycleSelectedOption(1);
-            queueRender();
+            focusOption(static_cast<uint8_t>(scrollable->getSelectedOptionId() + 1));
         }
 
         // C is back to the mode selector - which is what a long press already did
@@ -101,6 +99,12 @@ public:
         }
     }
 
+    // The fob's A/B and the watch's FOCUS: moves the cursor, acts on nothing. Wraps at both ends.
+    void focusOption(const uint8_t optionId) {
+        scrollable->setSelectedOption(optionId);
+        queueRender();
+    }
+
     bool canStartTournament() const {
         return tournament.getPlayers().size() >= 2;
     }
@@ -127,6 +131,18 @@ public:
                     return Garmin::AckStatus::Invalid;
                 }
                 togglePlayer(static_cast<uint8_t>(index));
+                return Garmin::AckStatus::Applied;
+            }
+            case Garmin::CommandId::Focus: {
+                if (command.target == 0) {
+                    focusOption(startOptionId);
+                    return Garmin::AckStatus::Applied;
+                }
+                const int index = WatchSupport::indexOfUid(users, command.target);
+                if (index < 0) {
+                    return Garmin::AckStatus::Invalid;
+                }
+                focusOption(static_cast<uint8_t>(index + 1));
                 return Garmin::AckStatus::Applied;
             }
             case Garmin::CommandId::StartTournament:
@@ -237,7 +253,11 @@ public:
     }
 
     void describeForWatch(WatchState &state) const override {
-        state.setChoosePlayers(WatchSupport::selectedMask(tournament.getPlayers()));
+        const uint8_t optionId = scrollable->getSelectedOptionId();
+        const uint32_t cursorUid = optionId == startOptionId || optionId > users.size()
+                                       ? 0
+                                       : users[optionId - 1]->getUid();
+        state.setChoosePlayers(WatchSupport::selectedMask(tournament.getPlayers()), cursorUid);
     }
 };
 

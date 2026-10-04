@@ -272,9 +272,9 @@ void test_other_screens() {
     TEST_ASSERT_EQUAL_UINT8(8, s.bodySize());
 
     s.setSport(SportId::Volleyball);
-    s.setChoosePlayers(0x80000005);
-    TEST_ASSERT_EQUAL_UINT8(12, s.build(9, AckStatus::Invalid, 0, body));
-    expectBytes("10 02 09 02 00 00 00 00 05 00 00 80", body, 12, "CHOOSE_PLAYERS");
+    s.setChoosePlayers(0x80000005, 0);
+    TEST_ASSERT_EQUAL_UINT8(16, s.build(9, AckStatus::Invalid, 0, body));
+    expectBytes("10 02 09 02 00 00 00 00 05 00 00 80 00 00 00 00", body, 16, "CHOOSE_PLAYERS on START");
 
     s.setMatchStart(0x3, ANNA, KRYSTIAN);
     TEST_ASSERT_EQUAL_UINT8(20, s.build(0, AckStatus::Applied, 0, body));
@@ -382,7 +382,7 @@ void test_command_sizes() {
     };
     const Case cases[] = {
         {0x01, 4}, {0x02, 3}, {0x03, 7}, {0x04, 3}, {0x05, 11}, {0x06, 3},
-        {0x07, 3}, {0x08, 4}, {0x09, 4}, {0x0A, 3}, {0x0B, 3}, {0x0D, 3},
+        {0x07, 3}, {0x08, 4}, {0x09, 4}, {0x0A, 3}, {0x0B, 3}, {0x0D, 3}, {0x0E, 7},
     };
     for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
         uint8_t frame[MAX_FRAME] = {PROTO, cases[k].id, 42};
@@ -405,7 +405,7 @@ void test_command_sizes() {
 
 void test_command_unknown_and_dropped() {
     WatchCommand cmd{};
-    const uint8_t unknownIds[] = {0x00, 0x0C, 0x0E, 0x7F, 0xFF};
+    const uint8_t unknownIds[] = {0x00, 0x0C, 0x0F, 0x7F, 0xFF};
     for (size_t k = 0; k < sizeof(unknownIds); k++) {
         const uint8_t frame[] = {PROTO, unknownIds[k], 9, 0, 0, 0, 0, 0, 0, 0, 0};
         const CommandParse r = parseCommand(frame, sizeof(frame), cmd);
@@ -451,7 +451,52 @@ void test_command_arguments() {
     // A previous parse never leaks into the next.
     const std::vector<uint8_t> sync = hex("00 0d 05");
     TEST_ASSERT_TRUE(parseCommand(sync.data(), sync.size(), cmd) == CommandParse::Ok);
-    TEST_ASSERT_TRUE(cmd.side == 0 && cmd.uid == 0 && cmd.leftUid == 0);
+    TEST_ASSERT_TRUE(cmd.side == 0 && cmd.uid == 0 && cmd.leftUid == 0 && cmd.target == 0);
+}
+
+void test_focus() {
+    WatchCommand cmd{};
+
+    // 16.9 MENU: focus squash, the state echoes the cursor.
+    const std::vector<uint8_t> menuFocus = hex("00 0e 03 01 00 00 00");
+    TEST_ASSERT_TRUE(parseCommand(menuFocus.data(), menuFocus.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.id == CommandId::Focus);
+    TEST_ASSERT_EQUAL_UINT8(3, cmd.seq);
+    TEST_ASSERT_EQUAL_HEX32(0x01, cmd.target);
+    TEST_ASSERT_EQUAL_HEX32(0, cmd.uid);
+
+    WatchState s;
+    const SportId sports[] = {SportId::Padel, SportId::Squash, SportId::Volleyball, SportId::ShortVolleyball};
+    s.setMenu(SportId::Squash, sports, 4);
+    std::vector<Frame> c = chunks(2, s, cmd.seq, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(1, c.size());
+    expectBuf("00 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03", c[0], "16.9 MENU");
+
+    // 16.9 CHOOSE_PLAYERS: focus KRYSTIAN with ANNA and OLA selected.
+    const std::vector<uint8_t> playerFocus = hex("00 0e 04 44 33 22 11");
+    TEST_ASSERT_TRUE(parseCommand(playerFocus.data(), playerFocus.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_EQUAL_HEX32(KRYSTIAN, cmd.target);
+
+    s.setSport(SportId::Squash);
+    s.setChoosePlayers(0x5, cmd.target);
+    TEST_ASSERT_EQUAL_UINT8(16, s.bodySize());
+    c = chunks(0x10, s, cmd.seq, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(1, c.size());
+    expectBuf("00 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11", c[0], "16.9 CHOOSE_PLAYERS");
+
+    const std::vector<uint8_t> startFocus = hex("00 0e 05 00 00 00 00");
+    TEST_ASSERT_TRUE(parseCommand(startFocus.data(), startFocus.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_EQUAL_HEX32(0, cmd.target);
+
+    // An unknown uid parses; the view answers INVALID.
+    const std::vector<uint8_t> nobody = hex("00 0e 06 78 56 34 12");
+    TEST_ASSERT_TRUE(parseCommand(nobody.data(), nobody.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_EQUAL_HEX32(0x12345678, cmd.target);
+
+    const std::vector<uint8_t> shortFocus = hex("00 0e 07 01");
+    const CommandParse r = parseCommand(shortFocus.data(), shortFocus.size(), cmd);
+    TEST_ASSERT_TRUE(r == CommandParse::Malformed);
+    TEST_ASSERT_TRUE(cmd.seq == 7 && ackFor(r) == AckStatus::Malformed);
 }
 
 void test_service_uuid_bytes() {
@@ -481,6 +526,7 @@ int main() {
     RUN_TEST(test_command_sizes);
     RUN_TEST(test_command_unknown_and_dropped);
     RUN_TEST(test_command_arguments);
+    RUN_TEST(test_focus);
     RUN_TEST(test_service_uuid_bytes);
     return UNITY_END();
 }
