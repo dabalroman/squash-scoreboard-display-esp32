@@ -4,26 +4,31 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include <esp_random.h>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <vector>
 
+#include "FactoryRosters.h"
 #include "PlayerPalette.h"
 #include "PlayerRosterData.h"
 #include "UserProfile.h"
 #include "Utils.h"
 
 /**
- * The player roster, as data rather than code. Board-agnostic - no `#if BOARD_REV`.
- *
- * Persistence has its own NVS key ("ply") in the existing "ns" namespace. It is
+ * One roster (players or teams), as data rather than code. Board-agnostic - no
+ * `#if BOARD_REV`. Each instance owns one NVS key in the "ns" namespace ("ply",
+ * "tms" - FactoryRosters.h); both use the same PlayersData layout. The key is
  * deliberately NOT a field in PrefsData: PreferencesManager::read() rejects that
  * blob unless getBytesLength() matches sizeof(PrefsData) exactly, so growing it
  * would silently drop brightness and the WiFi credentials on the first boot
  * after an update.
  *
  * The blob is fixed-size and always written whole. It is accepted only when its
- * length, version and count all check out; anything else falls back to the
- * factory list (still hardcoded in main.cpp) and writes that back.
+ * length, version and count all check out. load() writes the factory seed only
+ * when the key is ABSENT; a key that exists but does not check out (or an NVS that
+ * will not open) gets the factory list in RAM only, and NVS is left untouched -
+ * only an editor save or restore-factory ever overwrites a stored blob.
  *
  * IDENTITY: every entry carries a `uid`, generated once from the hardware RNG and
  * never reused. It is what makes a player a player - two people called Krystian
@@ -37,18 +42,23 @@
  * holding a stale positional id or a dangling pointer.
  */
 
-// One factory player. The list itself lives in main.cpp, where player profiles
-// have always been written. No uid here - those are generated when it is seeded.
-struct FactoryPlayer {
-    const char *name;
-    Color color;
-};
-
 class PlayerRoster {
+public:
+    enum class LoadResult : uint8_t {
+        Valid,          // stored blob read back
+        Seeded,         // key absent: factory list written
+        SeedFailed,     // key absent, but the write failed: factory list in RAM
+        Unreadable      // key present but invalid, or NVS would not open: RAM only, NVS untouched
+    };
+
+private:
     Preferences preferences;
 
     static constexpr const char *NAMESPACE = "ns";
-    static constexpr const char *KEY_PLAYERS = "ply";
+    const char *const key;
+    LoadResult loadResult = LoadResult::Unreadable;
+
+    enum class ReadResult : uint8_t { Valid, Absent, Unreadable };
 
     const FactoryPlayer *factoryList = nullptr;
     uint8_t factoryCount = 0;
@@ -57,6 +67,9 @@ class PlayerRoster {
     std::vector<UserProfile *> pointers;
 
 public:
+    explicit PlayerRoster(const char *key) : key(key) {
+    }
+
     /**
      * A uid that no entry below `filled` already uses. Never 0 - that value is
      * reserved for "this row is new, assign one", which is how the web editor asks
@@ -75,21 +88,40 @@ public:
     }
 
     /**
-     * setup() only. Reads the stored roster, or seeds the factory list when there
-     * is nothing valid to read.
+     * setup() only. Reads the stored roster; seeds (and writes) the factory list
+     * only when the key does not exist yet.
      */
-    void load(const FactoryPlayer *factory, const uint8_t count) {
+    LoadResult load(const FactoryPlayer *factory, const uint8_t count) {
         factoryList = factory;
         factoryCount = count > PlayerRosterLimits::MAX_PLAYERS ? PlayerRosterLimits::MAX_PLAYERS : count;
 
         PlayersData data;
 
-        if (!readBlob(data)) {
-            seedDefaults(data);
-            writeBlob(data);
+        switch (readBlob(data)) {
+            case ReadResult::Valid:
+                loadResult = LoadResult::Valid;
+                break;
+            case ReadResult::Absent:
+                seedDefaults(data);
+                loadResult = writeBlob(data) ? LoadResult::Seeded : LoadResult::SeedFailed;
+                break;
+            case ReadResult::Unreadable:
+            default:
+                seedDefaults(data);
+                loadResult = LoadResult::Unreadable;
+                break;
         }
 
         rebuild(data);
+        return loadResult;
+    }
+
+    LoadResult lastLoadResult() const {
+        return loadResult;
+    }
+
+    const char *nvsKey() const {
+        return key;
     }
 
     // Every mode takes `std::vector<UserProfile *> &`, so this drops straight in.
@@ -113,19 +145,36 @@ public:
     }
 
 private:
-    bool readBlob(PlayersData &out) {
-        bool ok = false;
+    ReadResult readBlob(PlayersData &out) {
+        if (!preferences.begin(NAMESPACE, true)) {
+            preferences.end();
+            // A read-only open fails when the namespace does not exist yet (empty NVS).
+            // Opening it read-write tells that apart from a broken NVS; it writes no key.
+            if (!preferences.begin(NAMESPACE, false)) {
+                preferences.end();
+                return ReadResult::Unreadable;
+            }
 
-        if (preferences.begin(NAMESPACE, true)) {
-            ok = preferences.getBytesLength(KEY_PLAYERS) == sizeof(PlayersData)
-                 && preferences.getBytes(KEY_PLAYERS, &out, sizeof(PlayersData)) == sizeof(PlayersData)
-                 && out.version == PlayerRosterLimits::BLOB_VERSION
-                 && out.count >= 1
-                 && out.count <= PlayerRosterLimits::MAX_PLAYERS;
+            const bool present = preferences.isKey(key);
+            preferences.end();
+            return present ? ReadResult::Unreadable : ReadResult::Absent;
+        }
+
+        ReadResult result;
+
+        if (!preferences.isKey(key)) {
+            result = ReadResult::Absent;
+        } else {
+            const bool ok = preferences.getBytesLength(key) == sizeof(PlayersData)
+                            && preferences.getBytes(key, &out, sizeof(PlayersData)) == sizeof(PlayersData)
+                            && out.version == PlayerRosterLimits::BLOB_VERSION
+                            && out.count >= 1
+                            && out.count <= PlayerRosterLimits::MAX_PLAYERS;
+            result = ok ? ReadResult::Valid : ReadResult::Unreadable;
         }
 
         preferences.end();
-        return ok;
+        return result;
     }
 
     bool writeBlob(const PlayersData &data) {
@@ -133,7 +182,7 @@ private:
             return false;
         }
 
-        const size_t written = preferences.putBytes(KEY_PLAYERS, &data, sizeof(PlayersData));
+        const size_t written = preferences.putBytes(key, &data, sizeof(PlayersData));
         preferences.end();
 
         return written == sizeof(PlayersData);

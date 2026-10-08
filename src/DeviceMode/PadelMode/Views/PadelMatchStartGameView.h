@@ -189,10 +189,12 @@ public:
         // Without the % it hit digitToGlyph's "above 9 is Empty" and the slot went
         // blank, which looked like a missing player rather than a truncated id.
         // Players 5 and 15 do read alike here; their colours are what separate them.
+        // Teams, not players: "d" (druzyna) where squash shows "P".
+        constexpr Glyph TEAM_PREFIX = Glyph::d;
         ledDisplay.setGlyphsGlyph(
-            Glyph::P,
+            TEAM_PREFIX,
             LedDisplay::digitToGlyph(playerLeft->getId() % 10),
-            Glyph::P,
+            TEAM_PREFIX,
             LedDisplay::digitToGlyph(playerRight->getId() % 10)
         );
 

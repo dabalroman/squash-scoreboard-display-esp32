@@ -5,6 +5,9 @@
 
 #include "Color.h"
 
+// Which roster a preview (and the LED prefix: P or d) belongs to.
+enum class RosterKind : uint8_t { Players, Teams };
+
 // One side of the LED preview pair. Constructors, not member initialisers: under
 // gnu++11 those make it a non-aggregate and PreviewSlot{id, color, used} would not compile.
 struct PreviewSlot {
@@ -27,6 +30,7 @@ class PreviewState {
     // side 0 = left, 1 = right (matches the P<l>P<r> glyph layout). No per-id
     // memory beyond these two: every POST carries the colour to show.
     PreviewSlot slots[2];
+    RosterKind rosterKind = RosterKind::Players;
     bool active = false;
     bool dirty = false;
 
@@ -36,6 +40,7 @@ public:
     void reset() {
         slots[0] = PreviewSlot{};
         slots[1] = PreviewSlot{};
+        rosterKind = RosterKind::Players;
         active = false;
         dirty = true;
     }
@@ -43,10 +48,16 @@ public:
     /**
      * The edited player is always on the left. A different id slides the one shown
      * on the left over to the right (so an id already on the right swaps sides);
-     * the first preview since reset() pairs it with `firstPartner`.
+     * the first preview since reset() pairs it with `firstPartner`. Ids of two
+     * rosters never pair, so a kind switch restarts as a first preview.
      */
-    void show(const uint8_t playerId, const Color color, const PreviewSlot &firstPartner) {
+    void show(const RosterKind kind, const uint8_t playerId, const Color color, const PreviewSlot &firstPartner) {
         dirty = true;
+
+        if (active && kind != rosterKind) {
+            active = false;
+        }
+        rosterKind = kind;
 
         if (active && slots[0].used && slots[0].id == playerId) {
             slots[0].color = color;
@@ -73,6 +84,10 @@ public:
 
     bool hasPreview() const {
         return active;
+    }
+
+    RosterKind kind() const {
+        return rosterKind;
     }
 
     const PreviewSlot &slot(const uint8_t side) const {

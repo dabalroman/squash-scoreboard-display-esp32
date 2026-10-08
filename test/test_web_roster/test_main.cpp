@@ -18,6 +18,7 @@ struct String {
 };
 
 #include "Web/RosterSaveValidator.cpp"
+#include "Web/PreviewState.h"
 #include "Web/RosterJson.h"
 #include "Web/WebJson.h"
 #include "../common/check.h"
@@ -163,11 +164,11 @@ static void test_rejects_count_out_of_range() {
 }
 
 static void test_rejects_extra_name() {
-    assertRejected(validForm(2).set("count", "1"), "Więcej imion niż wynosi count.", "n1 with count 1");
+    assertRejected(validForm(2).set("count", "1"), "Więcej nazw niż wynosi count.", "n1 with count 1");
 }
 
 static void test_rejects_missing_name() {
-    assertRejected(validForm(2).erase("n1"), "Brakuje imienia w jednym z wierszy.", "no n1");
+    assertRejected(validForm(2).erase("n1"), "Brakuje nazwy w jednym z wierszy.", "no n1");
 }
 
 static void test_rejects_missing_colour() {
@@ -179,7 +180,7 @@ static void test_rejects_missing_uid() {
 }
 
 static void test_rejects_name_length() {
-    const char *message = "Imię musi mieć od 1 do 9 znaków.";
+    const char *message = "Nazwa musi mieć od 1 do 9 znaków.";
     assertRejected(validForm(1).set("n0", ""), message, "empty name");
     assertRejected(validForm(1).set("n0", "   "), message, "blank name");
     assertRejected(validForm(1).set("n0", "Krystian10"), message, "10 characters");
@@ -187,7 +188,7 @@ static void test_rejects_name_length() {
 }
 
 static void test_rejects_non_ascii_name() {
-    const char *message = "Imię bez polskich znaków - tablica ich nie wyświetli.";
+    const char *message = "Nazwa bez polskich znaków - tablica ich nie wyświetli.";
     assertRejected(validForm(1).set("n0", "Łukasz"), message, "UTF-8 letter");
     assertRejected(validForm(1).set("n0", "a\tb"), message, "inner tab");
     assertRejected(validForm(1).set("n0", std::string("a\0b", 3)), message, "embedded NUL");
@@ -226,7 +227,7 @@ static void test_rejects_bad_uid() {
 }
 
 static void test_rejects_duplicate_uid() {
-    assertRejected(validForm(3).set("u0", "77").set("u2", "77"), "Powtórzony identyfikator gracza.",
+    assertRejected(validForm(3).set("u0", "77").set("u2", "77"), "Powtórzony identyfikator.",
                    "rows 0 and 2 share uid 77");
 }
 
@@ -339,6 +340,50 @@ static void test_json_escaper() {
     TEST_ASSERT_EQUAL_STRING_MESSAGE("\"#FF00AA\"", json("#FF00AA").c_str(), "hex colour");
 }
 
+// ---- PreviewState: a roster kind switch restarts the pairing ----
+
+static void test_preview_kind_switch_restarts_pairing() {
+    PreviewState state;
+    const Color red(255, 0, 0), green(0, 255, 0), blue(0, 0, 255);
+    const PreviewSlot playerPartner{7, blue, true};
+    const PreviewSlot teamPartner{2, green, true};
+
+    state.show(RosterKind::Players, 3, red, playerPartner);
+    state.show(RosterKind::Players, 4, green, playerPartner);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(4, state.slot(0).id, "player 4 on the left");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(3, state.slot(1).id, "player 3 slid right");
+
+    state.show(RosterKind::Teams, 1, blue, teamPartner);
+    TEST_ASSERT_TRUE_MESSAGE(state.kind() == RosterKind::Teams, "kind follows the last preview");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, state.slot(0).id, "team on the left");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(2, state.slot(1).id, "paired with the team partner, not the old player");
+    TEST_ASSERT_TRUE_MESSAGE(state.takeDirty(), "dirty");
+
+    state.show(RosterKind::Teams, 5, red, teamPartner);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, state.slot(1).id, "same kind keeps sliding");
+
+    state.show(RosterKind::Players, 5, red, playerPartner);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(7, state.slot(1).id, "back to players restarts again");
+}
+
+static void test_preview_same_id_other_kind_is_not_a_recolour() {
+    PreviewState state;
+    const Color red(255, 0, 0), blue(0, 0, 255);
+
+    state.show(RosterKind::Players, 2, red, PreviewSlot{0, red, true});
+    state.show(RosterKind::Teams, 2, blue, PreviewSlot{0, blue, true});
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, state.slot(1).id, "restarted, partner is the team's");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(255, state.slot(1).color.b, "partner colour");
+}
+
+static void test_preview_reset_returns_to_players() {
+    PreviewState state;
+    state.show(RosterKind::Teams, 1, Color(1, 2, 3), PreviewSlot{});
+    state.reset();
+    TEST_ASSERT_FALSE(state.hasPreview());
+    TEST_ASSERT_TRUE(state.kind() == RosterKind::Players);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_valid_save_stages_the_whole_blob);
@@ -361,5 +406,8 @@ int main() {
     RUN_TEST(test_roster_json_name_with_quote);
     RUN_TEST(test_roster_json_32_rows);
     RUN_TEST(test_json_escaper);
+    RUN_TEST(test_preview_kind_switch_restarts_pairing);
+    RUN_TEST(test_preview_same_id_other_kind_is_not_a_recolour);
+    RUN_TEST(test_preview_reset_returns_to_players);
     return UNITY_END();
 }

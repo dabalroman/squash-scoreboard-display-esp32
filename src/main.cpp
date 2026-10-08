@@ -29,6 +29,8 @@
 #include "Display/EInk/EInkDisplay.h"
 #include "Web/PlayerSetupWebUi.h"
 #include "PlayerRoster.h"
+#include "FactoryRosters.h"
+#include <nvs.h>
 #include "Garmin/GarminService.h"
 #include "Garmin/WatchSport.h"
 #include "RemoteDevelopmentService/RemoteDevelopmentService.h"
@@ -87,21 +89,12 @@ DeviceModeState deviceState = DeviceModeState::Booting;
 DeviceModeState pendingMode = DeviceModeState::ModeSwitchingMode;
 bool modeChangePending = false;
 
-const FactoryPlayer FACTORY_PLAYERS[] = {
-    {"Adrian", PlayerColors::Green},
-    {"Roman", PlayerColors::Yellow},
-    {"Basia", PlayerColors::Magenta},
-    {"Krystian", PlayerColors::Blue},
-    {"Jola", PlayerColors::Red},
-    {"Cegiel", PlayerColors::Pink}
-};
-constexpr uint8_t FACTORY_PLAYER_COUNT = sizeof(FACTORY_PLAYERS) / sizeof(FACTORY_PLAYERS[0]);
-
-PlayerRoster playerRoster;
+PlayerRoster playerRoster(FactoryRosters::PLAYERS_KEY);
+PlayerRoster teamRoster(FactoryRosters::TEAMS_KEY);
 
 // Garmin App Remote. Off by default; while off every hook below is a cheap no-op.
 GarminService garminService;
-PlayerSetupWebUi playerSetupWebUi(playerRoster, preferencesManager, [](const uint8_t brightness) {
+PlayerSetupWebUi playerSetupWebUi(playerRoster, teamRoster, preferencesManager, [](const uint8_t brightness) {
     ledDisplay.setBrightness(brightness);
 });
 
@@ -136,6 +129,23 @@ void initHardware() {
     attachInterrupt(digitalPinToInterrupt(Board::RF_D1), onRemoteReceiverInterrupt_d1, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D2), onRemoteReceiverInterrupt_d2, RISING);
     attachInterrupt(digitalPinToInterrupt(Board::RF_D3), onRemoteReceiverInterrupt_d3, RISING);
+}
+
+// Anything but Valid/Seeded leaves NVS untouched and runs on a RAM-only factory list.
+void logRosterLoad(const PlayerRoster &roster) {
+    switch (roster.lastLoadResult()) {
+        case PlayerRoster::LoadResult::Valid:
+            break;
+        case PlayerRoster::LoadResult::Seeded:
+            printLn("Roster \"%s\": absent, factory list seeded", roster.nvsKey());
+            break;
+        case PlayerRoster::LoadResult::SeedFailed:
+            printLn("Roster \"%s\": absent, seed write FAILED, factory list in RAM", roster.nvsKey());
+            break;
+        case PlayerRoster::LoadResult::Unreadable:
+            printLn("Roster \"%s\": UNREADABLE, factory list in RAM, NVS untouched", roster.nvsKey());
+            break;
+    }
 }
 
 /**
@@ -206,7 +216,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                playerRoster.profiles(),
+                teamRoster.profiles(),
                 std::make_unique<VolleyballRules>(),
                 playMatchOver
             );
@@ -219,7 +229,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                playerRoster.profiles(),
+                teamRoster.profiles(),
                 std::make_unique<ShortVolleyballRules>(),
                 playMatchOver
             );
@@ -244,7 +254,7 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                playerRoster.profiles(),
+                teamRoster.profiles(),
                 playMatchOver
             );
             break;
@@ -260,8 +270,9 @@ void setup() {
 
     preferencesManager.setApplyHandler(applySettings);
     const bool wifiSeeded = preferencesManager.read();
-    // Before any mode is built: every mode is handed playerRoster.profiles().
-    playerRoster.load(FACTORY_PLAYERS, FACTORY_PLAYER_COUNT);
+    // Before any mode is built: squash gets player profiles, padel and volleyball team profiles.
+    playerRoster.load(FactoryRosters::PLAYERS, FactoryRosters::PLAYER_COUNT);
+    teamRoster.load(FactoryRosters::TEAMS, FactoryRosters::TEAM_COUNT);
     garminService.load();
     garminService.setRoster(playerRoster.profiles());
     initHardware();
@@ -346,7 +357,16 @@ void setup() {
     if (wifiSeeded) {
         printLn("Bootstrap: empty NVS seeded with WiFi credentials, Dev Mode on");
     }
-    printLn("Roster: %u players", static_cast<unsigned>(playerRoster.size()));
+    printLn("Roster: %u players, %u teams", static_cast<unsigned>(playerRoster.size()),
+            static_cast<unsigned>(teamRoster.size()));
+    logRosterLoad(playerRoster);
+    logRosterLoad(teamRoster);
+    nvs_stats_t nvsStats;
+    if (nvs_get_stats(nullptr, &nvsStats) == ESP_OK) {
+        printLn("NVS: %u used, %u free, %u total entries, %u namespaces",
+                static_cast<unsigned>(nvsStats.used_entries), static_cast<unsigned>(nvsStats.free_entries),
+                static_cast<unsigned>(nvsStats.total_entries), static_cast<unsigned>(nvsStats.namespace_count));
+    }
 
     printLn("Battery: %u mV raw, %.3f V%s", static_cast<unsigned>(batterySensor.rawMilliVolts()), batterySensor.volts(),
             batterySensor.available() ? "" : " (implausible, ignored)");

@@ -131,11 +131,12 @@ public:
             const Color leftColor = left.used ? left.color : Colors::Black;
             const Color rightColor = right.used ? right.color : Colors::Black;
 
-            // Same P<id%10>P<id%10> layout as *MatchStartGameView - "as at a match".
+            // Same <prefix><id%10><prefix><id%10> layout as *MatchStartGameView - "as at a match".
+            const Glyph prefix = webUi.previewKind() == RosterKind::Teams ? Glyph::d : Glyph::P;
             ledDisplay.setGlyphsGlyph(
-                Glyph::P,
+                prefix,
                 left.used ? LedDisplay::digitToGlyph(left.id % 10) : Glyph::Empty,
-                Glyph::P,
+                prefix,
                 right.used ? LedDisplay::digitToGlyph(right.id % 10) : Glyph::Empty
             );
             ledDisplay.setGlyphsAppearance(leftColor, rightColor);

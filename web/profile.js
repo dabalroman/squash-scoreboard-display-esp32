@@ -1,4 +1,39 @@
-// Filled from GET /api/roster. R[i] = [name, colour, uid]; PAL[k] = [name, '#RRGGBB'].
+// One page for both rosters; everything that differs lives in this table.
+var KIND = location.pathname == '/teams' ? {
+        api: '/api/teams',
+        save: '/teams/save',
+        prev: '/teams/preview',
+        title: 'Drużyny',
+        add: '+ Dodaj drużynę',
+        base: 'Druzyna',
+        last: 'Musi zostać co najmniej jedna drużyna.',
+        noName: ': brak nazwy.',
+        reset: 'Przywróć drużyny fabryczne',
+        resetAsk: 'Przywrócić drużyny fabryczne? Tablica zostanie zrestartowana.',
+        fail: 'Nie udało się wczytać drużyn. Odśwież stronę.',
+        nav: 'navt'
+    } : {
+        api: '/api/roster',
+        save: '/save',
+        prev: '/preview',
+        title: 'Profile',
+        add: '+ Dodaj profil',
+        base: 'Gracz',
+        last: 'Musi zostać co najmniej jeden profil.',
+        noName: ': brak imienia.',
+        reset: 'Przywróć profile fabryczne',
+        resetAsk: 'Przywrócić profile fabryczne? Tablica zostanie zrestartowana.',
+        fail: 'Nie udało się wczytać profili. Odśwież stronę.',
+        nav: 'navp'
+    };
+
+document.title = KIND.title;
+document.getElementById('ttl').textContent = KIND.title;
+document.getElementById('add').textContent = KIND.add;
+document.getElementById('reset').textContent = KIND.reset;
+document.getElementById(KIND.nav).className = 'on';
+
+// Filled from the roster API. R[i] = [name, colour, uid]; PAL[k] = [name, '#RRGGBB'].
 var MAX = 32,
     PAL = [],
     R = [];
@@ -292,7 +327,7 @@ function pvSend () {
     pvNext = null;
     pvBusy = true;
     var x = new XMLHttpRequest();
-    x.open('POST', '/preview', true);
+    x.open('POST', KIND.prev, true);
     x.timeout = 3000;
     x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     x.onloadend = function () {
@@ -317,7 +352,7 @@ function mv (i, d) {
 
 function del (i) {
     if (R.length < 2) {
-        msg('Musi zostać co najmniej jeden profil.', 'err');
+        msg(KIND.last, 'err');
         return;
     }
     R.splice(i, 1);
@@ -333,11 +368,13 @@ function msg (t, k) {
 
 function post (b) {
     var x = new XMLHttpRequest();
-    x.open('POST', '/save', true);
+    x.open('POST', KIND.save, true);
     x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
     x.onload = function () {
         if (x.status == 200) {
             msg(x.responseText, 'ok');
+            // The board restarts 300 ms after answering; show what it reads back, not what we sent.
+            setTimeout(function () {reload(30);}, 3000);
         } else {
             msg('Błąd ' + x.status + ': ' + x.responseText, 'err');
         }
@@ -351,13 +388,13 @@ document.getElementById('add').onclick = function () {
         msg('Osiągnięto limit 32.', 'err');
         return;
     }
-    R.push(['Gracz' + (R.length + 1), R.length % PAL.length, 0]);
+    R.push([KIND.base + (R.length + 1), R.length % PAL.length, 0]);
     render();
 };
 document.getElementById('save').onclick = function () {
     for (var i = 0; i < R.length; i++) {
         if (!R[i][0].trim()) {
-            msg('Wiersz ' + (i + 1) + ': brak imienia.', 'err');
+            msg('Wiersz ' + (i + 1) + KIND.noName, 'err');
             return;
         }
     }
@@ -375,7 +412,7 @@ document.getElementById('save').onclick = function () {
     post(b);
 };
 document.getElementById('reset').onclick = function () {
-    if (!confirm('Przywrócić profile fabryczne? Tablica zostanie zrestartowana.')) {
+    if (!confirm(KIND.resetAsk)) {
         return;
     }
     msg('Przywracanie...');
@@ -393,19 +430,50 @@ function closed (t) {
     c.style.display = 'block';
 }
 
+function show (d) {
+    MAX = d.max;
+    PAL = d.pal;
+    R = d.rows;
+    render();
+    document.getElementById('editor').style.display = '';
+}
+
+// After a save or reset: poll until the restarted board answers. 503 = the editor
+// closed with the restart (PROFILE left), so show the note instead of retrying.
+function reload (tries) {
+    var x = new XMLHttpRequest();
+    x.open('GET', KIND.api, true);
+    x.timeout = 3000;
+    x.onloadend = function () {
+        if (x.status == 200) {
+            try {
+                show(JSON.parse(x.responseText));
+                msg('Wczytano dane z tablicy.', 'ok');
+            } catch (e) {closed(KIND.fail);}
+            return;
+        }
+        if (x.status == 503) {
+            document.getElementById('editor').style.display = 'none';
+            closed();
+            return;
+        }
+        if (tries > 0) {
+            setTimeout(function () {reload(tries - 1);}, 2000);
+        } else {
+            msg('Tablica nie odpowiada. Odśwież stronę.', 'err');
+        }
+    };
+    x.send();
+}
+
 function load () {
     var x = new XMLHttpRequest();
-    x.open('GET', '/api/roster', true);
+    x.open('GET', KIND.api, true);
     x.onload = function () {
         if (x.status == 200) {
             try {
-                var d = JSON.parse(x.responseText);
-                MAX = d.max;
-                PAL = d.pal;
-                R = d.rows;
-                render();
-                document.getElementById('editor').style.display = '';
-            } catch (e) {closed('Nie udało się wczytać profili. Odśwież stronę.');}
+                show(JSON.parse(x.responseText));
+            } catch (e) {closed(KIND.fail);}
             return;
         }
         closed();

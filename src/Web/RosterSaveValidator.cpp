@@ -87,7 +87,7 @@ const char *RosterSaveValidator::validate(const FormLookup &form, const UidGener
     // a malformed request, not something to silently truncate.
     snprintf(key, sizeof(key), "n%ld", count);
     if (form.has(key)) {
-        return "Więcej imion niż wynosi count.";
+        return "Więcej nazw niż wynosi count.";
     }
 
     memset(&out, 0, sizeof(out));
@@ -97,12 +97,12 @@ const char *RosterSaveValidator::validate(const FormLookup &form, const UidGener
     for (uint8_t i = 0; i < out.count; i++) {
         snprintf(key, sizeof(key), "n%u", static_cast<unsigned>(i));
         if (!form.has(key)) {
-            return "Brakuje imienia w jednym z wierszy.";
+            return "Brakuje nazwy w jednym z wierszy.";
         }
 
         const std::string name = trimmed(form.get(key));
         if (name.size() < 1 || name.size() > PlayerRosterLimits::NAME_SIZE - 1) {
-            return "Imię musi mieć od 1 do 9 znaków.";
+            return "Nazwa musi mieć od 1 do 9 znaków.";
         }
 
         for (size_t c = 0; c < name.size(); c++) {
@@ -110,7 +110,7 @@ const char *RosterSaveValidator::validate(const FormLookup &form, const UidGener
             if (ch < 0x20 || ch > 0x7E) {
                 // These names reach the LED, OLED and e-paper fonts, and none of
                 // them has an accented glyph.
-                return "Imię bez polskich znaków - tablica ich nie wyświetli.";
+                return "Nazwa bez polskich znaków - tablica ich nie wyświetli.";
             }
         }
 
@@ -144,7 +144,7 @@ const char *RosterSaveValidator::validate(const FormLookup &form, const UidGener
         // Two rows claiming one identity is a malformed body, not something to
         // silently merge - it would make one player vanish into another.
         if (uid != 0 && PlayerRosterData::isUidTaken(out, i, uid)) {
-            return "Powtórzony identyfikator gracza.";
+            return "Powtórzony identyfikator.";
         }
 
         // 0 means "new row". The device mints identities, never the page.

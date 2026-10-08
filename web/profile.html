@@ -7,9 +7,9 @@
     <link href="/app.css" rel="stylesheet">
 </head>
 <body>
-<nav><a class="on" href="/">Profile</a><a href="/settings">Ustawienia</a><a href="/update">Aktualizacja
-    oprogramowania</a></nav>
-<header><h1>Profile</h1>
+<!-- One page for / and /teams: profile.js picks its texts and endpoints from the path. -->
+<nav><a id="navp" href="/">Profile</a><a id="navt" href="/teams">Drużyny</a><a href="/settings">Ustawienia</a><a href="/update">Aktualizacja</a></nav>
+<header><h1 id="ttl">Profile</h1>
     <p class="sub">Do 32 pozycji. Zapis zrestartuje tablicę.</p></header>
 <main>
     <!-- Shown on /api/roster's 503: the editor is shut, the other pages stay one tap away. -->
@@ -17,7 +17,6 @@
         deweloperskim w sieci Wi-Fi.</p>
 
     <section class="card" id="editor" style="display:none">
-        <h2>Profile graczy</h2>
         <div id="rows"></div>
         <button class="btn quiet" id="add" type="button">+ Dodaj profil</button>
         <div id="cnt"></div>

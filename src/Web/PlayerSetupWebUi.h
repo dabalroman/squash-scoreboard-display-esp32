@@ -8,8 +8,8 @@
  *
  * The pages are real files under web/ (Polish-only, real diacritics, not routed
  * through Strings.h), gzipped into the image by helpers/web_assets.py and served
- * by WebAssets. They are static; their data comes from /api/roster, /api/settings
- * and /api/device.
+ * by WebAssets. They are static; their data comes from /api/roster, /api/teams,
+ * /api/settings and /api/device.
  * Every route and its access rule is in the one table in registerRoutes().
  *
  * Ownership, and why no route lambda may capture a view: WebServer (core 2.0.17)
@@ -43,11 +43,12 @@ public:
     // previewBrightness sets the LEDs' brightness without storing it - main.cpp's
     // LedDisplay::setBrightness, so the low-battery cap still holds.
     PlayerSetupWebUi(
-        PlayerRoster &roster,
+        PlayerRoster &players,
+        PlayerRoster &teams,
         PreferencesManager &preferencesManager,
         const std::function<void(uint8_t)> &previewBrightness
     )
-        : roster(roster), preferencesManager(preferencesManager), previewBrightness(previewBrightness) {
+        : players(players), teams(teams), preferencesManager(preferencesManager), previewBrightness(previewBrightness) {
     }
 
     // Called once per WebServer object, from RemoteDevelopmentService::setupOTA().
@@ -77,6 +78,10 @@ public:
         return preview.hasPreview();
     }
 
+    RosterKind previewKind() const {
+        return preview.kind();
+    }
+
     const PreviewSlot &previewSlot(const uint8_t side) const {
         return preview.slot(side);
     }
@@ -102,8 +107,10 @@ public:
 
 private:
     typedef void (PlayerSetupWebUi::*Handler)();
+    typedef void (PlayerSetupWebUi::*RosterHandler)(PlayerRoster &roster, RosterKind kind);
 
-    PlayerRoster &roster;
+    PlayerRoster &players;
+    PlayerRoster &teams;
     PreferencesManager &preferencesManager;
     std::function<void(uint8_t)> previewBrightness;
     WebServer *server = nullptr;
@@ -129,6 +136,9 @@ private:
     bool accessAllowed() const;
 
     std::function<void()> gated(Handler handler);
+    std::function<void()> guard(const std::function<void()> &body);
+    // A roster route is bound to its roster here, at registration - never by a request field.
+    std::function<void()> gatedRoster(RosterHandler handler, PlayerRoster &roster, RosterKind kind);
     std::function<void()> page(const char *path);
     std::function<void()> asset(const char *path);
 
@@ -136,10 +146,10 @@ private:
     void reject(const char *reason);
     void sendJson(const char *json, size_t length);
 
-    void handleRoster();
+    void handleRoster(PlayerRoster &roster, RosterKind kind);
     void handleDevice();
-    void handleSave();
-    void handlePreview();
+    void handleSave(PlayerRoster &roster, RosterKind kind);
+    void handlePreview(PlayerRoster &roster, RosterKind kind);
     void handleSettings();
     void handleSaveSettings();
     void handleSettingsPreview();

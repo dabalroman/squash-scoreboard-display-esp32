@@ -182,16 +182,18 @@ public:
             ledDisplay.setIndicatorAppearancePlayerA(color);
             ledDisplay.setIndicatorAppearancePlayerB(color);
         } else {
-            // "P" and the id's last digit, then the in/out dot in the last slot:
-            // "P5 *" while the player is in, "P5 ." while they are out. The dot
+            // "d" and the id's last digit, then the in/out dot in the last slot:
+            // "d5 *" while the team is in, "d5 ." while they are out. The dot
             // sits high for in and low for out, so the state is readable from its
             // position alone and not only from the green/red tint that
             // setGlyphsColor gives slots C and D below.
             // Only the ones digit fits beside the dot, so ids 3, 13 and 23 share a
             // face here; the profile name on the OLED and the e-paper is what
             // picks between them.
+            // Teams, not players: "d" (druzyna) where squash shows "P".
+            constexpr Glyph TEAM_PREFIX = Glyph::d;
             ledDisplay.setGlyphsGlyph(
-                Glyph::P,
+                TEAM_PREFIX,
                 LedDisplay::digitToGlyph(playerId % 10),
                 Glyph::Empty,
                 isPlayerIn ? Glyph::UpperDot : Glyph::LowerDot

@@ -59,6 +59,7 @@ void PlayerSetupWebUi::registerRoutes(WebServer &webServer) {
     // how a sealed V1 gets new firmware and credentials. The pages are static; their
     // data (/api/roster, /api/settings) is gated.
     server->on("/", HTTP_GET, page("/"));
+    server->on("/teams", HTTP_GET, page("/"));
     server->on("/settings", HTTP_GET, page("/settings"));
     server->on("/update", HTTP_GET, page("/update"));
     server->on("/app.css", HTTP_GET, asset("/app.css"));
@@ -72,9 +73,15 @@ void PlayerSetupWebUi::registerRoutes(WebServer &webServer) {
 
     // Gated: 503 unless WebAccessGate::open() says the board is reachable - see
     // gated() and accessAllowed().
-    server->on("/api/roster", HTTP_GET, gated(&PlayerSetupWebUi::handleRoster));
-    server->on("/save", HTTP_POST, gated(&PlayerSetupWebUi::handleSave));
-    server->on("/preview", HTTP_POST, gated(&PlayerSetupWebUi::handlePreview));
+    server->on("/api/roster", HTTP_GET,
+               gatedRoster(&PlayerSetupWebUi::handleRoster, players, RosterKind::Players));
+    server->on("/save", HTTP_POST, gatedRoster(&PlayerSetupWebUi::handleSave, players, RosterKind::Players));
+    server->on("/preview", HTTP_POST,
+               gatedRoster(&PlayerSetupWebUi::handlePreview, players, RosterKind::Players));
+    server->on("/api/teams", HTTP_GET, gatedRoster(&PlayerSetupWebUi::handleRoster, teams, RosterKind::Teams));
+    server->on("/teams/save", HTTP_POST, gatedRoster(&PlayerSetupWebUi::handleSave, teams, RosterKind::Teams));
+    server->on("/teams/preview", HTTP_POST,
+               gatedRoster(&PlayerSetupWebUi::handlePreview, teams, RosterKind::Teams));
     server->on("/api/settings", HTTP_GET, gated(&PlayerSetupWebUi::handleSettings));
     server->on("/settings", HTTP_POST, gated(&PlayerSetupWebUi::handleSaveSettings));
     server->on("/settings/preview", HTTP_POST, gated(&PlayerSetupWebUi::handleSettingsPreview));
@@ -92,7 +99,11 @@ void PlayerSetupWebUi::registerRoutes(WebServer &webServer) {
 
 // The only place the access rule (WebAccessGate::open()) and its 503 live.
 std::function<void()> PlayerSetupWebUi::gated(const Handler handler) {
-    return [this, handler] {
+    return guard([this, handler] { (this->*handler)(); });
+}
+
+std::function<void()> PlayerSetupWebUi::guard(const std::function<void()> &body) {
+    return [this, body] {
         if (!accessAllowed()) {
             server->send(503, TEXT_PLAIN_PL, ACCESS_CLOSED_NOTE);
             return;
@@ -101,8 +112,15 @@ std::function<void()> PlayerSetupWebUi::gated(const Handler handler) {
         // The PROFILE idle timer exists to close the setup AP; a Dev-Mode session
         // never opened it, so it must not be touched from that path.
         if (active) noteActivity();
-        (this->*handler)();
+        body();
     };
+}
+
+// Same gate as gated(), with the roster captured by reference: both rosters are
+// file-scope globals in main.cpp, so the lambda outlives every mode.
+std::function<void()> PlayerSetupWebUi::gatedRoster(const RosterHandler handler, PlayerRoster &roster,
+                                                    const RosterKind kind) {
+    return guard([this, handler, &roster, kind] { (this->*handler)(roster, kind); });
 }
 
 bool PlayerSetupWebUi::accessAllowed() const {
@@ -185,15 +203,15 @@ void PlayerSetupWebUi::sendJson(const char *json, const size_t length) {
  * {"max":32,"pal":[[name,"#RRGGBB"],...],"rows":[[name,colour,uid],...]}, where a
  * row's colour is a palette index for an exact preset and "#RRGGBB" otherwise.
  */
-void PlayerSetupWebUi::handleRoster() {
+void PlayerSetupWebUi::handleRoster(PlayerRoster &roster, RosterKind) {
     uint8_t paletteCount = 0;
     const PlayerPalette::PaletteEntry *palette = PlayerPalette::table(paletteCount);
 
-    const std::vector<UserProfile *> &players = roster.profiles();
+    const std::vector<UserProfile *> &profiles = roster.profiles();
     std::vector<RosterJson::Row> rows;
-    rows.reserve(players.size());
-    for (size_t i = 0; i < players.size(); i++) {
-        rows.push_back(RosterJson::Row{players[i]->getName(), players[i]->getColor(), players[i]->getUid()});
+    rows.reserve(profiles.size());
+    for (size_t i = 0; i < profiles.size(); i++) {
+        rows.push_back(RosterJson::Row{profiles[i]->getName(), profiles[i]->getColor(), profiles[i]->getUid()});
     }
 
     const std::string out = RosterJson::build(PlayerRosterLimits::MAX_PLAYERS, palette, paletteCount,
@@ -218,14 +236,14 @@ void PlayerSetupWebUi::handleDevice() {
  * Server-authoritative and atomic: the whole sizeof(PlayersData) blob is staged in
  * RAM and validated before a single putBytes. Any rejection leaves NVS untouched.
  */
-void PlayerSetupWebUi::handleSave() {
+void PlayerSetupWebUi::handleSave(PlayerRoster &roster, RosterKind) {
     if (server->hasArg("reset") && server->arg("reset") == "1") {
         if (!roster.resetToDefaults()) {
             server->send(500, TEXT_PLAIN_PL, "Nie udało się zapisać w NVS.");
             return;
         }
 
-        server->send(200, TEXT_PLAIN_PL, "Przywrócono profile fabryczne. Restart...");
+        server->send(200, TEXT_PLAIN_PL, "Przywrócono ustawienia fabryczne. Restart...");
         armRestart();
         return;
     }
@@ -250,7 +268,7 @@ void PlayerSetupWebUi::handleSave() {
  * State only - never NVS, never a draw. Gated like /save: the preview must not
  * work with the AP closed, since then nobody has the roster editor open.
  */
-void PlayerSetupWebUi::handlePreview() {
+void PlayerSetupWebUi::handlePreview(PlayerRoster &roster, const RosterKind kind) {
     if (!server->hasArg("playerId") || !server->hasArg("color")) {
         reject("Brak pola playerId lub color.");
         return;
@@ -284,15 +302,15 @@ void PlayerSetupWebUi::handlePreview() {
     // The first preview since open() pairs the player with the lowest other
     // roster id, in that player's stored colour.
     PreviewSlot partner;
-    const std::vector<UserProfile *> &players = roster.profiles();
-    for (size_t i = 0; i < players.size(); i++) {
-        if (players[i]->getId() != playerId) {
-            partner = PreviewSlot{players[i]->getId(), players[i]->getColor(), true};
+    const std::vector<UserProfile *> &profiles = roster.profiles();
+    for (size_t i = 0; i < profiles.size(); i++) {
+        if (profiles[i]->getId() != playerId) {
+            partner = PreviewSlot{profiles[i]->getId(), profiles[i]->getColor(), true};
             break;
         }
     }
 
-    preview.show(static_cast<uint8_t>(playerId), color, partner);
+    preview.show(kind, static_cast<uint8_t>(playerId), color, partner);
 
     server->send(204, TEXT_PLAIN_PL, "");
 }
