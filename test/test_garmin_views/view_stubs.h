@@ -62,6 +62,7 @@ public:
     void setWatchCount(uint8_t) {}
     void drawBitmap(const uint8_t *) {}
     void drawBatteryPercent(uint8_t) {}
+    void drawTopLeftNote(const char *) {}
     void drawWatchBadge() {}
     template <typename L, typename R> void renderPlayerWidget(const L &, const R &) {}
     template <typename L, typename R> void renderScoreWidget(const L &, const R &) {}

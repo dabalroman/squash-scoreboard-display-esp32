@@ -11,6 +11,7 @@
 #include "Garmin/WatchSport.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ModeSwitchingBarRenderer.h"
+#include "Display/OledNavbar.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 
@@ -150,8 +151,7 @@ public:
                              EInkFooter(nullptr, nullptr, nullptr, batteryPercent));
     }
 
-    // The battery reaches the OLED only where there is no e-paper to carry it (V1).
-    // Gated on the two facts, never on the board.
+    // The main screen alone carries battery and watches on the OLED navbar.
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
@@ -159,14 +159,9 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-        // The main screen alone carries the status header (battery, watches); V2's sits in the
-        // e-paper footer instead.
-        if (!EInkDisplay::available()) {
-            if (batteryMonitor.available()) {
-                backDisplay.drawBatteryPercent(batteryMonitor.percent());
-            }
-            backDisplay.drawWatchBadge();
-        }
+        OledNavbar(nullptr,
+                   batteryMonitor.available() ? static_cast<int16_t>(batteryMonitor.percent()) : -1,
+                   true).render(backDisplay);
         backDisplay.display();
 
         shouldRenderBack = false;

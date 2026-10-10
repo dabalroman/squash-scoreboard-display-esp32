@@ -8,7 +8,12 @@
  * that only moves as far as needed to keep the selection visible.
  */
 class ScrollableWidget {
-    enum : uint8_t { ROWS_ON_SCREEN = 3 };
+    // Baselines 24/42/60: row 0 clears the navbar strip (y 1..7) and the dead V2 rows.
+    enum : uint8_t { ROWS_ON_SCREEN = 3, ROW_PITCH = 18, TOP_OFFSET = 6 };
+
+    static uint8_t rowBaseline(const uint8_t row) {
+        return TOP_OFFSET + ROW_PITCH * (row + 1);
+    }
 
     Scrollable &scrollable;
     mutable uint8_t optionsListOffset = 0;
@@ -53,15 +58,14 @@ public:
         // Indicator
         backDisplay.setCursorFromTopLeft(
             0,
-            BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b *
-            (1 + scrollable.getSelectedOptionId() - optionsListOffset)
+            rowBaseline(scrollable.getSelectedOptionId() - optionsListOffset)
         );
         backDisplay.print(">");
 
         for (uint8_t i = 0; i < ROWS_ON_SCREEN; i++) {
             backDisplay.setCursorFromTopLeft(
                 BackDisplay::ONE_CHAR_WIDTH_9pt7b,
-                BackDisplay::VERTICAL_CURSOR_OFFSET_9pt7b * (i + 1)
+                rowBaseline(i)
             );
             backDisplay.print(optionOnRow(i));
         }

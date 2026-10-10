@@ -20,6 +20,7 @@
 #include <Fonts/FreeSansBold12pt7b.h>
 
 #include "EInkAsync.h"
+#include "BatteryGauge.h"
 
 // E-paper layout, 128 x 296 portrait. Its own constants - nothing from the OLED.
 namespace EInkLayout {
@@ -135,7 +136,7 @@ namespace EInkWidgets {
         g.drawRect(x, y, bodyWidth, EInkLayout::BATTERY_ICON_HEIGHT, INK);
         g.fillRect(x + bodyWidth, y + 4, 3, EInkLayout::BATTERY_ICON_HEIGHT - 8, INK);
 
-        const int16_t filled = percent >= 80 ? 3 : (percent >= 50 ? 2 : (percent >= 20 ? 1 : 0));
+        const int16_t filled = batteryGaugeBars(percent);
 
         constexpr int16_t barWidth = 6;
         constexpr int16_t barGap = 2;

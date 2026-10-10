@@ -2,6 +2,7 @@
 #define BACK_DISPLAY_H
 
 #include "Strings.h"
+#include "BatteryGauge.h"
 #include "Adafruit_SSD1306.h"
 #include "Board.h"
 #include "Fonts/FreeMono9pt7b.h"
@@ -168,27 +169,41 @@ public:
         drawThiccTopToBottomLine(77, 128 - 83, 3);
     }
 
+    // The OLED battery icon: a 12x7 body, a 1x3 nub, three 2x3 gauge bars (batteryGaugeBars).
+    // Unlit bars are left out - an outlined 2 px bar would read as a lit one.
+    enum : uint8_t { BATTERY_ICON_WIDTH = 13, BATTERY_ICON_GAP = 3 };
+
     /**
-     * Small right-aligned "85%" in the built-in 5x7 font, in the top strip above the
-     * menu's first row (row 0 of the 9 pt menu starts at y 10, this spans y 1..7).
-     * Only meaningful where that strip is lit (DEAD_TOP_ROWS == 0). Restores the
-     * current GFX font so the caller's next draw is unaffected.
+     * Small right-aligned "85%" in the built-in 5x7 font with a battery icon just left of
+     * it, in the top strip above the menu (y 1..7). Only meaningful where that strip is
+     * lit (DEAD_TOP_ROWS == 0); drawn through OledNavbar, which owns that gate. Restores
+     * the current GFX font so the caller's next draw is unaffected.
      */
     void drawBatteryPercent(const uint8_t percent) const {
         char text[6];
         snprintf(text, sizeof(text), "%u%%", percent);
         const int16_t width = static_cast<int16_t>(strlen(text)) * 6 - 1;
+        const int16_t textX = 126 - width;
+        const int16_t y = DEAD_TOP_ROWS + 1;
+
+        const int16_t iconX = textX - BATTERY_ICON_GAP - BATTERY_ICON_WIDTH;
+        screen->drawRect(iconX, y, BATTERY_ICON_WIDTH - 1, 7, SSD1306_WHITE);
+        screen->drawFastVLine(iconX + BATTERY_ICON_WIDTH - 1, y + 2, 3, SSD1306_WHITE);
+        const uint8_t bars = batteryGaugeBars(percent);
+        for (uint8_t i = 0; i < bars; i++) {
+            screen->fillRect(iconX + 2 + i * 3, y + 2, 2, 3, SSD1306_WHITE);
+        }
 
         screen->setFont(nullptr);
         screen->setTextSize(1);
-        screen->setCursor(126 - width, DEAD_TOP_ROWS + 1);
+        screen->setCursor(textX, y);
         screen->print(text);
         screen->setFont(currentFont);
     }
 
     /**
      * Small left-aligned text in the built-in 5x7 font, on the same top strip as
-     * drawBatteryPercent and with the same gate (only meaningful where it is lit).
+     * drawBatteryPercent; drawn through OledNavbar, which owns the gate.
      */
     void drawTopLeftNote(const char *text) const {
         screen->setFont(nullptr);
@@ -237,13 +252,15 @@ public:
         setCursorToLineRight(text, line, offset);
     }
 
-    // The badge's top-left: on drawBatteryPercent's strip, left of its widest "100%"
-    // (x 103..125). main.cpp feeds a count only on boards without an e-paper.
-    enum : uint8_t { WATCH_BADGE_X = 88, WATCH_BADGE_Y = DEAD_TOP_ROWS + 1 };
+    // The badge's top-left: on drawBatteryPercent's strip, left of its widest "100%" plus
+    // icon (x 87..125); the badge's blanked box ends at x 85. main.cpp feeds a count only
+    // on boards without an e-paper.
+    enum : uint8_t { WATCH_BADGE_X = 74, WATCH_BADGE_Y = DEAD_TOP_ROWS + 1 };
 
     /**
      * The main screen's header, beside the battery percent: a 5x7 watch (strap, case,
      * strap) and the count in the built-in 5x7 font. Nothing when no watch is connected.
+     * Drawn through OledNavbar.
      */
     void drawWatchBadge() const {
         if (watchCount == 0) {

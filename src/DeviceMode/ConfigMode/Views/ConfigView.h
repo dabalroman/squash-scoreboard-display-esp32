@@ -10,6 +10,7 @@
 #include "DeviceMode/ConfigMode/ConfigModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
 #include "Display/LedDisplay/Renderer/ConfigBarRenderer.h"
+#include "Display/OledNavbar.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
@@ -239,8 +240,7 @@ public:
                                         ip.length() > 0 ? ip.c_str() : nullptr, -1));
     }
 
-    // The battery reaches the OLED only where there is no e-paper to carry it (V1).
-    // Gated on the two facts, never on the board.
+    // The IP rides the OLED navbar (V1); V2 shows it in the e-paper footer.
     void renderBackDisplay(BackDisplay &backDisplay) override {
         if (!shouldRenderBack) {
             return;
@@ -248,6 +248,8 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
+        const String &ip = preferencesManager.wifiIpAddress;
+        OledNavbar(ip.length() > 0 ? ip.c_str() : nullptr).render(backDisplay);
         backDisplay.display();
 
         shouldRenderBack = false;

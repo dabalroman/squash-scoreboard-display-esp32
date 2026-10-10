@@ -6,6 +6,7 @@
 #include "DeviceMode/View.h"
 #include "DeviceMode/ConfigMode/ConfigModeState.h"
 #include "Display/LedDisplay/LedDisplay.h"
+#include "Display/OledNavbar.h"
 #include "Display/Scrollable.h"
 #include "Display/ScrollableWidget.h"
 #include "Garmin/GarminService.h"
@@ -189,12 +190,9 @@ public:
 
         backDisplay.clear();
         scrollableWidget.render(backDisplay);
-        // V1 has no e-paper footer; its lit top strip takes the paired count instead.
-        if (!EInkDisplay::available()) {
-            char paired[20];
-            snprintf(paired, sizeof(paired), Str::GARMIN_PAIRED_FMT, static_cast<unsigned>(shownPairedCount));
-            backDisplay.drawTopLeftNote(paired);
-        }
+        char paired[20];
+        snprintf(paired, sizeof(paired), Str::GARMIN_PAIRED_FMT, static_cast<unsigned>(shownPairedCount));
+        OledNavbar(paired).render(backDisplay);
         backDisplay.display();
 
         shouldRenderBack = false;
