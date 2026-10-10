@@ -1,0 +1,14 @@
+---
+paths:
+  - "src/Display/*.h"
+  - "src/Display/Images/**"
+---
+
+# Rear OLED (`BackDisplay`)
+
+- **The V2 bench panel is damaged: every *even* pixel row from 0 to 12 is dead** (alternating COM lines, measured with a staircase ruler 2026-09-18) - not a solid strip, which is why a small shift looks like no change at all. `BackDisplay::DEAD_TOP_ROWS` is the first row text may occupy and reads `Board::OLED_DEAD_TOP_ROWS` (V2 11, V1 0 - so `BackDisplay` carries no `#if`); 13 would clear V2's damage completely, but at 11 only the stripe at row 12 crosses a glyph and one missing line is hard to notice. Set V2's to 0 to revert the whole workaround - no other edit. It was global until V1 needed its healthy top strip for the battery readout (user's call, 2026-09-29).
+- The clamp lives in `clearDeadTop()`, called from `print()`/`println()` - **the one point every OLED text draw passes through**, so no cursor setter can be missed. Anything bypassing it must clamp for itself: `Overlay::printBuiltIn` does (built-in font's cursor y is the glyph top, not a baseline). `BackDisplay::drawBitmap()` (full-screen 128x64 art) deliberately does **not** clamp: artwork uses the whole panel (user's call, 2026-09-28).
+- The drop comes from the **font's** ascent, measured once per `initBigFont`/`initSmallFont` from a sample string, never from the individual string. Fitting each string exactly makes the top score hop 1-2 px as its value changes (`1` and `4` ascend 28/27 against 29 for the rest) and puts the menu's `>` marker a pixel off its label. Line 0 big-font baseline is therefore a fixed 40.
+- **Menu rows** come from `ScrollableWidget::rowBaseline` (`TOP_OFFSET` 6 + `ROW_PITCH` 18 per row: baselines 24 / 42 / 60, rows and `>` marker alike, both boards). Row 0 clears the navbar strip and V2's dead rows, so `clearDeadTop` does not shift it. `VERTICAL_CURSOR_OFFSET_9pt7b` (20) stays the small-font line height for `setCursorToLine`.
+- **OLED navbar** (`Display/OledNavbar.h`): the top strip (y 1..7, built-in 5x7 font), a value struct in the `EInkFooter` style that owns the strip's one gate, `!EInkDisplay::available()` - views never repeat it, never `BOARD_REV`. Main menu: battery icon + percent (when `batteryMonitor.available()`) and the watch badge; CONFIG: the IP (`preferencesManager.wifiIpAddress`, omitted while empty); GARMIN: the paired count. Other screens stay free of it (user's call, 2026-10-03). V2 carries the same facts in the e-paper footer. The strip refreshes only when the view re-renders (input, `restoreView`).
+- `BackDisplay::drawBatteryPercent` draws a 13x7 icon (12x7 body, 1x3 nub, up to three 2x3 bars from `batteryGaugeBars()`; unlit bars are left out - an outlined 2 px bar reads as lit) 3 px left of the right-aligned percent. The widest "100%" puts the icon at x 87; `drawWatchBadge()` sits at x 74 so its blanked box ends at x 85.
