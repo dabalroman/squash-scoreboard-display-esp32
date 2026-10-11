@@ -122,7 +122,15 @@ namespace {
         Garmin::buildRosterEntry(0x0A0B0C0D, 0xff, 0x00, 0x00, "ANNA", entries);
         Garmin::buildRosterEntry(0x11223344, 0x00, 0x40, 0xff, "KRYSTIAN", entries + 16);
         Garmin::buildRosterEntry(0x55667788, 0x00, 0xc0, 0x30, "OLA", entries + 32);
-        link.setRoster(3, entries);
+        link.setRoster(Garmin::RosterKind::Players, 3, entries);
+    }
+
+    // Spec 16.4's teams roster.
+    void loadSpecTeams(Link &link) {
+        uint8_t entries[2 * Garmin::ROSTER_ENTRY_SIZE];
+        Garmin::buildRosterEntry(0x21222324, 0xff, 0x80, 0x00, "ORLY", entries);
+        Garmin::buildRosterEntry(0x31323334, 0x00, 0xff, 0x80, "LISY", entries + 16);
+        link.setRoster(Garmin::RosterKind::Teams, 2, entries);
     }
 
     WatchState menuState() {
@@ -485,6 +493,56 @@ void test_roster_reads() {
     expectFrame("00 03 03", link.readRoster(1), "short cursor write ignored");
 }
 
+// Spec 12 active roster: a swap changes the version, the reads and the pushed state.
+void test_roster_kind_swap() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    loadSpecRoster(link);
+    loadSpecTeams(link);
+    // Loading the teams leaves the players active.
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.rosterVersion());
+    authenticate(link, 1, 0);
+    link.subscribe(1, Link::Sub::State, true);
+
+    const WatchState s = menuState();
+    Link::Push pushes[Garmin::MAX_CONNECTIONS];
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 0, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, Garmin::getU32(pushes[0].body + 4));
+
+    // A read in progress crosses the swap: players until the next state is published, then teams.
+    put(link, &Link::writeRoster, 1, "00 00");
+    expectFrame("00 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00", link.readRoster(1), "players 0");
+    link.useRoster(Garmin::RosterKind::Teams);
+    // Not before the new mode's first state: the last state (old sport, old uids) keeps its version,
+    // also in an ack-only push (overlay) and a direct STATE read.
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.rosterVersion());
+    TEST_ASSERT_EQUAL(0, link.preparePushes(nullptr, 50, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, Garmin::getU32(link.readState(1).data + 7));
+    expectFrame("00 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00", link.readRoster(1), "players 1 before the state");
+    put(link, &Link::writeRoster, 1, "00 01");
+    // The version change alone pushes, same WatchState.
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 100, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, Garmin::getU32(pushes[0].body + 4));
+    TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, link.rosterVersion());
+    expectFrame("00 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00", link.readRoster(1), "teams 1 after swap");
+    expectFrame("00 02 02", link.readRoster(1), "teams past the end");
+
+    put(link, &Link::writeRoster, 1, "00 00");
+    expectFrame("00 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00", link.readRoster(1), "teams 0");
+
+    TEST_ASSERT_EQUAL(0, link.preparePushes(&s, 150, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, Garmin::getU32(link.readState(1).data + 7));
+
+    // Swap back: the 16.4 / 16.5 bytes again.
+    link.useRoster(Garmin::RosterKind::Players);
+    TEST_ASSERT_EQUAL(0, link.preparePushes(nullptr, 180, pushes));
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 200, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.rosterVersion());
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, Garmin::getU32(pushes[0].body + 4));
+    put(link, &Link::writeRoster, 1, "00 03");
+    expectFrame("00 03 03", link.readRoster(1), "players past the end");
+}
+
 // One key per connection, and a re-issued slot drops the live connection that proved its old key.
 void test_pairing_one_key_per_connection_and_rekey() {
     Link link(fakeFill, fakeWord);
@@ -582,6 +640,26 @@ void test_watch_sport_table() {
     TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::Booting).screen == Garmin::ScreenId::Booting);
     TEST_ASSERT_TRUE(WatchSport::fromModeState(static_cast<DeviceModeState>(99)).screen == Garmin::ScreenId::Booting);
 
+    // Spec 12's kind table = the roster main.cpp's buildDeviceMode() hands each mode.
+    const Garmin::RosterKind P = Garmin::RosterKind::Players, T = Garmin::RosterKind::Teams;
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::SquashMode).roster == P);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::PadelMode).roster == T);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::VolleyballMode).roster == T);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::ShortVolleyballMode).roster == T);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::ModeSwitchingMode).roster == P);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::ConfigMode).roster == P);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::PlayerSetupMode).roster == P);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(DeviceModeState::Booting).roster == P);
+    TEST_ASSERT_TRUE(WatchSport::fromModeState(static_cast<DeviceModeState>(99)).roster == P);
+    // Every row of a team sport is Teams, and only those.
+    uint8_t count;
+    const WatchModeInfo *rows = WatchSport::table(count);
+    for (uint8_t i = 0; i < count; i++) {
+        const bool team = rows[i].sport == Garmin::SportId::Padel || rows[i].sport == Garmin::SportId::Volleyball
+                          || rows[i].sport == Garmin::SportId::ShortVolleyball;
+        CHECK(rows[i].roster == (team ? T : P), "row %u: wrong roster kind", static_cast<unsigned>(i));
+    }
+
     DeviceModeState mode;
     TEST_ASSERT_TRUE(WatchSport::modeForSport(0x02, mode));
     TEST_ASSERT_TRUE(mode == DeviceModeState::VolleyballMode);
@@ -603,6 +681,7 @@ int main() {
     RUN_TEST(test_queue_full_busy_and_disconnect);
     RUN_TEST(test_push_spec_vector_and_retry);
     RUN_TEST(test_roster_reads);
+    RUN_TEST(test_roster_kind_swap);
     RUN_TEST(test_pairing_one_key_per_connection_and_rekey);
     RUN_TEST(test_forget_all_drops_trust);
     RUN_TEST(test_connection_limit_and_enable);

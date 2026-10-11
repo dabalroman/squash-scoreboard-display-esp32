@@ -16,21 +16,26 @@ struct WatchModeInfo {
     // False: the mode always shows `screen` (no screen data). True: the view describes it.
     bool viewDescribes;
     Garmin::ScreenId screen;
+    // The roster this mode is handed in main.cpp's buildDeviceMode().
+    Garmin::RosterKind roster;
 };
 
 namespace WatchSport {
     inline const WatchModeInfo *table(uint8_t &count) {
         // A local, not a static constexpr member: C++11 has no inline variables.
         static const WatchModeInfo TABLE[] = {
-            {DeviceModeState::Booting, Garmin::SportId::None, false, Garmin::ScreenId::Booting},
-            {DeviceModeState::ModeSwitchingMode, Garmin::SportId::None, true, Garmin::ScreenId::Menu},
-            {DeviceModeState::ConfigMode, Garmin::SportId::None, false, Garmin::ScreenId::Config},
-            {DeviceModeState::PlayerSetupMode, Garmin::SportId::None, false, Garmin::ScreenId::Profile},
-            {DeviceModeState::SquashMode, Garmin::SportId::Squash, true, Garmin::ScreenId::ChoosePlayers},
-            {DeviceModeState::VolleyballMode, Garmin::SportId::Volleyball, true, Garmin::ScreenId::ChoosePlayers},
+            {DeviceModeState::Booting, Garmin::SportId::None, false, Garmin::ScreenId::Booting, Garmin::RosterKind::Players},
+            {DeviceModeState::ModeSwitchingMode, Garmin::SportId::None, true, Garmin::ScreenId::Menu, Garmin::RosterKind::Players},
+            {DeviceModeState::ConfigMode, Garmin::SportId::None, false, Garmin::ScreenId::Config, Garmin::RosterKind::Players},
+            {DeviceModeState::PlayerSetupMode, Garmin::SportId::None, false, Garmin::ScreenId::Profile, Garmin::RosterKind::Players},
+            {DeviceModeState::SquashMode, Garmin::SportId::Squash, true, Garmin::ScreenId::ChoosePlayers,
+             Garmin::RosterKind::Players},
+            {DeviceModeState::VolleyballMode, Garmin::SportId::Volleyball, true, Garmin::ScreenId::ChoosePlayers,
+             Garmin::RosterKind::Teams},
             {DeviceModeState::ShortVolleyballMode, Garmin::SportId::ShortVolleyball, true,
-             Garmin::ScreenId::ChoosePlayers},
-            {DeviceModeState::PadelMode, Garmin::SportId::Padel, true, Garmin::ScreenId::ChoosePlayers},
+             Garmin::ScreenId::ChoosePlayers, Garmin::RosterKind::Teams},
+            {DeviceModeState::PadelMode, Garmin::SportId::Padel, true, Garmin::ScreenId::ChoosePlayers,
+             Garmin::RosterKind::Teams},
         };
         count = sizeof(TABLE) / sizeof(TABLE[0]);
         return TABLE;

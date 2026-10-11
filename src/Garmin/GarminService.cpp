@@ -271,7 +271,7 @@ void GarminService::load() {
             static_cast<unsigned>(gLink.pairedCount()), found && !valid ? " (stored blob rejected)" : "");
 }
 
-void GarminService::setRoster(const std::vector<UserProfile *> &profiles) {
+void GarminService::setRoster(const Garmin::RosterKind kind, const std::vector<UserProfile *> &profiles) {
     uint8_t entries[32 * Garmin::ROSTER_ENTRY_SIZE];
     uint8_t count = 0;
     for (const UserProfile *profile : profiles) {
@@ -281,7 +281,11 @@ void GarminService::setRoster(const std::vector<UserProfile *> &profiles) {
                                  entries + static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
         count++;
     }
-    gLink.setRoster(count, entries);
+    gLink.setRoster(kind, count, entries);
+}
+
+void GarminService::useRoster(const Garmin::RosterKind kind) {
+    gLink.useRoster(kind);
 }
 
 bool GarminService::isEnabled() const {

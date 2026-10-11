@@ -213,7 +213,7 @@ no notifications. Notify-only, never indications (unreliable on some watches).
 | 5 | write AUTH | proof |
 | 6 | read AUTH | result; verify the board's MAC |
 | 7 | write STATE CCCD `01 00` | the board then notifies the full current state |
-| 8 | if `rosterVersion` changed: write ROSTER `[PROTO, 0]`, read `count` times | section 12 |
+| 8 | if `rosterVersion` differs from the cache of the active roster's kind: write ROSTER `[PROTO, 0]`, read `count` times | section 12 |
 
 Pairing inserts its exchange (section 9) before step 4 on the same connection. Presses are
 ignored until step 7's state has arrived. On disconnect the watch drops all pending presses and
@@ -415,7 +415,7 @@ connection, so each connection gets its own push.
 | 1 | 1 | `sport` (0 outside a sport) |
 | 2 | 1 | `ackSeq` (0 = none on this connection) |
 | 3 | 1 | `ackStatus` |
-| 4 | 4 | `rosterVersion` (section 12) |
+| 4 | 4 | `rosterVersion` of the active roster (section 12) |
 | 8 | n | screen data |
 
 Sports - one wire table, independent of `DeviceModeState`; the watch offers exactly the sports
@@ -515,12 +515,36 @@ CELEBRATION and GAME_OVER (body 22, 2 chunks):
 - `rosterVersion` = CRC-32 (ISO-HDLC, as zlib `crc32`; check value `0xCBF43926` for ASCII
   `123456789`) over `count` (1 B) followed by every entry's 16-byte wire form (uid, r, g, b,
   name) in index order. Only the board computes it; the watch compares it.
-- The watch caches entries (per board id) and re-reads them only when `rosterVersion` differs
-  from its cache.
+- The watch caches entries per (board id, roster kind) and re-reads them only when
+  `rosterVersion` differs from the cached version of the kind the state's sport names.
 - Read: write ROSTER `[PROTO, index]` (2 B) to set the per-connection cursor (0 at connect),
   then each read returns the entry at the cursor and advances it. A full re-read = 1 write +
   `count` reads (32 profiles ~ 33 requests, ~8 s at the Connect IQ tick; only after a roster
   change).
+
+**Active roster.** The board keeps two rosters, players and teams, and publishes one at a
+time: `rosterVersion` and the ROSTER characteristic always describe the **active** roster,
+the one every uid in the current state belongs to (CHOOSE_PLAYERS' selection and cursor,
+`leftUid` / `rightUid`). The kind is not on the wire; both sides derive it from the state's
+`sport`:
+
+| `sport` | Roster kind |
+|---|---|
+| `0x04` padel, `0x02` volleyball, `0x03` short volleyball | teams |
+| `0x01` squash, `0x00` (BOOTING, MENU, CONFIG, PROFILE) | players |
+
+- The board selects the roster when it changes mode and switches to it **with** the first
+  state of the new mode: until that state is published, every state (pushed or read) keeps the
+  old `rosterVersion` and the old roster is read, so a state's uids, its `sport` and its
+  `rosterVersion` always name the same roster. A changed `rosterVersion` alone triggers a push.
+- A watch retries a failed read only while the latest state still names the version it asked
+  for; after a switch the old version is moot.
+- A read in flight across a switch returns entries of the new roster (the cursor is per
+  connection and survives it). The watch verifies the CRC of what it read against the version
+  it asked for, discards a mismatch (never caches it under either kind) and re-reads; the board
+  does nothing special.
+- A watch that ignores the kind (one cache slot per board) still works: it re-reads on every
+  switch between a team sport and the rest.
 
 ROSTER read - 19 B, or 3 B past the end:
 
@@ -640,6 +664,25 @@ ROSTER read  (19 B): 00 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
 ROSTER read  (19 B): 00 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
 ROSTER read  (3 B):  00 03 03                 (past the end)
 ```
+
+The roster above is the players roster. Teams roster (active in padel and volleyball):
+`ORLY` uid `0x21222324` rgb `ff 80 00`; `LISY` uid `0x31323334` rgb `00 ff 80`.
+
+```
+rosterVersion input (33 B):
+  02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80
+  4c 49 53 59 00 00 00 00 00
+rosterVersion = 0xdb5f702c (on the wire: 2c 70 5f db)
+
+ROSTER write (2 B):  00 00
+ROSTER read  (19 B): 00 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
+ROSTER read  (19 B): 00 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
+ROSTER read  (3 B):  00 02 02                 (past the end)
+```
+
+Selecting padel from MENU switches the active roster: the next state carries `2c 70 5f db` at
+body offset 4 in place of `5b e7 0f 15`, and ROSTER reads return the teams. Back on MENU the
+version is `0x150fe75b` again.
 
 ### 16.5 MENU state
 

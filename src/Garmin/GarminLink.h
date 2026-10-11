@@ -134,21 +134,32 @@ public:
         }
     }
 
-    // --- Roster (setup; it only changes across a reboot) ---
+    // --- Roster (both tables built in setup; they only change across a reboot) ---
 
-    void setRoster(uint8_t count, const uint8_t *entries) {
+    void setRoster(const Garmin::RosterKind kind, uint8_t count, const uint8_t *entries) {
         if (count > ROSTER_MAX) count = ROSTER_MAX;
         // The CRC is the slow part; it runs before the lock.
         const uint32_t version = Garmin::rosterVersion(count, entries);
+        const uint8_t k = slotOf(kind);
         Guard g;
-        rosterCount = count;
-        memcpy(roster, entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
-        rosterVer = version;
+        rosterCount[k] = count;
+        memcpy(roster[k], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        rosterVers[k] = version;
+    }
+
+    // Per mode change (spec 12): no copy, no CRC. Takes effect with the next published state, so
+    // an ack-only push or a STATE read in between never pairs the old sport with the new version
+    // (the watch would file the roster under the wrong kind). A read in flight across the switch
+    // returns entries of the new roster; the watch's CRC check against the version it asked for rejects them.
+    void useRoster(const Garmin::RosterKind kind) {
+        const uint8_t k = slotOf(kind);
+        Guard g;
+        pendingRoster = k;
     }
 
     uint32_t rosterVersion() const {
         Guard g;
-        return rosterVer;
+        return rosterVers[activeRoster];
     }
 
     // --- Pairing window (loop) ---
@@ -379,8 +390,9 @@ public:
         Guard g;
         Conn *c = find(handle);
         if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
-        const Garmin::Frame f = Garmin::buildRosterRead(c->rosterCursor, rosterCount, roster);
-        if (c->rosterCursor < rosterCount) c->rosterCursor++;
+        const uint8_t count = rosterCount[activeRoster];
+        const Garmin::Frame f = Garmin::buildRosterRead(c->rosterCursor, count, roster[activeRoster]);
+        if (c->rosterCursor < count) c->rosterCursor++;
         return f;
     }
 
@@ -390,7 +402,7 @@ public:
         const Conn *c = find(handle);
         if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
         uint8_t body[MAX_BODY];
-        const uint8_t len = lastState.build(c->ackSeq, c->ackStatus, rosterVer, body);
+        const uint8_t len = lastState.build(c->ackSeq, c->ackStatus, rosterVers[activeRoster], body);
         return Garmin::buildStateChunk(c->stateSeq, body, len, 0);
     }
 
@@ -476,13 +488,18 @@ public:
      */
     uint8_t preparePushes(const WatchState *state, const uint32_t now, Push out[Garmin::MAX_CONNECTIONS]) {
         Guard g;
-        if (state != nullptr) lastState = *state;
+        if (state != nullptr) {
+            lastState = *state;
+            activeRoster = pendingRoster;
+        }
         uint8_t n = 0;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             Conn &c = conns[i];
             if (c.handle == NO_HANDLE || !c.authed || !c.stateSub) continue;
             if (c.retryPending && static_cast<int32_t>(now - c.retryAt) < 0) continue;
+            const uint32_t version = rosterVers[activeRoster];
             const bool changed = c.needPush || !c.pushedOnce || c.pushed != lastState
+                                 || c.pushedRosterVer != version
                                  || c.pushedAckSeq != c.ackSeq || c.pushedAckStatus != c.ackStatus;
             if (!changed) continue;
 
@@ -491,13 +508,14 @@ public:
             c.retryPending = false;
             c.pushedOnce = true;
             c.pushed = lastState;
+            c.pushedRosterVer = version;
             c.pushedAckSeq = c.ackSeq;
             c.pushedAckStatus = c.ackStatus;
 
             Push &p = out[n++];
             p.handle = c.handle;
             p.stateSeq = c.stateSeq;
-            p.len = lastState.build(c.ackSeq, c.ackStatus, rosterVer, p.body);
+            p.len = lastState.build(c.ackSeq, c.ackStatus, version, p.body);
         }
         return n;
     }
@@ -571,6 +589,7 @@ private:
         Garmin::AckStatus ackStatus = Garmin::AckStatus::Applied;
         uint8_t stateSeq = 0;
         WatchState pushed;
+        uint32_t pushedRosterVer = 0;
         uint8_t pushedAckSeq = 0;
         Garmin::AckStatus pushedAckStatus = Garmin::AckStatus::Applied;
         uint32_t unauthSince = 0;
@@ -604,9 +623,18 @@ private:
     uint8_t queueHead = 0;
     uint8_t queueCount = 0;
 
-    uint8_t roster[ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
-    uint8_t rosterCount = 0;
-    uint32_t rosterVer = Garmin::rosterVersion(0, nullptr);
+    enum : uint8_t { ROSTER_KINDS = 2 };
+
+    static uint8_t slotOf(const Garmin::RosterKind kind) {
+        return kind == Garmin::RosterKind::Teams ? 1 : 0;
+    }
+
+    // Indexed by slotOf(); `activeRoster` is what rosterVersion and ROSTER reads describe.
+    uint8_t roster[ROSTER_KINDS][ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
+    uint8_t rosterCount[ROSTER_KINDS] = {};
+    uint32_t rosterVers[ROSTER_KINDS] = {Garmin::rosterVersion(0, nullptr), Garmin::rosterVersion(0, nullptr)};
+    uint8_t activeRoster = 0;
+    uint8_t pendingRoster = 0;
 
     bool pairing = false;
     uint32_t pairingOpenedAt = 0;

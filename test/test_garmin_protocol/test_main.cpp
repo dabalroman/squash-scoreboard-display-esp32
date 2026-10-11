@@ -184,6 +184,22 @@ void test_roster() {
     expectBuf("00 03 03", buildRosterRead(3, 3, entries.data()), "16.4 past the end");
     expectBuf("00 c8 03", buildRosterRead(200, 3, entries.data()), "far past the end");
 
+    // 16.4 teams roster.
+    uint8_t teams[2 * ROSTER_ENTRY_SIZE];
+    buildRosterEntry(0x21222324, 0xff, 0x80, 0x00, "ORLY", teams);
+    buildRosterEntry(0x31323334, 0x00, 0xff, 0x80, "LISY", teams + 16);
+    std::vector<uint8_t> teamInput(1, 2);
+    teamInput.insert(teamInput.end(), teams, teams + sizeof(teams));
+    expectBytes("02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80"
+                "4c 49 53 59 00 00 00 00 00",
+                teamInput.data(), teamInput.size(), "16.4 teams rosterVersion input");
+    TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, rosterVersion(2, teams));
+    expectBuf("00 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00", buildRosterRead(0, 2, teams),
+              "16.4 teams read 0");
+    expectBuf("00 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00", buildRosterRead(1, 2, teams),
+              "16.4 teams read 1");
+    expectBuf("00 02 02", buildRosterRead(2, 2, teams), "16.4 teams past the end");
+
     // A 9-character name fills the field with no NUL; a longer one is cut.
     uint8_t e[ROSTER_ENTRY_SIZE];
     buildRosterEntry(1, 0, 0, 0, "ABCDEFGHIJK", e);

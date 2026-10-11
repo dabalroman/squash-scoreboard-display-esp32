@@ -78,6 +78,9 @@ namespace Garmin {
         Padel = 0x04,
     };
 
+    // Which roster a screen's uids belong to (spec 12). Never on the wire: the watch derives it from the sport.
+    enum class RosterKind : uint8_t { Players = 0, Teams = 1 };
+
     // 0x0C (END_MATCH) was dropped from v0 and stays unused, so it parses as UnknownCmd.
     enum class CommandId : uint8_t {
         SelectSport = 0x01,

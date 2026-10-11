@@ -25,8 +25,11 @@ public:
     // setup(), before begin(): reads the "gar" blob.
     void load();
 
-    // setup(), before begin(). The roster only changes across a reboot (the web save restarts).
-    void setRoster(const std::vector<UserProfile *> &profiles);
+    // setup(), before begin(), once per kind. A roster only changes across a reboot (the web save restarts).
+    void setRoster(Garmin::RosterKind kind, const std::vector<UserProfile *> &profiles);
+
+    // Every mode build (spec 12): the roster the new mode's uids belong to. Cheap, no CRC.
+    void useRoster(Garmin::RosterKind kind);
 
     bool isEnabled() const;
 

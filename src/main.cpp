@@ -170,6 +170,9 @@ void playMatchOver(const CelebrationVariant variant) {
 
 void buildDeviceMode(const DeviceModeState deviceModeState) {
     deviceState = deviceModeState;
+    // The link switches with the new mode's first published state (spec 12), so a state's uids
+    // and its rosterVersion always name the same roster.
+    garminService.useRoster(WatchSport::fromModeState(deviceModeState).roster);
 
     switch (deviceModeState) {
         default:
@@ -274,7 +277,8 @@ void setup() {
     playerRoster.load(FactoryRosters::PLAYERS, FactoryRosters::PLAYER_COUNT);
     teamRoster.load(FactoryRosters::TEAMS, FactoryRosters::TEAM_COUNT);
     garminService.load();
-    garminService.setRoster(playerRoster.profiles());
+    garminService.setRoster(Garmin::RosterKind::Players, playerRoster.profiles());
+    garminService.setRoster(Garmin::RosterKind::Teams, teamRoster.profiles());
     initHardware();
     // Stored brightness before the boot sweep, buzzer state before anything can sound.
     preferencesManager.apply();
