@@ -3,8 +3,8 @@
 Contract between the scoreboard firmware (task #80) and the Connect IQ watch app (task #81).
 Spec for task #79. Background and measurements: the POC (see `docs/garmin-remote-poc.md`).
 
-Status: **draft, protocol version 0 (development)**. Every value here may change until v1 is
-frozen at the first public Connect IQ store release (see [Versioning](#5-versioning-and-compatibility)).
+Status: **protocol version 0, frozen** at the first public Connect IQ store release (watch app
+1.0.0). An incompatible change now bumps `PROTO` (see [Versioning](#5-versioning-and-compatibility)).
 Deviations from the locked task decisions are listed in [Open questions](#17-open-questions-and-deviations).
 
 ## 1. Model
@@ -42,7 +42,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 
 | Name | Value |
 |---|---|
-| `PROTO` | `0x00` (v0, development) |
+| `PROTO` | `0x00` (v0, frozen at store release 1.0.0) |
 | Company id | `0xFFFF` (Bluetooth SIG test id, until a registered one exists) |
 | Product magic | `53 43 42 44` (ASCII `SCBD`), 4 bytes, frozen forever |
 | Board id | `uint32`, random, generated on the first enable of the feature, stored in NVS; never `0x00000000` or `0xFFFFFFFF` |
@@ -148,10 +148,11 @@ offset 0 or 2). Then:
 
 - One integer protocol version. The board declares only its own (`PROTO`). The watch app
   declares the range it supports, `[MIN_BOARD_PROTO, MAX_BOARD_PROTO]`.
-- **v0 = development.** The wire format may change freely; the watch accepts exactly v0
-  (`MIN = MAX = 0`); no compatibility matrix is kept before release.
-- **v1 is frozen at the first public Connect IQ store release.** From then on every
-  incompatible change bumps `PROTO`, and the range check applies.
+- **v0 is frozen at the first public Connect IQ store release** (watch app 1.0.0, accepting
+  exactly v0: `MIN = MAX = 0`). It was the development version until then; every board was on
+  the final v0 firmware at release, so no earlier v0 layout is in the field.
+- From then on every incompatible change bumps `PROTO` (the next one is v1), and the range
+  check applies.
 - The watch checks the version from the advertising data before connecting, and again from the
   VERSION characteristic after connecting (both must be in range and equal).
 
@@ -164,7 +165,7 @@ offset 0 or 2). Then:
 The board never refuses a watch by version: a watch whose frames carry a different `PROTO`
 simply gets them dropped.
 
-**Incompatible (bump `PROTO`, from v1):** any change to an existing frame's byte layout,
+**Incompatible (bump `PROTO`):** any change to an existing frame's byte layout,
 field size or offset; a new meaning for an existing value (command, screen, sport, status, flag
 bit); removing a command, screen, sport or characteristic; changing a UUID, the advertising
 layout, the chunk header, the auth or pairing exchange, the MAC construction or truncation;
@@ -724,7 +725,7 @@ STATE notify ( 9 B): 00 2c 12 00 00 02 01 03 04
 ### 16.8 Too-old and too-new board
 
 Hypothetical released watch app with `MIN_BOARD_PROTO = 1`, `MAX_BOARD_PROTO = 2`
-(a v0 watch has `MIN = MAX = 0`):
+(store app 1.0.0 has `MIN = MAX = 0`):
 
 | Advertising (`ADV_IND`) | `PROTO` | Watch |
 |---|---|---|
