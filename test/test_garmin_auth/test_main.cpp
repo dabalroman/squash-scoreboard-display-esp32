@@ -142,13 +142,13 @@ void test_spec_auth_exchange() {
     expectHex("1857e1b4a96ebf5a", mac, sizeof(mac), "16.2 board MAC");
 
     // The board's side of 16.2: parse the proof write, verify it, answer with its MAC.
-    const std::vector<uint8_t> write = hex("00 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae");
+    const std::vector<uint8_t> write = hex("01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae");
     Garmin::AuthProof proof{};
     TEST_ASSERT_TRUE(Garmin::parseAuthProof(write.data(), write.size(), proof));
     TEST_ASSERT_TRUE(GarminAuth::verifyWatchMac(key.data(), nb.data(), proof.mac));
     GarminAuth::boardMac(key.data(), proof.nw, mac);
     const Garmin::Frame result = Garmin::buildAuthResultOk(mac);
-    expectHex("00 02 00 18 57 e1 b4 a9 6e bf 5a", result.data, result.len, "16.2 result read");
+    expectHex("01 02 00 18 57 e1 b4 a9 6e bf 5a", result.data, result.len, "16.2 result read");
 
     // Any flipped bit in the proof, the nonce or the key fails.
     for (uint8_t bit = 0; bit < 64; bit++) {
@@ -167,7 +167,7 @@ void test_spec_auth_exchange() {
 
 void test_spec_pairing_key_authenticates() {
     // 16.3: the key returned by pairing is the one 16.2 authenticates with.
-    const std::vector<uint8_t> read = hex("00 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f");
+    const std::vector<uint8_t> read = hex("01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f");
     const std::vector<uint8_t> nb = hex("a0 a1 a2 a3 a4 a5 a6 a7");
     uint8_t mac[Garmin::MAC_SIZE];
     GarminAuth::watchMac(&read[4], nb.data(), mac);

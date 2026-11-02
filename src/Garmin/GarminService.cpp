@@ -48,6 +48,7 @@ namespace {
     volatile uint32_t gHeapAfter = 0;
     volatile uint16_t gStateAttr = 0;
     volatile uint16_t gPairingAttr = 0;
+    volatile uint16_t gHeartAttr = 0;
     uint32_t gStartedAt = 0;
     bool gBlockedThisBoot = false;
 
@@ -102,7 +103,7 @@ namespace {
         }
     };
 
-    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing };
+    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing, Heart };
 
     // Host task. Every write is length-checked by the GarminLink parsers before anything
     // is touched; what an unauthenticated connection may do is decided there.
@@ -150,6 +151,9 @@ namespace {
                 case Chr::Pairing:
                     gLink.writePairing(handle, value.data(), value.size(), millis());
                     break;
+                case Chr::Heart:
+                    gLink.writeHeart(handle, value.data(), value.size(), millis());
+                    break;
                 default:
                     break;
             }
@@ -161,6 +165,8 @@ namespace {
                 gLink.subscribe(desc->conn_handle, GarminLink::Sub::State, notify);
             } else if (kind == Chr::Pairing) {
                 gLink.subscribe(desc->conn_handle, GarminLink::Sub::Pairing, notify);
+            } else if (kind == Chr::Heart) {
+                gLink.subscribe(desc->conn_handle, GarminLink::Sub::Heart, notify);
             }
         }
 
@@ -174,6 +180,7 @@ namespace {
     CharCallbacks rosterCallbacks(Chr::Roster);
     CharCallbacks authCallbacks(Chr::Auth);
     CharCallbacks pairingCallbacks(Chr::Pairing);
+    CharCallbacks heartCallbacks(Chr::Heart);
 
     NimBLECharacteristic *addCharacteristic(NimBLEService *service, const char *uuid, const uint32_t properties,
                                             NimBLECharacteristicCallbacks *callbacks) {
@@ -195,6 +202,7 @@ namespace {
         gLink.resetConnections();
         gStateAttr = 0;
         gPairingAttr = 0;
+        gHeartAttr = 0;
         gHeapAfter = internalHeap();
     }
 
@@ -221,11 +229,15 @@ namespace {
         NimBLECharacteristic *pairing = addCharacteristic(
             service, Garmin::PAIRING_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY,
             &pairingCallbacks);
+        NimBLECharacteristic *heart = addCharacteristic(service, Garmin::HEART_UUID,
+                                                        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY,
+                                                        &heartCallbacks);
         service->start();
         // Attribute handles exist once the GATT server has started.
         server->start();
         gStateAttr = state->getHandle();
         gPairingAttr = pairing->getHandle();
+        gHeartAttr = heart->getHandle();
 
         // Spec 4.3: both payloads explicit, so NimBLE adds neither the UUID nor the name.
         NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
@@ -521,6 +533,13 @@ void GarminService::sendPushes(const WatchState *state, const uint32_t now) {
                 break;
             }
         }
+    }
+
+    // HEART rides the same 50 ms tick; its own 1 s limit is in the relay.
+    GarminLink::Notify hearts[Garmin::MAX_CONNECTIONS];
+    const uint8_t h = gLink.takeHeartNotifies(now, hearts);
+    for (uint8_t i = 0; i < h; i++) {
+        if (!sendFrame(hearts[i].handle, gHeartAttr, hearts[i].frame)) gLink.heartFailed(hearts[i].handle);
     }
 }
 

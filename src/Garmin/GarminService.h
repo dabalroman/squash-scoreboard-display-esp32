@@ -52,7 +52,7 @@ public:
     // While an Overlay owns the displays: every queued command is answered BUSY.
     void rejectQueued();
 
-    // Once per 50 ms tick: notifies every subscribed watch whose state or ack changed.
+    // Once per 50 ms tick: notifies every subscribed watch whose state or ack changed, and HEART (spec 18).
     void publish(const WatchState &state, uint32_t now);
     // The last state again, for acks made while nothing is described (overlay).
     void publishAcks(uint32_t now);

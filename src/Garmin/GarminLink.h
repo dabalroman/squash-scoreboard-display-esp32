@@ -7,13 +7,14 @@
 
 #include "GarminData.h"
 #include "GarminProtocol.h"
+#include "HeartRelay.h"
 #include "Sha256.h"
 #include "WatchCommand.h"
 #include "WatchState.h"
 
 /**
- * The board's protocol state (spec 6-12) without NimBLE: connection slots, auth, pairing,
- * dedupe, the command queue, acks, state pushes, timeouts and the in-RAM GarminData.
+ * The board's protocol state (spec 6-12, 18) without NimBLE: connection slots, auth, pairing,
+ * dedupe, the command queue, acks, state pushes, timeouts, the HEART relay and the in-RAM GarminData.
  * GarminService feeds it the host task's events and sends what it hands back, so the host
  * suites test the logic the board runs.
  *
@@ -40,7 +41,7 @@ public:
         TERMINATE_RETRY_MS = 1000,
     };
 
-    enum class Sub : uint8_t { State, Pairing };
+    enum class Sub : uint8_t { State, Pairing, Heart };
 
     struct Queued {
         uint16_t handle;
@@ -129,6 +130,7 @@ public:
             wipePairingReply(c);
             if (!c.authed) continue;
             c.authed = false;
+            heart.reset(i);
             c.dropPending = true;
             c.dropAt = now;
         }
@@ -218,6 +220,7 @@ public:
         if (c == nullptr) c = find(NO_HANDLE);
         if (c == nullptr) return false;
         *c = Conn();
+        heart.reset(indexOf(c));
         c->handle = handle;
         memcpy(c->nb, nb, sizeof(nb));
         c->unauthSince = now;
@@ -229,6 +232,7 @@ public:
         Conn *c = find(handle);
         if (c == nullptr) return;
         wipePairingReply(*c);
+        heart.reset(indexOf(c));
         *c = Conn();
         for (uint8_t i = 0; i < QUEUE_DEPTH; i++) {
             if (queue[i].handle == handle) queue[i].handle = NO_HANDLE;
@@ -241,6 +245,11 @@ public:
         if (c == nullptr) return;
         if (which == Sub::Pairing) {
             c->pairingSub = on;
+            return;
+        }
+        if (which == Sub::Heart) {
+            c->heartSub = on;
+            if (on) heart.subscribed(indexOf(c));
             return;
         }
         c->stateSub = on;
@@ -377,6 +386,16 @@ public:
         }
     }
 
+    // Spec 18: authenticated and on PLAYING only, else discarded. No seq, no ack, no state push.
+    void writeHeart(const uint16_t handle, const uint8_t *in, const size_t len, const uint32_t now) {
+        uint8_t bpm;
+        if (!Garmin::parseHeartWrite(in, len, bpm)) return;
+        Guard g;
+        Conn *c = find(handle);
+        if (c == nullptr || !c->authed || lastState.getScreen() != Garmin::ScreenId::Playing) return;
+        heart.set(indexOf(c), bpm, now);
+    }
+
     void writeRoster(const uint16_t handle, const uint8_t *in, const size_t len) {
         uint8_t index;
         if (!Garmin::parseRosterCursor(in, len, index)) return;
@@ -491,6 +510,8 @@ public:
         if (state != nullptr) {
             lastState = *state;
             activeRoster = pendingRoster;
+            // Spec 18: heart rates live only on PLAYING, judged by the published screen.
+            if (lastState.getScreen() != Garmin::ScreenId::Playing) heart.clearValues();
         }
         uint8_t n = 0;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
@@ -535,6 +556,33 @@ public:
         return sendFailures;
     }
 
+    // HEART notifies due now (spec 18): one per authenticated subscriber whose list changed,
+    // at most one per HEART_MIN_INTERVAL_MS each.
+    uint8_t takeHeartNotifies(const uint32_t now, Notify out[Garmin::MAX_CONNECTIONS]) {
+        Guard g;
+        uint8_t sources = 0;
+        for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
+            if (conns[i].handle != NO_HANDLE && conns[i].authed) sources |= static_cast<uint8_t>(1u << i);
+        }
+        uint8_t n = 0;
+        for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
+            const Conn &c = conns[i];
+            if (c.handle == NO_HANDLE || !c.authed || !c.heartSub) continue;
+            uint8_t list[Garmin::HEART_LIST];
+            if (!heart.due(i, sources, now, list)) continue;
+            out[n].handle = c.handle;
+            out[n].frame = Garmin::buildHeart(list);
+            n++;
+        }
+        return n;
+    }
+
+    void heartFailed(const uint16_t handle) {
+        Guard g;
+        Conn *c = find(handle);
+        if (c != nullptr) heart.sendFailed(indexOf(c));
+    }
+
     // A pairing result for a connection subscribed to PAIRING (only ever its own).
     bool takePairingNotify(Notify &out) {
         Guard g;
@@ -556,6 +604,7 @@ public:
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             wipePairingReply(conns[i]);
             conns[i] = Conn();
+            heart.reset(i);
         }
         queueHead = 0;
         queueCount = 0;
@@ -572,6 +621,7 @@ private:
         bool proofUsed = false;
         bool stateSub = false;
         bool pairingSub = false;
+        bool heartSub = false;
         bool pairingNotify = false;
         bool needPush = false;
         bool pushedOnce = false;
@@ -604,6 +654,7 @@ private:
             Conn &c = conns[i];
             if (&c == except || c.handle == NO_HANDLE || !c.authed || c.authSlot != slot) continue;
             c.authed = false;
+            heart.reset(i);
             c.dropPending = true;
             c.dropAt = now;
         }
@@ -643,6 +694,11 @@ private:
 
     WatchState lastState;
     uint32_t sendFailures = 0;
+    HeartRelay heart;
+
+    uint8_t indexOf(const Conn *c) const {
+        return static_cast<uint8_t>(c - conns);
+    }
 
     Conn *find(const uint16_t handle) {
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {

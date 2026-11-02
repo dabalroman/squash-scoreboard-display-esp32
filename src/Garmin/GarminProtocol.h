@@ -6,13 +6,13 @@
 #include <string.h>
 
 /**
- * Garmin App Remote wire format (docs/garmin-protocol.md, v0). Pure byte work: no Arduino,
+ * Garmin App Remote wire format (docs/garmin-protocol.md, v1). Pure byte work: no Arduino,
  * no NimBLE, so the host suites test exactly what the board ships.
  */
 
 namespace Garmin {
     // The board's protocol version. Every frame starts with it.
-    constexpr uint8_t PROTO = 0x00;
+    constexpr uint8_t PROTO = 0x01;
 
     constexpr uint16_t COMPANY_ID = 0xFFFF;
 
@@ -38,6 +38,12 @@ namespace Garmin {
     constexpr uint32_t UNAUTH_TIMEOUT_MS = 10000;
     constexpr uint32_t FAILED_PROOF_DISCONNECT_MS = 2000;
 
+    // HEART notify (spec 18): a fixed wire size, room for every other connection.
+    constexpr uint8_t HEART_LIST = 3;
+    static_assert(MAX_CONNECTIONS - 1 <= HEART_LIST, "a HEART notify must fit every other connection");
+    constexpr uint32_t HEART_EXPIRY_MS = 15000;
+    constexpr uint32_t HEART_MIN_INTERVAL_MS = 1000;
+
     constexpr uint8_t ADV_FLAG_PAIRING = 0x01;
 
     constexpr const char *SERVICE_UUID = "0d780001-2f44-4f31-93b7-b78dc9e29735";
@@ -47,6 +53,7 @@ namespace Garmin {
     constexpr const char *ROSTER_UUID = "0d780005-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *AUTH_UUID = "0d780006-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *PAIRING_UUID = "0d780007-2f44-4f31-93b7-b78dc9e29735";
+    constexpr const char *HEART_UUID = "0d780008-2f44-4f31-93b7-b78dc9e29735";
 
     enum class AckStatus : uint8_t {
         Applied = 0,
@@ -81,7 +88,7 @@ namespace Garmin {
     // Which roster a screen's uids belong to (spec 12). Never on the wire: the watch derives it from the sport.
     enum class RosterKind : uint8_t { Players = 0, Teams = 1 };
 
-    // 0x0C (END_MATCH) was dropped from v0 and stays unused, so it parses as UnknownCmd.
+    // 0x0C (END_MATCH) was dropped in development and stays unused, so it parses as UnknownCmd.
     enum class CommandId : uint8_t {
         SelectSport = 0x01,
         Back = 0x02,
@@ -344,6 +351,23 @@ namespace Garmin {
         }
         memcpy(f.data + 3, entries + static_cast<size_t>(index) * ROSTER_ENTRY_SIZE, ROSTER_ENTRY_SIZE);
         f.len = 19;
+        return f;
+    }
+
+    // --- HEART (18) ---
+
+    // False = not a heart write (foreign PROTO, too short): discard. bpm 0 clears the sender's value.
+    inline bool parseHeartWrite(const uint8_t *in, const size_t len, uint8_t &bpm) {
+        if (len < 2 || in[0] != PROTO) return false;
+        bpm = in[1];
+        return true;
+    }
+
+    inline Frame buildHeart(const uint8_t bpm[HEART_LIST]) {
+        Frame f{};
+        f.data[0] = PROTO;
+        memcpy(f.data + 1, bpm, HEART_LIST);
+        f.len = static_cast<uint8_t>(1 + HEART_LIST);
         return f;
     }
 
