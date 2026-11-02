@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Garmin App Remote test client: plays the watch's side of docs/garmin-protocol.md (v0)
+"""Garmin App Remote test client: plays the watch's side of docs/garmin-protocol.md (v1)
 from a PC's Bluetooth adapter, so the board can be tested without the Connect IQ app (#81).
 
 Needs `pip install bleak`. Never imported by the build.
@@ -13,7 +13,10 @@ Usage:
   python helpers/garmin_client.py version              read VERSION (no auth needed)
   python helpers/garmin_client.py state                auth, print the state read + pushes for 5 s
   python helpers/garmin_client.py roster               auth, read every roster entry
-  python helpers/garmin_client.py monitor              auth, print every state push until Ctrl+C
+  python helpers/garmin_client.py monitor              auth, print every state + HEART push until Ctrl+C
+  python helpers/garmin_client.py heart 72             auth, send HR 72 (refreshed every 5 s), print the
+                                                       others' HEART pushes until Ctrl+C, then clear it
+  python helpers/garmin_client.py heart                auth, print state + HEART pushes (send nothing)
   python helpers/garmin_client.py send score 0         auth, send a command, print the ack'd state
   python helpers/garmin_client.py send set_pair 0x<leftUid> 0x<rightUid>   (decimal, or hex with 0x)
   python helpers/garmin_client.py send focus 1         MENU: move the board's cursor to squash
@@ -22,6 +25,9 @@ Usage:
 Commands: select_sport <id>, back, toggle_player <uid>, start_tournament, set_pair <l> <r>,
 swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | uid | 0>,
 raw <hex...>.
+HEART is taken only while the board is on PLAYING (spec 18). The other watch must be a real one or
+another PC: Windows shares one link per board between processes, so a second instance here would be
+the same connection (and its own value is never relayed back to it).
 --board <id hex> picks a stored board (default: the last one used); --seq <n> sets the first seq
 (send the same seq twice to test the duplicate path).
 """
@@ -44,11 +50,11 @@ try:
 except ImportError:
     sys.exit("bleak is missing: pip install bleak")
 
-PROTO = 0x00
+PROTO = 0x01
 COMPANY = 0xFFFF
 MAGIC = b"SCBD"
 UUID = "0d78000{}-2f44-4f31-93b7-b78dc9e29735"
-SERVICE, VERSION, COMMAND, STATE, ROSTER, AUTH, PAIRING = (UUID.format(i) for i in range(1, 8))
+SERVICE, VERSION, COMMAND, STATE, ROSTER, AUTH, PAIRING, HEART = (UUID.format(i) for i in range(1, 9))
 
 COMMANDS = {
     "select_sport": (0x01, "B"), "back": (0x02, ""), "toggle_player": (0x03, "I"),
@@ -61,6 +67,9 @@ SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10:
 SPORTS = {0: "none", 1: "squash", 2: "volleyball", 3: "short volleyball", 4: "padel"}
 ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUSY", 5: "MALFORMED"}
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
+
+# The board drops a value 15 s after its last write (spec 18), so a live HR is re-sent well inside that.
+HEART_REFRESH_S = 5.0
 
 DEFAULT_KEYS = Path.home() / ".scoreboard-garmin" / "keys.json"
 
@@ -187,6 +196,18 @@ def describe(body, names=None):
     return out
 
 
+def decode_heart(frame):
+    """The other watches' bpm values from a HEART notify (0 = none), or None for a foreign frame."""
+    if len(frame) < 4 or frame[0] != PROTO:
+        return None
+    return list(frame[1:4])
+
+
+def describe_heart(values):
+    shown = [str(v) for v in values if v]
+    return "HEART " + (" ".join(shown) + " bpm" if shown else "none")
+
+
 # --- Session ---
 
 class Session:
@@ -229,6 +250,17 @@ class Session:
 
         await self.client.start_notify(STATE, on_state)
 
+    async def subscribe_heart(self):
+        def on_heart(_, data):
+            values = decode_heart(bytes(data))
+            if values is not None:
+                self.states.put_nowait(("heart", values))
+
+        await self.client.start_notify(HEART, on_heart)
+
+    async def write_heart(self, bpm):
+        await self.client.write_gatt_char(HEART, bytes([PROTO, bpm]), response=True)
+
     async def read_roster(self):
         await self.client.write_gatt_char(ROSTER, bytes([PROTO, 0]), response=True)
         entries = []
@@ -251,6 +283,8 @@ class Session:
                 body = await asyncio.wait_for(self.states.get(), deadline - time.monotonic())
             except asyncio.TimeoutError:
                 break
+            if isinstance(body, tuple):
+                continue
             print(describe(body, self.names))
             if len(body) >= 4 and body[2] == seq:
                 return body
@@ -283,7 +317,7 @@ async def find_address(store, board):
 
 async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "monitor", "send"])
+    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "monitor", "send", "heart"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--keys", default=str(DEFAULT_KEYS))
     ap.add_argument("--board", help="board id (hex) from the key store")
@@ -379,6 +413,12 @@ async def main():
             await session.command(build_command(opts.args[0], opts.args[1:], opts.seq))
             return
 
+        if opts.action == "heart":
+            await run_heart(session, opts.args)
+            return
+
+        if opts.action == "monitor":
+            await session.subscribe_heart()
         seconds = None if opts.action == "monitor" else 5.0
         deadline = None if seconds is None else time.monotonic() + seconds
         while deadline is None or time.monotonic() < deadline:
@@ -387,7 +427,41 @@ async def main():
                 body = await asyncio.wait_for(session.states.get(), timeout)
             except asyncio.TimeoutError:
                 continue
-            print(describe(body, session.names))
+            print(describe_heart(body[1]) if isinstance(body, tuple) else describe(body, session.names))
+
+
+async def run_heart(session, args):
+    if len(args) > 1:
+        sys.exit("heart [bpm]")
+    try:
+        bpm = int(args[0], 0) if args else None
+    except ValueError:
+        sys.exit("heart [bpm]")
+    if bpm is not None and not 0 <= bpm <= 255:
+        sys.exit("bpm is 0-255 (0 clears)")
+    await session.subscribe_heart()
+    if bpm == 0:
+        await session.write_heart(0)
+        print("HEART cleared")
+        return
+    sent_at = None
+    try:
+        while True:
+            if bpm is not None and (sent_at is None or time.monotonic() - sent_at >= HEART_REFRESH_S):
+                await session.write_heart(bpm)
+                sent_at = time.monotonic()
+            try:
+                body = await asyncio.wait_for(session.states.get(), 1.0)
+            except asyncio.TimeoutError:
+                continue
+            # A STATE push names the screen: HEART is relayed only on PLAYING.
+            print(describe_heart(body[1]) if isinstance(body, tuple) else describe(body, session.names))
+    finally:
+        if bpm:
+            try:
+                await session.write_heart(0)
+            except Exception:  # the link may already be gone; the board clears on disconnect anyway
+                pass
 
 
 if __name__ == "__main__":
