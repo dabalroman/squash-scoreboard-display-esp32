@@ -1,10 +1,11 @@
-# Garmin App Remote - BLE protocol (v0)
+# Garmin App Remote - BLE protocol (v1)
 
 Contract between the scoreboard firmware (task #80) and the Connect IQ watch app (task #81).
 Spec for task #79. Background and measurements: the POC (see `docs/garmin-remote-poc.md`).
 
-Status: **protocol version 0, frozen** at the first public Connect IQ store release (watch app
-1.0.0). An incompatible change now bumps `PROTO` (see [Versioning](#5-versioning-and-compatibility)).
+Status: **protocol version 1, frozen** at the first public Connect IQ store release (watch app
+1.0.0); v0 was the development version and never reached the public. An incompatible change now
+bumps `PROTO` (see [Versioning](#5-versioning-and-compatibility)).
 Deviations from the locked task decisions are listed in [Open questions](#17-open-questions-and-deviations).
 
 ## 1. Model
@@ -14,7 +15,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
   A/B/C/D presses); the board applies them through its normal mode/view logic and pushes the
   resulting **screen state**; the watch renders that state.
 - Several watches (up to 4 connected, 8 paired) may control one board at once; each sees every
-  state change.
+  state change and, during a match, the heart rates the others share (section 18).
 - No BLE bonding (it crashed a Venu 3S, CIQQA-4568). Trust is an app-level, mutual
   challenge-response over a per-watch 16-byte key issued in a user-opened pairing window.
 - The feature ("Garmin App Remote") is opt-in, off by default, and independent of Dev Mode.
@@ -22,7 +23,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 
 ## 2. Conventions
 
-- **Every frame starts with the protocol version byte** (`PROTO`, currently `0x00`): every
+- **Every frame starts with the protocol version byte** (`PROTO`, currently `0x01`): every
   characteristic value read, written or notified, and the manufacturer data's version field
   (fixed offset, see 4.1). A frame whose first byte differs from the receiver's own `PROTO`
   is **dropped** by either side (the board does not apply or acknowledge it).
@@ -42,7 +43,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 
 | Name | Value |
 |---|---|
-| `PROTO` | `0x00` (v0, frozen at store release 1.0.0) |
+| `PROTO` | `0x01` (v1, frozen at store release 1.0.0; v0 was development-only) |
 | Company id | `0xFFFF` (Bluetooth SIG test id, until a registered one exists) |
 | Product magic | `53 43 42 44` (ASCII `SCBD`), 4 bytes, frozen forever |
 | Board id | `uint32`, random, generated on the first enable of the feature, stored in NVS; never `0x00000000` or `0xFFFFFFFF` |
@@ -54,6 +55,8 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | Paired watches (board) | 8; the 9th pairing evicts the least recently authenticated slot |
 | Concurrent connections | 4; the board advertises while fewer are open |
 | Unauthenticated connection timeout | 10 s, then the board disconnects |
+| Heart rate expiry | 15 s after the watch's last HEART write (section 18) |
+| HEART notify rate | at most 1 per second per connection (section 18) |
 
 UUIDs (fresh, not the POC's):
 
@@ -66,6 +69,7 @@ UUIDs (fresh, not the POC's):
 | ROSTER | `0d780005-2f44-4f31-93b7-b78dc9e29735` |
 | AUTH | `0d780006-2f44-4f31-93b7-b78dc9e29735` |
 | PAIRING | `0d780007-2f44-4f31-93b7-b78dc9e29735` |
+| HEART | `0d780008-2f44-4f31-93b7-b78dc9e29735` |
 
 ## 4. Advertising
 
@@ -148,10 +152,13 @@ offset 0 or 2). Then:
 
 - One integer protocol version. The board declares only its own (`PROTO`). The watch app
   declares the range it supports, `[MIN_BOARD_PROTO, MAX_BOARD_PROTO]`.
-- **v0 is frozen at the first public Connect IQ store release** (watch app 1.0.0, accepting
-  exactly v0: `MIN = MAX = 0`). It was the development version until then; every board was on
-  the final v0 firmware at release, so no earlier v0 layout is in the field.
-- From then on every incompatible change bumps `PROTO` (the next one is v1), and the range
+- **v0 was development-only.** It was frozen for store release 1.0.0, but that release was never
+  published, so no public watch app speaks v0. The user moved the release to v1 (2026-11-02) so
+  that HEART (section 18) is mandatory from the first public version (Open questions 10).
+- **v1 is frozen at the first public Connect IQ store release** (watch app 1.0.0, accepting
+  exactly v1: `MIN = MAX = 1`). v1 = v0's frames with `PROTO` `0x01`, plus HEART. A board still on
+  v0 firmware is shown "Update the scoreboard firmware" (16.8).
+- From then on every incompatible change bumps `PROTO` (the next one is v2), and the range
   check applies.
 - The watch checks the version from the advertising data before connecting, and again from the
   VERSION characteristic after connecting (both must be in range and equal).
@@ -181,7 +188,7 @@ advertising data; the VERSION characteristic's UUID and its byte 0.
 
 ## 6. GATT layout
 
-One primary service, six characteristics. One Connect IQ profile (limit is 3).
+One primary service, seven characteristics. One Connect IQ profile (limit is 3).
 
 | Characteristic | Properties | Auth required | Purpose |
 |---|---|---|---|
@@ -191,8 +198,9 @@ One primary service, six characteristics. One Connect IQ profile (limit is 3).
 | ROSTER | write, read | yes | write = set read cursor; read = entry at cursor, cursor + 1 |
 | AUTH | read, write | no | read = challenge / result; write = proof |
 | PAIRING | write, read, notify | no | write = request; read/notify = result (this connection only) |
+| HEART | write (with response), notify | yes | write = this watch's heart rate; notify = the other watches' (section 18) |
 
-Before authentication the board accepts writes to COMMAND and ROSTER at the ATT level and
+Before authentication the board accepts writes to COMMAND, ROSTER and HEART at the ATT level and
 **discards** them, answers reads of STATE and ROSTER with the 1-byte frame `[PROTO]`, and sends
 no notifications. Notify-only, never indications (unreliable on some watches).
 
@@ -208,16 +216,18 @@ no notifications. Notify-only, never indications (unreliable on some watches).
 | Step | Request | Notes |
 |---|---|---|
 | 1 | scan, filter (4.4), `pairDevice()` | `pairDevice` does not persist across launches: every launch rescans |
-| 2 | (on connect) check service + all six characteristics exist | any missing -> disconnect, treat as not a scoreboard |
+| 2 | (on connect) check service + all seven characteristics exist | any missing -> disconnect, treat as not a scoreboard |
 | 3 | read VERSION | out of range or `!=` advertised -> disconnect + message (section 5) |
 | 4 | read AUTH | challenge (8.1) |
 | 5 | write AUTH | proof |
 | 6 | read AUTH | result; verify the board's MAC |
 | 7 | write STATE CCCD `01 00` | the board then notifies the full current state |
 | 8 | if `rosterVersion` differs from the cache of the active roster's kind: write ROSTER `[PROTO, 0]`, read `count` times | section 12 |
+| 9 | optional: write HEART CCCD `01 00` | only a watch that shows the other watches' heart rates; the board then notifies the current list if it is not empty (section 18) |
 
 Pairing inserts its exchange (section 9) before step 4 on the same connection. Presses are
-ignored until step 7's state has arrived. On disconnect the watch drops all pending presses and
+ignored until step 7's state has arrived. Sharing the watch's own heart rate needs no CCCD: it is
+HEART writes while the state shows PLAYING (section 18). On disconnect the watch drops all pending presses and
 reconnects (step 1) to the board it used last; the state read on reconnect heals any lost press.
 
 ## 8. Authentication (mutual, every connection)
@@ -594,6 +604,9 @@ ROSTER read - 19 B, or 3 B past the end:
 | Name | 9 chars | `PlayerRosterLimits::NAME_SIZE` - 1 |
 | State body | 255 B (15 chunks) | chunk header |
 | Latency press -> board | ~0.5 s | POC, Connect IQ tick |
+| HEART values per notify | 3 (every other connection) | `MAX_CONNECTIONS` - 1 |
+| HEART notifies | 1 / s per connection, newest content | section 18 |
+| Heart rate held by the board | latest per connection, RAM only, 15 s expiry | section 18 |
 
 ## 15. Crypto availability
 
@@ -614,37 +627,37 @@ Synthetic values throughout: board id `0x12345678`, key `00 01 .. 0f`, slot 2,
 
 Normal (`ADV_IND`, 19 B):
 ```
-0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06
+0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06
 ```
 Pairing, code 4271 (19 B):
 ```
-0f ff ff ff 53 43 42 44 00 78 56 34 12 01 af 10 02 01 06
+0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06
 ```
 `SCAN_RSP` (30 B; service UUID little-endian, name `Score-5678`):
 ```
 11 07 35 97 e2 c9 8d b7 b7 93 31 4f 44 2f 01 00 78 0d 0b 09 53 63 6f 72 65 2d 35 36 37 38
 ```
-VERSION read for firmware `0.6.187` (8 B): `00 30 2e 36 2e 31 38 37`
+VERSION read for firmware `0.6.187` (8 B): `01 30 2e 36 2e 31 38 37`
 
 ### 16.2 Mutual authentication
 
 ```
-AUTH read   (10 B): 00 00 a0 a1 a2 a3 a4 a5 a6 a7
+AUTH read   (10 B): 01 00 a0 a1 a2 a3 a4 a5 a6 a7
   HMAC-SHA256(K, 57 a0 a1 a2 a3 a4 a5 a6 a7)
     = 4e470a94b924acae1ef4234f341a5c760ddebc1858661c39580b7201b2a95047
-AUTH write  (19 B): 00 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae
+AUTH write  (19 B): 01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae
   HMAC-SHA256(K, 42 b0 b1 b2 b3 b4 b5 b6 b7)
     = 1857e1b4a96ebf5a8236582beab5ab29d65cef89dc6c9aab8e492a0a97ed76ce
-AUTH read   (11 B): 00 02 00 18 57 e1 b4 a9 6e bf 5a
-Failure     ( 3 B): 00 02 01
+AUTH read   (11 B): 01 02 00 18 57 e1 b4 a9 6e bf 5a
+Failure     ( 3 B): 01 02 01
 ```
 
 ### 16.3 Pairing
 
 ```
-PAIRING write (4 B):  00 01 af 10
-PAIRING read  (20 B): 00 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
-Wrong code    (3 B):  00 02 02
+PAIRING write (4 B):  01 01 af 10
+PAIRING read  (20 B): 01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
+Wrong code    (3 B):  01 02 02
 ```
 The watch stores `{0x12345678, 2, 00 01 .. 0f}` and authenticates as in 16.2.
 
@@ -659,11 +672,11 @@ rosterVersion input (49 B):
   4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
 rosterVersion = 0x150fe75b (on the wire: 5b e7 0f 15)
 
-ROSTER write (2 B):  00 00
-ROSTER read  (19 B): 00 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
-ROSTER read  (19 B): 00 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
-ROSTER read  (19 B): 00 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
-ROSTER read  (3 B):  00 03 03                 (past the end)
+ROSTER write (2 B):  01 00
+ROSTER read  (19 B): 01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
+ROSTER read  (19 B): 01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
+ROSTER read  (19 B): 01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
+ROSTER read  (3 B):  01 03 03                 (past the end)
 ```
 
 The roster above is the players roster. Teams roster (active in padel and volleyball):
@@ -675,10 +688,10 @@ rosterVersion input (33 B):
   4c 49 53 59 00 00 00 00 00
 rosterVersion = 0xdb5f702c (on the wire: 2c 70 5f db)
 
-ROSTER write (2 B):  00 00
-ROSTER read  (19 B): 00 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
-ROSTER read  (19 B): 00 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
-ROSTER read  (3 B):  00 02 02                 (past the end)
+ROSTER write (2 B):  01 00
+ROSTER read  (19 B): 01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
+ROSTER read  (19 B): 01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
+ROSTER read  (3 B):  01 02 02                 (past the end)
 ```
 
 Selecting padel from MENU switches the active roster: the next state carries `2c 70 5f db` at
@@ -689,68 +702,84 @@ version is `0x150fe75b` again.
 
 Cursor on padel, four sports. Body 14 B, one chunk, `stateSeq` 1:
 ```
-STATE notify (17 B): 00 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03
+STATE notify (17 B): 01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03
 ```
 
 ### 16.6 SCORE with confirm (squash)
 
 Squash, ANNA left, KRYSTIAN right, games 1:0, score 4:3. The watch shows 5:3 pending at once:
 ```
-COMMAND write (4 B): 00 08 07 00              SCORE left, seq 7
+COMMAND write (4 B): 01 08 07 00              SCORE left, seq 7
 ```
 The board applies it and pushes `stateSeq` 0x2a (body 21 B: PLAYING, squash, ack 7 APPLIED,
 UNCOMMITTED, games 1:0, score 5:3):
 ```
-STATE notify (20 B): 00 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
-STATE notify ( 7 B): 00 2a 12 01 00 05 03
+STATE notify (20 B): 01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
+STATE notify ( 7 B): 01 2a 12 01 00 05 03
 ```
 `ackSeq` 7 settles the pending press. 4 s later the commit pushes the same body with flags
-`00`. A SCORE sent on GAME_OVER (`00 08 08 01`) comes back with `ackSeq` 8, `ackStatus` 1
+`00`. A SCORE sent on GAME_OVER (`01 08 08 01`) comes back with `ackSeq` 8, `ackStatus` 1
 WRONG_SCREEN, and the watch rolls back.
 
 ### 16.7 Padel PLAYING
 
 Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed (flags `02`), ack 12:
 ```
-STATE notify (20 B): 00 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 02
-STATE notify ( 9 B): 00 2b 12 01 00 06 06 03 02
+STATE notify (20 B): 01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 02
+STATE notify ( 9 B): 01 2b 12 01 00 06 06 03 02
 ```
 Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right -> 40:Ad
 (points 3, 4; flags `01`), ack 13:
 ```
-STATE notify (20 B): 00 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
-STATE notify ( 9 B): 00 2c 12 00 00 02 01 03 04
+STATE notify (20 B): 01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
+STATE notify ( 9 B): 01 2c 12 00 00 02 01 03 04
 ```
 
 ### 16.8 Too-old and too-new board
 
-Hypothetical released watch app with `MIN_BOARD_PROTO = 1`, `MAX_BOARD_PROTO = 2`
-(store app 1.0.0 has `MIN = MAX = 0`):
+Store app 1.0.0 accepts exactly v1 (`MIN_BOARD_PROTO = MAX_BOARD_PROTO = 1`):
 
 | Advertising (`ADV_IND`) | `PROTO` | Watch |
 |---|---|---|
 | `0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06` | 0 | too old: no connect; "Update the scoreboard firmware (board v0, needs v1)" |
-| `0f ff ff ff 53 43 42 44 03 78 56 34 12 00 00 00 02 01 06` | 3 | too new: no connect; "Update the watch app" |
+| `0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06` | 2 | too new: no connect; "Update the watch app" |
 
-Unauthenticated read of STATE or ROSTER (1 B): `00`
+Unauthenticated read of STATE or ROSTER (1 B): `01`
 
 ### 16.9 FOCUS
 
 Roster of 16.4 (ANNA, KRYSTIAN, OLA). On MENU, focus squash, seq 3; the board answers with the
 cursor on squash (body 14, `stateSeq` 2):
 ```
-COMMAND write (7 B): 00 0e 03 01 00 00 00
-STATE notify (17 B): 00 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
+COMMAND write (7 B): 01 0e 03 01 00 00 00
+STATE notify (17 B): 01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
 ```
 On CHOOSE_PLAYERS (squash, ANNA and OLA selected), focus KRYSTIAN, seq 4 (body 16, `stateSeq`
 0x10):
 ```
-COMMAND write (7 B): 00 0e 04 44 33 22 11
-STATE notify (19 B): 00 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
+COMMAND write (7 B): 01 0e 04 44 33 22 11
+STATE notify (19 B): 01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
 ```
-Focus START, seq 5: `00 0e 05 00 00 00 00` (cursor bytes `00 00 00 00`). A uid not in the
-roster, `00 0e 06 78 56 34 12`, is acked 6 INVALID and the cursor stays. A 4-byte FOCUS
-(`00 0e 07 01`) is acked 7 MALFORMED.
+Focus START, seq 5: `01 0e 05 00 00 00 00` (cursor bytes `00 00 00 00`). A uid not in the
+roster, `01 0e 06 78 56 34 12`, is acked 6 INVALID and the cursor stays. A 4-byte FOCUS
+(`01 0e 07 01`) is acked 7 MALFORMED.
+
+### 16.10 HEART
+
+Squash PLAYING, three authenticated watches subscribed to HEART: A in connection slot 0, B in
+slot 1, C in slot 2; both writes land before the board's next tick.
+```
+A: HEART write  (2 B): 01 92              146 bpm
+C: HEART write  (2 B): 01 7c              124 bpm
+A: HEART notify (4 B): 01 7c 00 00        C's value (A's own is left out)
+B: HEART notify (4 B): 01 92 7c 00        A, then C: slot order
+C: HEART notify (4 B): 01 92 00 00
+C: HEART write  (2 B): 01 00              C clears its value
+A: HEART notify (4 B): 01 00 00 00        nobody else is sharing (sent once A's 1 s window ends)
+B: HEART notify (4 B): 01 92 00 00
+```
+On MENU the same write `01 92` is discarded; a write `00 92` (v0) or `01` (1 B) is discarded.
+Leaving PLAYING notifies `01 00 00 00` to every subscriber that was last sent a non-empty list.
 
 ## 17. Open questions and deviations
 
@@ -784,9 +813,84 @@ roster, `00 0e 06 78 56 34 12`, is acked 6 INVALID and the cursor stays. A 4-byt
    4-byte uids (locked). **Measured on the FR970 (#81 Gate 0):** 132 two-chunk states, gap chunk 0 ->
    chunk 1 min 6 / median 22 / max 247 ms, typically 6-9 ms. The second chunk does not cost a tick,
    so the state stays as specified.
-8. Connect IQ's per-profile characteristic limit is undocumented; this profile (6 characteristics
-   + 2 CCCDs) registered and every entry resolved on the FR970 (#81 Gate 0).
+8. Connect IQ's per-profile characteristic limit is undocumented; the v0 profile (6 characteristics
+   + 2 CCCDs) registered and every entry resolved on the FR970 (#81 Gate 0). v1 adds HEART (7 + 3);
+   not yet verified on a watch.
 9. Not protocol, for #80: WiFi + BLE against the RMT was **measured on V1 (2026-10-02)**: Dev
    Mode STA, advertising, 2 subscribed centrals at 20 notifies/s and fob presses in a match
    gave 0 bails, 0 stale, max 5 us late. Four connections were not measured (judged
    unrealistic by the user).
+10. **v0 -> v1 before the first public release (user, 2026-11-02).** Store release 1.0.0 was
+    frozen on v0 but never published. Section 5 would allow HEART as a new characteristic without a
+    bump, but then a v0 board would lack it and every watch would have to treat it as optional.
+    Chosen: bump `PROTO` to 1 before publishing, so HEART is mandatory (the watch's step 2 checks
+    seven characteristics) and v1 is the first public version; v0 boards are told to update. No
+    frame changed beyond byte 0: the MACs (over `"W" || Nb` / `"B" || Nw`) and the roster CRC do
+    not cover `PROTO`, so 16.2 and 16.4 keep their MACs and versions.
+
+## 18. Heart rate relay (HEART)
+
+During a match each watch may share its wearer's current heart rate, and the board relays it to
+the other connected watches (HeartSync in the watch app). The board only relays: it never shows,
+logs or stores a heart rate (`docs/privacy-garmin.md`).
+
+- **Characteristic** HEART `0d780008-2f44-4f31-93b7-b78dc9e29735`, write (with response) +
+  notify, authentication required: before authentication writes are discarded and nothing is
+  notified. Mandatory on a v1 board; optional for the watch (one that neither shares nor shows
+  heart rates never writes it or enables its CCCD).
+- **PLAYING only.** A write is accepted only while the board's last published screen is PLAYING
+  (`0x13`), else discarded. When a published state leaves PLAYING, every value is cleared. An
+  overlay over PLAYING does not leave it (its pushes carry no new state).
+- **Outside the command path.** No `seq`, no ack, no STATE push, no sound; never queued, never
+  deduplicated. A lost write is healed by the next one.
+- **Held in RAM, per connection:** the latest value and its write time. A value **expires 15 s**
+  after its last write, and is cleared by a write of 0, at disconnect and on leaving PLAYING; a
+  connection that loses its trust ("forget all") stops counting at once. Nothing is persisted.
+
+### 18.1 HEART frames
+
+Write (watch -> board) - 2 B:
+
+| Off | Size | Field |
+|---|---|---|
+| 0 | 1 | `PROTO` |
+| 1 | 1 | `bpm`: 1-255 = this watch's current heart rate; 0 = clear mine |
+
+Shorter, or a foreign `PROTO` -> discarded; trailing bytes are ignored (section 2).
+
+Notify (board -> watch) - 4 B:
+
+| Off | Size | Field |
+|---|---|---|
+| 0 | 1 | `PROTO` |
+| 1 | 3 | the **other** connections' current values, non-zero only, in connection-slot order, padded with 0 |
+
+The receiver's own value is never in its list. All zero = nobody else is sharing. A connection
+slot is the board's slot (0-3) a connection takes when it connects and keeps until it drops, so the
+order is stable while the links stay up; it carries no identity (the watch cannot tell whose value
+is whose). Three values fit every other connection at the 4-connection limit: a two-watch match uses
+the first, and a later "show everyone" needs no protocol change.
+
+### 18.2 When the board notifies
+
+- To every authenticated connection that enabled the HEART CCCD, when its list changes: a write
+  with a new value, a clear, an expiry, a disconnect, leaving PLAYING.
+- **At most one notify per second per connection, always the newest content.** A change inside the
+  1 s window after the last notify goes out when the window ends, with the list current then; if by
+  then it equals what was last sent, nothing is sent. A failed notify is sent again when the window
+  ends.
+- **CCCD enable:** the connection counts as having been sent the empty list, so a non-empty current
+  list goes out at once (within the rate limit) and an empty one is not sent. A watch that
+  subscribes mid-match sees the others without waiting for a change.
+- The board checks on its 50 ms tick: write -> the other watches within ~1 s plus the Connect IQ
+  ticks.
+
+### 18.3 Watch (recommended)
+
+- Sharing: write HEART while the state shows PLAYING, when the reading changes, at most once per
+  second, and at least every 5 s while a reading exists so it never expires; write 0 when sharing
+  stops (setting off, no reading) or let it expire. Each write costs one request tick (section 2),
+  so a press waiting to be sent goes first.
+- Showing: enable the HEART CCCD after the first state (section 7 step 9) and show the first
+  non-zero value (a two-watch match has one). Drop it at disconnect, when the state leaves PLAYING,
+  or when the list is all zero; frames with a foreign `PROTO` are ignored.
