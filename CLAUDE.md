@@ -136,7 +136,7 @@ Subsystem detail lives in `.claude/rules/`. Each file loads automatically when a
 | `eink.md` | e-paper driver, match screen, fonts, menus, footer, ghosting, images |
 | `oled.md` | dead rows, text clamp, menu rows, navbar, battery icon |
 | `input-buzzer.md` | 433 MHz receiver measurements, long C, buzzer modes, `safeRestart()` |
-| `garmin.md` | NimBLE pin, `src/Garmin/` core, `GarminService`, watch commands, CONFIG GARMIN screens |
+| `garmin.md` | NimBLE pin, `src/Garmin/` core, `GarminService`, watch commands, CONFIG GARMIN screens, protocol v1 HEART relay |
 | `persistence-network.md` | `PrefsData`, Dev Mode, apply-on-save, OTA image check and board marker, `v1_bootstrap`, core-3.x fixes |
 | `strings.md` | one language per build, no diacritics, LED word limits, numerals |
 | `roster-web.md` | two rosters, NVS blob rules, uid vs id, palette, web pages, routes and gate, settings page, validators |
