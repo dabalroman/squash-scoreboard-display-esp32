@@ -183,6 +183,10 @@ trailing bytes); new screen ids (an old watch shows "board busy"); new sport ids
 does not offer them); new commands (old watches never send them); new status codes (an old
 watch treats any non-zero status as a rejection); new flag bits (ignored); new characteristics.
 
+Compatible changes made in v1 (no bump): SIDES_SWAPPED (#510) - PLAYING flags bit 6, and a flags
+byte appended to INTRO (offset 16) and CELEBRATION / GAME_OVER (offset 22), still 1 and 2 chunks
+(section 11.3, 16.11). Store app 1.0.0 ignores them.
+
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
 
@@ -488,7 +492,13 @@ MATCH_START (body 20, 2 chunks):
 | 12 | 4 | `leftUid` |
 | 16 | 4 | `rightUid` |
 
-INTRO (body 16, 1 chunk): `leftUid` at 8, `rightUid` at 12.
+INTRO (body 17, 1 chunk):
+
+| Off | Size | Field |
+|---|---|---|
+| 8 | 4 | `leftUid` |
+| 12 | 4 | `rightUid` |
+| 16 | 1 | flags: bit 6 SIDES_SWAPPED, other bits reserved 0 |
 
 PLAYING (body 21, padel 23; 2 chunks):
 
@@ -496,7 +506,7 @@ PLAYING (body 21, padel 23; 2 chunks):
 |---|---|---|
 | 8 | 4 | `leftUid` |
 | 12 | 4 | `rightUid` |
-| 16 | 1 | flags: bit 0 UNCOMMITTED (scores include points inside the 4 s commit window), bit 1 TIEBREAK (padel), bit 2 GAME_BALL_LEFT, bit 3 GAME_BALL_RIGHT, bits 4-7 reserved 0 |
+| 16 | 1 | flags: bit 0 UNCOMMITTED (scores include points inside the 4 s commit window), bit 1 TIEBREAK (padel), bit 2 GAME_BALL_LEFT, bit 3 GAME_BALL_RIGHT, bits 4-5 reserved 0, bit 6 SIDES_SWAPPED, bit 7 reserved 0 |
 | 17 | 1 | `leftGames` |
 | 18 | 1 | `rightGames` |
 | 19 | 1 | `leftScore` |
@@ -509,7 +519,18 @@ PLAYING (body 21, padel 23; 2 chunks):
 | squash, volleyball, short volleyball | games won in the match | points in the current game (temporary, as the LEDs show) | - | `Game::willWinOnNextPointScored` (committed) |
 | padel | sets won | gems in the current set | `PadelPoint` 0 Love, 1 15, 2 30, 3 40, 4 Ad (temporary); with TIEBREAK the raw tiebreak points | gem ball, `PadelGemScorer::willWinOnNextRally` |
 
-CELEBRATION and GAME_OVER (body 22, 2 chunks):
+**SIDES_SWAPPED** (PLAYING, INTRO, CELEBRATION, GAME_OVER; every sport): the pair now sits on
+the court sides reversed against its orientation at its first game. The board latches it per
+pair (per `Match`) when that pair's first game finishes (a game left by UNDO at 0:0 does not
+count), so a swap at MATCH_START before the first game is the start orientation, not a swap, and
+the bit stays 0 throughout the first game. The latch lives as long as the sport mode: back to
+CHOOSE_PLAYERS and round-robin pair cycling keep it, like the games tally; a mode change or a
+reboot drops it. MATCH_START carries no flag (the watch never
+mirrors it). Every watch on the board reads the same bit, so they agree on the match's own left
+and right; a watch against older firmware reads the bit as 0 and a missing INTRO / result flags
+byte as 0 (section 5).
+
+CELEBRATION and GAME_OVER (body 23, 2 chunks):
 
 | Off | Size | Field |
 |---|---|---|
@@ -521,6 +542,7 @@ CELEBRATION and GAME_OVER (body 22, 2 chunks):
 | 19 | 1 | `leftGames` after this game (padel: sets) |
 | 20 | 1 | `rightGames` |
 | 21 | 1 | variant: 0 normal, 1 bajgiel (`CelebrationVariant`) |
+| 22 | 1 | flags: bit 6 SIDES_SWAPPED, other bits reserved 0 |
 
 ## 12. Roster sync
 
@@ -782,6 +804,26 @@ B: HEART notify (4 B): 01 92 00 00
 On MENU the same write `01 92` is discarded; a write `00 92` (v0) or `01` (1 B) is discarded.
 Leaving PLAYING notifies `01 00 00 00` to every subscriber that was last sent a non-empty list.
 
+### 16.11 SIDES_SWAPPED
+
+Squash, the pair's first game was played KRYSTIAN left; now ANNA is left (reversed), KRYSTIAN
+won the first game. INTRO (body 17, `stateSeq` 0x30, flags `40`):
+```
+STATE notify (20 B): 01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
+```
+PLAYING, games 0:1, score 2:1, committed (body 21, `stateSeq` 0x31, flags `40`):
+```
+STATE notify (20 B): 01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
+STATE notify ( 7 B): 01 31 12 00 01 02 01
+```
+With UNCOMMITTED and GAME_BALL_LEFT as well the flags byte is `45`. GAME_OVER, ANNA won 11:7,
+games 1:1, normal variant (body 23, `stateSeq` 0x32, flags `40` at the end):
+```
+STATE notify (20 B): 01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
+STATE notify ( 9 B): 01 32 12 0b 07 01 01 00 40
+```
+Not swapped, the same states carry `00` in place of `40`.
+
 ## 17. Open questions and deviations
 
 1. **Service UUID is not in `ADV_IND` (deviation from the locked filter).** UUID + locked
@@ -828,6 +870,11 @@ Leaving PLAYING notifies `01 00 00 00` to every subscriber that was last sent a 
     seven characteristics) and v1 is the first public version; v0 boards are told to update. No
     frame changed beyond byte 0: the MACs (over `"W" || Nb` / `"B" || Nw`) and the roster CRC do
     not cover `PROTO`, so 16.2 and 16.4 keep their MACs and versions.
+
+11. **SIDES_SWAPPED is latched on the board, not on the watch (#508 / #510, 2026-11-05).** A
+    watch-only latch would anchor to whatever layout the watch first saw, so a late joiner or an
+    app restart after a swap would disagree with the other watch. The board latches per `Match` at
+    its first finished game and publishes the bit compatibly (section 5): no `PROTO` bump, no extra chunk.
 
 ## 18. Heart rate relay (HEART)
 

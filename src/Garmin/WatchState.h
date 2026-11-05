@@ -14,7 +14,7 @@
  */
 class WatchState {
 public:
-    // Largest screen data: MENU with every sport (2 + n), padel PLAYING (15).
+    // Largest screen data: MENU with every sport (2 + n), padel PLAYING and the result (15).
     // An enum, not a static constexpr member: C++11 has no inline variables to back an odr-use.
     enum : uint8_t { MAX_DATA = 24 };
 
@@ -29,6 +29,7 @@ public:
         uint8_t rightGames;
         uint8_t leftScore;
         uint8_t rightScore;
+        bool sidesSwapped;
     };
 
     struct Result {
@@ -40,6 +41,7 @@ public:
         uint8_t leftGames;
         uint8_t rightGames;
         bool bajgiel;
+        bool sidesSwapped;
     };
 
     WatchState() {
@@ -78,10 +80,11 @@ public:
         put32(rightUid);
     }
 
-    void setIntro(const uint32_t leftUid, const uint32_t rightUid) {
+    void setIntro(const uint32_t leftUid, const uint32_t rightUid, const bool sidesSwapped) {
         begin(Garmin::ScreenId::Intro);
         put32(leftUid);
         put32(rightUid);
+        put8(sidesFlag(sidesSwapped));
     }
 
     // Squash and both volleyballs.
@@ -149,6 +152,11 @@ private:
         dataLen = 0;
     }
 
+    // SIDES_SWAPPED is bit 6 in every flags byte that carries it (spec 11.3).
+    static uint8_t sidesFlag(const bool sidesSwapped) {
+        return sidesSwapped ? 0x40 : 0;
+    }
+
     void put8(const uint8_t v) {
         if (dataLen < MAX_DATA) data[dataLen++] = v;
     }
@@ -162,7 +170,8 @@ private:
         put32(p.leftUid);
         put32(p.rightUid);
         put8(static_cast<uint8_t>((p.uncommitted ? 0x01 : 0) | (p.tiebreak ? 0x02 : 0)
-                                  | (p.gameBallLeft ? 0x04 : 0) | (p.gameBallRight ? 0x08 : 0)));
+                                  | (p.gameBallLeft ? 0x04 : 0) | (p.gameBallRight ? 0x08 : 0)
+                                  | sidesFlag(p.sidesSwapped)));
         put8(p.leftGames);
         put8(p.rightGames);
         put8(p.leftScore);
@@ -179,6 +188,7 @@ private:
         put8(r.leftGames);
         put8(r.rightGames);
         put8(r.bajgiel ? 1 : 0);
+        put8(sidesFlag(r.sidesSwapped));
     }
 };
 

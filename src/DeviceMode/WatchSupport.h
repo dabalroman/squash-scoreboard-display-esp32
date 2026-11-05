@@ -64,6 +64,7 @@ namespace WatchSupport {
         const MatchResult standing = match.getMatchResult();
         p.leftGames = standing.scoreOf(left.getId());
         p.rightGames = standing.scoreOf(right.getId());
+        p.sidesSwapped = match.sidesSwapped();
         return p;
     }
 
@@ -80,6 +81,7 @@ namespace WatchSupport {
         r.leftGames = standing.scoreOf(left.getId());
         r.rightGames = standing.scoreOf(right.getId());
         r.bajgiel = selectCelebrationVariant(match, result) == CelebrationVariant::Bajgiel;
+        r.sidesSwapped = match.sidesSwapped();
         return r;
     }
 }

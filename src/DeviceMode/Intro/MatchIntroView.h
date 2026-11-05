@@ -150,7 +150,7 @@ public:
             return;
         }
 
-        state.setIntro(playerLeft->getUid(), playerRight->getUid());
+        state.setIntro(playerLeft->getUid(), playerRight->getUid(), match->sidesSwapped());
     }
 };
 

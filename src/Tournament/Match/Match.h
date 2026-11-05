@@ -25,6 +25,9 @@ class Match {
 
     bool playersSwappedCourtSides = false;
 
+    // The orientation of the first finished game, for the watch's SIDES_SWAPPED (spec 11.3). RAM only.
+    bool startSwapped = false;
+
 public:
     Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules)
         : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
@@ -54,6 +57,11 @@ public:
         const uint8_t winnerPlayerId = game->getWinner() == GameSide::a
             ? (playersSwappedCourtSides ? playerB.getId() : playerA.getId())
             : (playersSwappedCourtSides ? playerA.getId() : playerB.getId());
+
+        // At finish, not createGame: a game left by UNDO at 0:0 must not fix the orientation.
+        if (gameResults.empty()) {
+            startSwapped = playersSwappedCourtSides;
+        }
 
         gameResults.push_back({
             playerA.getId(),
@@ -110,6 +118,11 @@ public:
 
     bool getPlayersSwappedCourtSides() const {
         return playersSwappedCourtSides;
+    }
+
+    // Reversed against the first game; false until that game is finished.
+    bool sidesSwapped() const {
+        return !gameResults.empty() && playersSwappedCourtSides != startSwapped;
     }
 };
 

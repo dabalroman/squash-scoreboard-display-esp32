@@ -296,9 +296,9 @@ void test_other_screens() {
     TEST_ASSERT_EQUAL_UINT8(20, s.build(0, AckStatus::Applied, 0, body));
     expectBytes("11 02 00 00 00 00 00 00 03 00 00 00 0d 0c 0b 0a 44 33 22 11", body, 20, "MATCH_START");
 
-    s.setIntro(ANNA, KRYSTIAN);
-    TEST_ASSERT_EQUAL_UINT8(16, s.build(0, AckStatus::Applied, 0, body));
-    expectBytes("12 02 00 00 00 00 00 00 0d 0c 0b 0a 44 33 22 11", body, 16, "INTRO");
+    s.setIntro(ANNA, KRYSTIAN, false);
+    TEST_ASSERT_EQUAL_UINT8(17, s.build(0, AckStatus::Applied, 0, body));
+    expectBytes("12 02 00 00 00 00 00 00 0d 0c 0b 0a 44 33 22 11 00", body, 17, "INTRO");
 
     WatchState::Result r{};
     r.leftUid = ANNA;
@@ -310,10 +310,10 @@ void test_other_screens() {
     r.rightGames = 2;
     r.bajgiel = true;
     s.setCelebration(r);
-    TEST_ASSERT_EQUAL_UINT8(22, s.build(0, AckStatus::Applied, 0, body));
-    expectBytes("14 02 00 00 00 00 00 00 0d 0c 0b 0a 44 33 22 11 01 00 19 00 02 01", body, 22, "CELEBRATION");
+    TEST_ASSERT_EQUAL_UINT8(23, s.build(0, AckStatus::Applied, 0, body));
+    expectBytes("14 02 00 00 00 00 00 00 0d 0c 0b 0a 44 33 22 11 01 00 19 00 02 01 00", body, 23, "CELEBRATION");
     s.setGameOver(r);
-    TEST_ASSERT_EQUAL_UINT8(22, s.build(0, AckStatus::Applied, 0, body));
+    TEST_ASSERT_EQUAL_UINT8(23, s.build(0, AckStatus::Applied, 0, body));
     TEST_ASSERT_EQUAL_HEX8(0x15, body[0]);
 
     // Game-ball flags.
@@ -325,18 +325,76 @@ void test_other_screens() {
     TEST_ASSERT_EQUAL_HEX8(0x0c, body[16]);
 }
 
+// Spec 16.11: the pair now sits reversed against its first game.
+void test_sides_swapped_state() {
+    WatchState s;
+    s.setSport(SportId::Squash);
+    s.setIntro(ANNA, KRYSTIAN, true);
+    TEST_ASSERT_EQUAL_UINT8(17, s.bodySize());
+    std::vector<Frame> c = chunks(0x30, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(1, c.size());
+    expectBuf("01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40", c[0], "16.11 INTRO");
+
+    WatchState::Playing p{};
+    p.leftUid = ANNA;
+    p.rightUid = KRYSTIAN;
+    p.rightGames = 1;
+    p.leftScore = 2;
+    p.rightScore = 1;
+    p.sidesSwapped = true;
+    s.setPlaying(p);
+    TEST_ASSERT_EQUAL_UINT8(21, s.bodySize());
+    c = chunks(0x31, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    expectBuf("01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40", c[0], "16.11 PLAYING chunk 0");
+    expectBuf("01 31 12 00 01 02 01", c[1], "16.11 PLAYING chunk 1");
+
+    // Bit 6 sits beside the other flags.
+    p.uncommitted = true;
+    p.gameBallLeft = true;
+    s.setPlaying(p);
+    c = chunks(0x31, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL_HEX8(0x45, c[0].data[19]);
+    p.tiebreak = true;
+    p.gameBallRight = true;
+    s.setPlaying(p);
+    c = chunks(0x31, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0x4f, c[0].data[19], "bits 4-5 stay reserved 0");
+
+    WatchState::Result r{};
+    r.leftUid = ANNA;
+    r.rightUid = KRYSTIAN;
+    r.winnerSide = 0;
+    r.leftScore = 11;
+    r.rightScore = 7;
+    r.leftGames = 1;
+    r.rightGames = 1;
+    r.sidesSwapped = true;
+    s.setGameOver(r);
+    TEST_ASSERT_EQUAL_UINT8(23, s.bodySize());
+    c = chunks(0x32, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    expectBuf("01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00", c[0], "16.11 GAME_OVER chunk 0");
+    expectBuf("01 32 12 0b 07 01 01 00 40", c[1], "16.11 GAME_OVER chunk 1");
+
+    s.setCelebration(r);
+    c = chunks(0x33, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    expectBuf("01 33 12 0b 07 01 01 00 40", c[1], "CELEBRATION chunk 1");
+}
+
 void test_state_change_detection() {
     WatchState a;
     WatchState b;
     TEST_ASSERT_TRUE(a == b);
-    a.setIntro(ANNA, KRYSTIAN);
+    a.setIntro(ANNA, KRYSTIAN, false);
     TEST_ASSERT_TRUE(a != b);
-    b.setIntro(ANNA, KRYSTIAN);
+    b.setIntro(ANNA, KRYSTIAN, false);
     TEST_ASSERT_TRUE(a == b);
     b.setSport(SportId::Squash);
     TEST_ASSERT_TRUE_MESSAGE(a != b, "sport is part of the change");
     a.setSport(SportId::Squash);
-    a.setIntro(ANNA, 1);
+    a.setIntro(ANNA, 1, false);
     TEST_ASSERT_TRUE_MESSAGE(a != b, "data is part of the change");
 
     // Stale bytes past the new length never matter.
@@ -558,6 +616,7 @@ int main() {
     RUN_TEST(test_squash_playing_state);
     RUN_TEST(test_padel_playing_state);
     RUN_TEST(test_other_screens);
+    RUN_TEST(test_sides_swapped_state);
     RUN_TEST(test_state_change_detection);
     RUN_TEST(test_menu_clamped_to_buffer);
     RUN_TEST(test_chunk_boundaries);

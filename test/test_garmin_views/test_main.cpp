@@ -232,7 +232,7 @@ static void test_squash_match_start() {
     rig.tick();
 
     body = rig.describe();
-    TEST_ASSERT_EQUAL(16, body.size);
+    TEST_ASSERT_EQUAL(17, body.size);
     TEST_ASSERT_EQUAL_HEX8(0x12, body.screen());
     TEST_ASSERT_EQUAL_HEX32(UID_ANNA, u32(body.data()));
     TEST_ASSERT_EQUAL_HEX32(UID_BOB, u32(body.data() + 4));
@@ -324,7 +324,7 @@ static void test_celebration_and_game_over_describe() {
     game->commit();
     match.finishGame();
 
-    const uint8_t bajgiel[14] = {0x02, 0x00, 0x00, 0xB0, 0x01, 0x00, 0x00, 0xA0, 1, 0, 11, 0, 1, 1};
+    const uint8_t bajgiel[15] = {0x02, 0x00, 0x00, 0xB0, 0x01, 0x00, 0x00, 0xA0, 1, 0, 11, 0, 1, 1, 0};
     std::vector<SquashModeState> states;
     auto onState = [&](const SquashModeState s) { states.push_back(s); };
 
@@ -332,9 +332,9 @@ static void test_celebration_and_game_over_describe() {
     WatchState state;
     celebration.describeForWatch(state);
     const Body body(state);
-    TEST_ASSERT_EQUAL(22, body.size);
+    TEST_ASSERT_EQUAL(23, body.size);
     TEST_ASSERT_EQUAL_HEX8(0x14, body.screen());
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(bajgiel, body.data(), 14);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(bajgiel, body.data(), 15);
 
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, celebration.handleWatchCommand(cmd(CommandId::NextGame)));
     TEST_ASSERT_EQUAL(AckStatus::Applied, celebration.handleWatchCommand(cmd(CommandId::Skip)));
@@ -345,7 +345,7 @@ static void test_celebration_and_game_over_describe() {
     over.describeForWatch(state);
     const Body overBody(state);
     TEST_ASSERT_EQUAL_HEX8(0x15, overBody.screen());
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(bajgiel, overBody.data(), 14);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(bajgiel, overBody.data(), 15);
 
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, over.handleWatchCommand(cmd(CommandId::Skip)));
     TEST_ASSERT_EQUAL(AckStatus::Applied, over.handleWatchCommand(cmd(CommandId::NextGame)));
@@ -370,6 +370,157 @@ static void test_squash_court_side_after_swap() {
     TEST_ASSERT_EQUAL_HEX32(UID_ANNA, u32(body.data() + 4));
     TEST_ASSERT_EQUAL(1, body.data()[11]);
     TEST_ASSERT_EQUAL(0, body.data()[12]);
+}
+
+// --- SIDES_SWAPPED: the pair against its orientation at its first game (spec 11.3) -------
+
+static const uint8_t SIDES_SWAPPED = 0x40;
+
+// From MATCH_START; the INTRO flags byte.
+static uint8_t startToIntro(Rig &rig) {
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartMatch)));
+    rig.tick();
+    const Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x12, body.screen());
+    TEST_ASSERT_EQUAL(17, body.size);
+    return body.data()[8];
+}
+
+// From INTRO; SIDES_SWAPPED in the PLAYING flags.
+static uint8_t skipToPlaying(Rig &rig) {
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    const Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x13, body.screen());
+    return body.data()[8] & SIDES_SWAPPED;
+}
+
+// `side` wins the game point by point, then through CELEBRATION and GAME_OVER (both checked
+// for `flags`) back to MATCH_START.
+static void winToMatchStart(Rig &rig, const uint8_t side, const uint8_t flags) {
+    for (int i = 0; i < 200 && rig.describe().screen() == 0x13; i++) {
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, side)));
+        rig.commit();
+        if (rig.mode->viewChangePending()) rig.tick();
+    }
+    Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x14, body.screen());
+    TEST_ASSERT_EQUAL(23, body.size);
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(flags, body.data()[14], "CELEBRATION flags");
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x15, body.screen());
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(flags, body.data()[14], "GAME_OVER flags");
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::NextGame)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
+}
+
+static void sidesSwappedAfterFirstGame(Rig &rig) {
+    rig.toMatchStart();
+    // A swap before the first game is the start orientation, not a swap.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
+    winToMatchStart(rig, 0, 0);
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL(20, rig.describe().size);   // MATCH_START carries no flag
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, skipToPlaying(rig));
+    winToMatchStart(rig, 1, SIDES_SWAPPED);
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
+}
+
+static void test_squash_sides_swapped_latch() {
+    Rig rig;
+    squashRig(rig);
+    sidesSwappedAfterFirstGame(rig);
+}
+
+static void test_padel_sides_swapped_latch() {
+    Rig rig;
+    padelRig(rig);
+    sidesSwappedAfterFirstGame(rig);
+}
+
+static void test_volleyball_sides_swapped_latch() {
+    Rig rig;
+    g_fakeMillis = 100000;
+    rig.mode.reset(new VolleyballMode(rig.led, rig.back, rig.eink, rig.remote, rig.onModeChange(), rig.users,
+                                      std::unique_ptr<Rules>(new ShortVolleyballRules()),
+                                      std::function<void(CelebrationVariant)>()));
+    sidesSwappedAfterFirstGame(rig);
+}
+
+// A game left by UNDO at 0:0 is not the first game: a swap after it is still the start.
+static void test_sides_swapped_ignores_abandoned_game() {
+    Rig rig;
+    squashRig(rig);
+    rig.toPlaying();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
+    winToMatchStart(rig, 0, 0);
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, skipToPlaying(rig));
+}
+
+// Each pair latches at its own first game; CHOOSE_PLAYERS keeps the latch, like the games.
+static void test_sides_swapped_per_pair_and_kept() {
+    Rig rig;
+    squashRig(rig);
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_CEZ)));
+    rig.toMatchStart();   // Anna, Bob, Cez selected
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_ANNA, UID_BOB)));
+    startToIntro(rig);
+    skipToPlaying(rig);
+    winToMatchStart(rig, 0, 0);
+
+    // Cez's first game against Bob with Cez on the right: its own start orientation.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_BOB, UID_CEZ)));
+    TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
+    winToMatchStart(rig, 0, 0);
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_CEZ, UID_BOB)));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));   // INTRO -> MATCH_START
+    rig.tick();
+
+    // Back to the first pair: its own latch.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_ANNA, UID_BOB)));
+    TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_BOB, UID_ANNA)));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
+    rig.tick();
+
+    // MATCH_START -> CHOOSE_PLAYERS -> MATCH_START keeps the Match and its latch.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x10, rig.describe().screen());
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartTournament)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(pair(UID_BOB, UID_ANNA)));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, skipToPlaying(rig));
 }
 
 static void test_squash_undo_at_zero_leaves_for_match_start() {
@@ -650,6 +801,11 @@ int main(int, char **) {
     RUN_TEST(test_padel_set_win_through_loop);
     RUN_TEST(test_celebration_and_game_over_describe);
     RUN_TEST(test_squash_court_side_after_swap);
+    RUN_TEST(test_squash_sides_swapped_latch);
+    RUN_TEST(test_padel_sides_swapped_latch);
+    RUN_TEST(test_volleyball_sides_swapped_latch);
+    RUN_TEST(test_sides_swapped_ignores_abandoned_game);
+    RUN_TEST(test_sides_swapped_per_pair_and_kept);
     RUN_TEST(test_squash_undo_at_zero_leaves_for_match_start);
     RUN_TEST(test_padel_playing_ladder_and_gem_ball);
     RUN_TEST(test_padel_tiebreak_flag_and_raw_points);

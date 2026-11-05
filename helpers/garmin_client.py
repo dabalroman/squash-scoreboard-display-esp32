@@ -67,6 +67,8 @@ SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10:
 SPORTS = {0: "none", 1: "squash", 2: "volleyball", 3: "short volleyball", 4: "padel"}
 ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUSY", 5: "MALFORMED"}
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
+# Bit 6 of the PLAYING flags and of the INTRO / result flags byte (spec 11.3).
+SIDES_SWAPPED = 0x40
 
 # The board drops a value 15 s after its last write (spec 18), so a live HR is re-sent well inside that.
 HEART_REFRESH_S = 5.0
@@ -179,9 +181,13 @@ def describe(body, names=None):
         elif screen == 0x12:
             left, right = struct.unpack_from("<II", data)
             out += f" {who(left)} vs {who(right)}"
+            # Older firmware sends no flags byte (spec 5): not swapped.
+            if len(data) >= 9 and data[8] & SIDES_SWAPPED:
+                out += " SWAPPED"
         elif screen == 0x13:
             left, right, flags, lg, rg, ls, rs = struct.unpack_from("<IIBBBBB", data)
-            tags = [n for b, n in ((1, "UNCOMMITTED"), (2, "TIEBREAK"), (4, "BALL_L"), (8, "BALL_R")) if flags & b]
+            tags = [n for b, n in ((1, "UNCOMMITTED"), (2, "TIEBREAK"), (4, "BALL_L"), (8, "BALL_R"),
+                                   (SIDES_SWAPPED, "SWAPPED")) if flags & b]
             out += f" {who(left)} {lg}:{rg} {who(right)} score {ls}:{rs}"
             if len(data) >= 15:
                 lp, rp = data[13], data[14]
@@ -191,6 +197,8 @@ def describe(body, names=None):
             left, right, winner, ls, rs, lg, rg, variant = struct.unpack_from("<IIBBBBBB", data)
             out += (f" {who(left)} {ls}:{rs} {who(right)} games {lg}:{rg} "
                     f"winner={'left' if winner == 0 else 'right'}{' BAJGIEL' if variant else ''}")
+            if len(data) >= 15 and data[14] & SIDES_SWAPPED:
+                out += " SWAPPED"
     except struct.error:
         out += f" (short data {data.hex(' ')})"
     return out
