@@ -73,11 +73,13 @@ public:
         put32(cursorUid);
     }
 
-    void setMatchStart(const uint32_t selectedMask, const uint32_t leftUid, const uint32_t rightUid) {
+    void setMatchStart(const uint32_t selectedMask, const uint32_t leftUid, const uint32_t rightUid,
+                       const bool sidesSwapped) {
         begin(Garmin::ScreenId::MatchStart);
         put32(selectedMask);
         put32(leftUid);
         put32(rightUid);
+        put8(sidesFlag(sidesSwapped));
     }
 
     void setIntro(const uint32_t leftUid, const uint32_t rightUid, const bool sidesSwapped) {

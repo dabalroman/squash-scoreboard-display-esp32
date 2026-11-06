@@ -292,9 +292,13 @@ void test_other_screens() {
     TEST_ASSERT_EQUAL_UINT8(16, s.build(9, AckStatus::Invalid, 0, body));
     expectBytes("10 02 09 02 00 00 00 00 05 00 00 80 00 00 00 00", body, 16, "CHOOSE_PLAYERS on START");
 
-    s.setMatchStart(0x3, ANNA, KRYSTIAN);
-    TEST_ASSERT_EQUAL_UINT8(20, s.build(0, AckStatus::Applied, 0, body));
-    expectBytes("11 02 00 00 00 00 00 00 03 00 00 00 0d 0c 0b 0a 44 33 22 11", body, 20, "MATCH_START");
+    s.setMatchStart(0x3, ANNA, KRYSTIAN, false);
+    TEST_ASSERT_EQUAL_UINT8(21, s.build(0, AckStatus::Applied, 0, body));
+    expectBytes("11 02 00 00 00 00 00 00 03 00 00 00 0d 0c 0b 0a 44 33 22 11 00", body, 21, "MATCH_START");
+
+    s.setMatchStart(0x3, ANNA, KRYSTIAN, true);
+    TEST_ASSERT_EQUAL_UINT8(21, s.build(0, AckStatus::Applied, 0, body));
+    expectBytes("11 02 00 00 00 00 00 00 03 00 00 00 0d 0c 0b 0a 44 33 22 11 40", body, 21, "MATCH_START swapped");
 
     s.setIntro(ANNA, KRYSTIAN, false);
     TEST_ASSERT_EQUAL_UINT8(17, s.build(0, AckStatus::Applied, 0, body));
@@ -398,7 +402,7 @@ void test_state_change_detection() {
     TEST_ASSERT_TRUE_MESSAGE(a != b, "data is part of the change");
 
     // Stale bytes past the new length never matter.
-    a.setMatchStart(1, 2, 3);
+    a.setMatchStart(1, 2, 3, false);
     a.setBusy(ScreenId::Profile);
     b.setBusy(ScreenId::Profile);
     TEST_ASSERT_TRUE(a == b);

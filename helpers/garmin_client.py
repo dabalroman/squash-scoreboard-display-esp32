@@ -67,7 +67,7 @@ SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10:
 SPORTS = {0: "none", 1: "squash", 2: "volleyball", 3: "short volleyball", 4: "padel"}
 ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUSY", 5: "MALFORMED"}
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
-# Bit 6 of the PLAYING flags and of the INTRO / result flags byte (spec 11.3).
+# Bit 6 of the PLAYING flags and of the MATCH_START / INTRO / result flags byte (spec 11.3).
 SIDES_SWAPPED = 0x40
 
 # The board drops a value 15 s after its last write (spec 18), so a live HR is re-sent well inside that.
@@ -178,6 +178,9 @@ def describe(body, names=None):
         elif screen == 0x11:
             mask, left, right = struct.unpack_from("<III", data)
             out += f" selected={mask:#010x} left={who(left)} right={who(right)}"
+            # Older firmware sends no flags byte (spec 5): not swapped.
+            if len(data) >= 13 and data[12] & SIDES_SWAPPED:
+                out += " SWAPPED"
         elif screen == 0x12:
             left, right = struct.unpack_from("<II", data)
             out += f" {who(left)} vs {who(right)}"

@@ -184,8 +184,8 @@ does not offer them); new commands (old watches never send them); new status cod
 watch treats any non-zero status as a rejection); new flag bits (ignored); new characteristics.
 
 Compatible changes made in v1 (no bump): SIDES_SWAPPED (#510) - PLAYING flags bit 6, and a flags
-byte appended to INTRO (offset 16) and CELEBRATION / GAME_OVER (offset 22), still 1 and 2 chunks
-(section 11.3, 16.11). Store app 1.0.0 ignores them.
+byte appended to INTRO (offset 16), CELEBRATION / GAME_OVER (offset 22) and MATCH_START (offset
+20, #513), still 1 and 2 chunks (section 11.3, 16.11). Store app 1.0.0 ignores them.
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
@@ -484,13 +484,14 @@ CHOOSE_PLAYERS (body 16, 1 chunk):
 The rows are START, then one per profile in roster order (there is no exit row; BACK leaves).
 Both cursors (MENU, CHOOSE_PLAYERS) follow the fob's A / B scrolling as well as FOCUS.
 
-MATCH_START (body 20, 2 chunks):
+MATCH_START (body 21, 2 chunks):
 
 | Off | Size | Field |
 |---|---|---|
 | 8 | 4 | selected bitmask (as above) |
 | 12 | 4 | `leftUid` |
 | 16 | 4 | `rightUid` |
+| 20 | 1 | flags: bit 6 SIDES_SWAPPED, other bits reserved 0 |
 
 INTRO (body 17, 1 chunk):
 
@@ -519,16 +520,17 @@ PLAYING (body 21, padel 23; 2 chunks):
 | squash, volleyball, short volleyball | games won in the match | points in the current game (temporary, as the LEDs show) | - | `Game::willWinOnNextPointScored` (committed) |
 | padel | sets won | gems in the current set | `PadelPoint` 0 Love, 1 15, 2 30, 3 40, 4 Ad (temporary); with TIEBREAK the raw tiebreak points | gem ball, `PadelGemScorer::willWinOnNextRally` |
 
-**SIDES_SWAPPED** (PLAYING, INTRO, CELEBRATION, GAME_OVER; every sport): the pair now sits on
+**SIDES_SWAPPED** (MATCH_START, PLAYING, INTRO, CELEBRATION, GAME_OVER; every sport): the pair now sits on
 the court sides reversed against its orientation at its first game. The board latches it per
 pair (per `Match`) when that pair's first game finishes (a game left by UNDO at 0:0 does not
 count), so a swap at MATCH_START before the first game is the start orientation, not a swap, and
 the bit stays 0 throughout the first game. The latch lives as long as the sport mode: back to
 CHOOSE_PLAYERS and round-robin pair cycling keep it, like the games tally; a mode change or a
-reboot drops it. MATCH_START carries no flag (the watch never
-mirrors it). Every watch on the board reads the same bit, so they agree on the match's own left
-and right; a watch against older firmware reads the bit as 0 and a missing INTRO / result flags
-byte as 0 (section 5).
+reboot drops it. On MATCH_START the bit follows every swap live (SWAP_SIDES or the fob's C
+change the state, so it is pushed); the watch shows it as a hint and never mirrors that screen.
+Every watch on the board reads the same bit, so they agree on the match's own left
+and right; a watch against older firmware reads the bit as 0 and a missing MATCH_START / INTRO /
+result flags byte as 0 (section 5).
 
 CELEBRATION and GAME_OVER (body 23, 2 chunks):
 
@@ -821,6 +823,12 @@ games 1:1, normal variant (body 23, `stateSeq` 0x32, flags `40` at the end):
 ```
 STATE notify (20 B): 01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
 STATE notify ( 9 B): 01 32 12 0b 07 01 01 00 40
+```
+MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still reversed (body 21,
+`stateSeq` 0x33, flags `40` at the end):
+```
+STATE notify (20 B): 01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+STATE notify ( 7 B): 01 33 12 33 22 11 40
 ```
 Not swapped, the same states carry `00` in place of `40`.
 

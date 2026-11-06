@@ -208,7 +208,7 @@ static void test_squash_match_start() {
     rig.toMatchStart();
 
     Body body = rig.describe();
-    TEST_ASSERT_EQUAL(20, body.size);
+    TEST_ASSERT_EQUAL(21, body.size);
     TEST_ASSERT_EQUAL_HEX32(0x3, u32(body.data()));
     TEST_ASSERT_EQUAL_HEX32(UID_ANNA, u32(body.data() + 4));
     TEST_ASSERT_EQUAL_HEX32(UID_BOB, u32(body.data() + 8));
@@ -419,21 +419,33 @@ static void winToMatchStart(Rig &rig, const uint8_t side, const uint8_t flags) {
     TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
 }
 
+// MATCH_START's flags byte (body 21).
+static uint8_t matchStartFlags(Rig &rig) {
+    const Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x11, body.screen());
+    TEST_ASSERT_EQUAL(21, body.size);
+    return body.data()[12];
+}
+
 static void sidesSwappedAfterFirstGame(Rig &rig) {
     rig.toMatchStart();
     // A swap before the first game is the start orientation, not a swap.
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, matchStartFlags(rig));
     TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
     TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
     winToMatchStart(rig, 0, 0);
+    TEST_ASSERT_EQUAL_HEX8(0, matchStartFlags(rig));
 
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
-    TEST_ASSERT_EQUAL(20, rig.describe().size);   // MATCH_START carries no flag
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, matchStartFlags(rig));
     TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
     TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, skipToPlaying(rig));
     winToMatchStart(rig, 1, SIDES_SWAPPED);
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, matchStartFlags(rig));
 
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, matchStartFlags(rig));
     TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
     TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
 }
@@ -469,11 +481,13 @@ static void test_sides_swapped_ignores_abandoned_game() {
     TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
 
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(0, matchStartFlags(rig));
     TEST_ASSERT_EQUAL_HEX8(0, startToIntro(rig));
     TEST_ASSERT_EQUAL_HEX8(0, skipToPlaying(rig));
     winToMatchStart(rig, 0, 0);
 
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::SwapSides)));
+    TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, matchStartFlags(rig));
     TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, startToIntro(rig));
     TEST_ASSERT_EQUAL_HEX8(SIDES_SWAPPED, skipToPlaying(rig));
 }

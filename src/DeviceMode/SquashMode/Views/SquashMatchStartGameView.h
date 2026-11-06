@@ -258,7 +258,8 @@ public:
             return;
         }
 
-        state.setMatchStart(WatchSupport::selectedMask(players), playerLeft->getUid(), playerRight->getUid());
+        state.setMatchStart(WatchSupport::selectedMask(players), playerLeft->getUid(), playerRight->getUid(),
+                            match != nullptr && match->sidesSwapped());
     }
 };
 
