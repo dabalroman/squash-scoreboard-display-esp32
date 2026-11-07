@@ -12,7 +12,10 @@
 
 #include "GarminLink.h"
 #include "GarminStore.h"
+// Before the Tournament headers, which use printLn without including it.
 #include "RemoteDevelopmentService/LoggerHelper.h"
+#include "DeviceMode/WatchSupport.h"
+#include "Tournament/Tournament.h"
 
 namespace {
     portMUX_TYPE gMux = portMUX_INITIALIZER_UNLOCKED;
@@ -103,7 +106,7 @@ namespace {
         }
     };
 
-    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing, Heart };
+    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing, Heart, Results };
 
     // Host task. Every write is length-checked by the GarminLink parsers before anything
     // is touched; what an unauthenticated connection may do is decided there.
@@ -126,6 +129,9 @@ namespace {
                     break;
                 case Chr::Pairing:
                     frame = gLink.readPairing(handle);
+                    break;
+                case Chr::Results:
+                    frame = gLink.readResults(handle);
                     break;
                 default:
                     return;
@@ -154,6 +160,9 @@ namespace {
                 case Chr::Heart:
                     gLink.writeHeart(handle, value.data(), value.size(), millis());
                     break;
+                case Chr::Results:
+                    gLink.writeResults(handle, value.data(), value.size());
+                    break;
                 default:
                     break;
             }
@@ -181,6 +190,7 @@ namespace {
     CharCallbacks authCallbacks(Chr::Auth);
     CharCallbacks pairingCallbacks(Chr::Pairing);
     CharCallbacks heartCallbacks(Chr::Heart);
+    CharCallbacks resultsCallbacks(Chr::Results);
 
     NimBLECharacteristic *addCharacteristic(NimBLEService *service, const char *uuid, const uint32_t properties,
                                             NimBLECharacteristicCallbacks *callbacks) {
@@ -232,6 +242,8 @@ namespace {
         NimBLECharacteristic *heart = addCharacteristic(service, Garmin::HEART_UUID,
                                                         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY,
                                                         &heartCallbacks);
+        addCharacteristic(service, Garmin::RESULTS_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE,
+                          &resultsCallbacks);
         service->start();
         // Attribute handles exist once the GATT server has started.
         server->start();
@@ -515,6 +527,18 @@ void GarminService::publish(const WatchState &state, const uint32_t now) {
     if (gState == BleState::Running) {
         sendPushes(&state, now);
     }
+}
+
+void GarminService::publishResults(const Tournament *tournament) {
+    if (tournament == nullptr) {
+        gLink.syncResults(0, 0, [](uint16_t, uint8_t *) {});
+        return;
+    }
+    const size_t count = tournament->getFinishedGameCount();
+    const uint16_t listed = static_cast<uint16_t>(count > Garmin::RESULTS_MAX ? Garmin::RESULTS_MAX : count);
+    gLink.syncResults(tournament->getId(), listed, [tournament](const uint16_t i, uint8_t *out) {
+        WatchSupport::resultEntry(tournament->getFinishedGame(i), out);
+    });
 }
 
 void GarminService::publishAcks(const uint32_t now) {

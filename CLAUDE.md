@@ -111,6 +111,7 @@ Each has its reasoning in the rule file named after it.
 - Every AP path goes through `RemoteDevelopmentService::startApOnly()`, and `-DFASTLED_RMT_MEM_BLOCKS=4` stays a build flag: a retrying STA glitches the LEDs (`platform.md`).
 - Never grow or add a field to `PrefsData`: its size is the stored layout, and a mismatch drops brightness and the WiFi credentials. New persisted data gets its own NVS key in namespace `"ns"` (`persistence-network.md`, `roster-web.md`).
 - Never add an erase/clear/remove of a roster blob (`roster-web.md`).
+- Never remove or rewrite a finished game: `Match::finishGame()` is the only writer of `gameResults`, and the watch's RESULTS log relies on append-only (`tournament.md`, `garmin.md`).
 - Every user-visible string lives in `src/Strings.h`, both language branches, no diacritics; LED words have no W, K, M or V (`strings.md`).
 - Set brightness only through `LedDisplay`, never `FastLED.setBrightness` (`battery.md`).
 - Never write a raw NUL into a source file from a script (`eink.md`).
@@ -136,7 +137,7 @@ Subsystem detail lives in `.claude/rules/`. Each file loads automatically when a
 | `eink.md` | e-paper driver, match screen, fonts, menus, footer, ghosting, images |
 | `oled.md` | dead rows, text clamp, menu rows, navbar, battery icon |
 | `input-buzzer.md` | 433 MHz receiver measurements, long C, buzzer modes, `safeRestart()` |
-| `garmin.md` | NimBLE pin, `src/Garmin/` core, `GarminService`, watch commands, CONFIG GARMIN screens, protocol v1 HEART relay |
+| `garmin.md` | NimBLE pin, `src/Garmin/` core, `GarminService`, watch commands, CONFIG GARMIN screens, protocol v1 HEART relay, RESULTS (tournament results) |
 | `persistence-network.md` | `PrefsData`, Dev Mode, apply-on-save, OTA image check and board marker, `v1_bootstrap`, core-3.x fixes |
 | `strings.md` | one language per build, no diacritics, LED word limits, numerals |
 | `roster-web.md` | two rosters, NVS blob rules, uid vs id, palette, web pages, routes and gate, settings page, validators |

@@ -13,6 +13,8 @@ Usage:
   python helpers/garmin_client.py version              read VERSION (no auth needed)
   python helpers/garmin_client.py state                auth, print the state read + pushes for 5 s
   python helpers/garmin_client.py roster               auth, read every roster entry
+  python helpers/garmin_client.py results              auth, read the tournament's finished games (spec 19)
+  python helpers/garmin_client.py results 3            the same from game 3 on ("anything new?" with 3 cached)
   python helpers/garmin_client.py monitor              auth, print every state + HEART push until Ctrl+C
   python helpers/garmin_client.py heart 72             auth, send HR 72 (refreshed every 5 s), print the
                                                        others' HEART pushes until Ctrl+C, then clear it
@@ -54,7 +56,7 @@ PROTO = 0x01
 COMPANY = 0xFFFF
 MAGIC = b"SCBD"
 UUID = "0d78000{}-2f44-4f31-93b7-b78dc9e29735"
-SERVICE, VERSION, COMMAND, STATE, ROSTER, AUTH, PAIRING, HEART = (UUID.format(i) for i in range(1, 9))
+SERVICE, VERSION, COMMAND, STATE, ROSTER, AUTH, PAIRING, HEART, RESULTS = (UUID.format(i) for i in range(1, 10))
 
 COMMANDS = {
     "select_sport": (0x01, "B"), "back": (0x02, ""), "toggle_player": (0x03, "I"),
@@ -220,6 +222,15 @@ def decode_heart(frame):
     return list(frame[1:4])
 
 
+def decode_result(frame):
+    """(index, count, tournament id, game) - game is (uidA, uidB, scoreA, scoreB, turn), None past the end."""
+    if len(frame) < 9 or frame[0] != PROTO:
+        return None
+    index, count, tid = struct.unpack_from("<HHI", frame, 1)
+    game = struct.unpack_from("<IIBBB", frame, 9) if len(frame) >= 20 else None
+    return index, count, tid, game
+
+
 def describe_heart(values):
     shown = [str(v) for v in values if v]
     return "HEART " + (" ".join(shown) + " bpm" if shown else "none")
@@ -291,6 +302,21 @@ class Session:
             self.names[uid] = name
         return entries
 
+    async def read_results(self, start=0):
+        """(tournament id, count, [(index, game)]) from `start` on; None for a board without RESULTS."""
+        if self.client.services.get_characteristic(RESULTS) is None:
+            return None
+        await self.client.write_gatt_char(RESULTS, struct.pack("<BH", PROTO, start), response=True)
+        tid, count, games = 0, 0, []
+        while True:
+            decoded = decode_result(bytes(await self.client.read_gatt_char(RESULTS)))
+            if decoded is None:
+                sys.exit("RESULTS read refused (not authenticated?)")
+            index, count, tid, game = decoded
+            if game is None:
+                return tid, count, games
+            games.append((index, game))
+
     async def command(self, frame, wait=3.0):
         await self.client.write_gatt_char(COMMAND, frame, response=True)
         seq = frame[2]
@@ -334,7 +360,7 @@ async def find_address(store, board):
 
 async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "monitor", "send", "heart"])
+    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "results", "monitor", "send", "heart"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--keys", default=str(DEFAULT_KEYS))
     ap.add_argument("--board", help="board id (hex) from the key store")
@@ -415,6 +441,10 @@ async def main():
             return
 
         await session.read_roster()
+        if opts.action == "results":
+            await run_results(session, opts.args)
+            return
+
         first = await client.read_gatt_char(STATE)
         print(f"STATE read (chunk 0): {bytes(first).hex(' ')}")
         await session.subscribe()
@@ -445,6 +475,30 @@ async def main():
             except asyncio.TimeoutError:
                 continue
             print(describe_heart(body[1]) if isinstance(body, tuple) else describe(body, session.names))
+
+
+async def run_results(session, args):
+    try:
+        start = int(args[0], 0) if args else 0
+    except ValueError:
+        start = -1
+    if len(args) > 1 or not 0 <= start <= 0xFFFF:
+        sys.exit("results [from]")
+    read = await session.read_results(start)
+    if read is None:
+        print("no RESULTS characteristic (firmware before #527)")
+        return
+    tid, count, games = read
+    if tid == 0:
+        print("no tournament (not in a sport mode)")
+        return
+    print(f"tournament {tid:08x}, {count} games")
+    # Names of the active roster (the state's sport decides which, spec 12).
+    def name(uid):
+        return session.names.get(uid, f"{uid:08x}")
+
+    for index, (uid_a, uid_b, score_a, score_b, turn) in games:
+        print(f"{index:3d}  turn {turn:2d}  {name(uid_a):>9} {score_a:2d}:{score_b:<2d} {name(uid_b)}")
 
 
 async def run_heart(session, args):

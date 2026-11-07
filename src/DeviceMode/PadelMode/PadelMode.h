@@ -114,6 +114,10 @@ public:
         setState(PadelModeState::TournamentChoosePlayers);
     }
 
+    const Tournament *getTournament() const override {
+        return &tournament;
+    }
+
     bool isInMatch() const override {
         return state != PadelModeState::TournamentChoosePlayers;
     }

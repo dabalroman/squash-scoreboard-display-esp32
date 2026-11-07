@@ -5,6 +5,7 @@
 
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -493,6 +494,99 @@ void test_roster_reads() {
     expectFrame("01 03 03", link.readRoster(1), "short cursor write ignored");
 }
 
+namespace {
+    // Spec 16.13's games; `built` counts the entries the link asked for.
+    struct SpecResults {
+        int built = 0;
+
+        void operator()(const uint16_t i, uint8_t *out) {
+            built++;
+            const uint32_t a[] = {0x0A0B0C0D, 0x11223344, 0x0A0B0C0D};
+            const uint32_t b[] = {0x11223344, 0x55667788, 0x11223344};
+            const uint8_t sa[] = {11, 11, 9};
+            const uint8_t sb[] = {7, 4, 11};
+            const uint8_t turn[] = {1, 1, 2};
+            Garmin::buildResultEntry(a[i], b[i], sa[i], sb[i], turn[i], out);
+        }
+    };
+
+    const char *RESULT_0 = "01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01";
+    const char *RESULT_1 = "01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01";
+    const char *RESULT_2 = "01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02";
+}
+
+// Spec 16.13 / 19: auth gate, per-connection cursor, past-end header, incremental sync.
+void test_results_reads() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    SpecResults spec;
+    link.syncResults(0xC0FFEE01, 2, std::ref(spec));
+    TEST_ASSERT_EQUAL(2, spec.built);
+
+    connectWithSpecNonce(link, 1, 0);
+    put(link, &Link::writeResults, 1, "01 01 00");
+    expectFrame("01", link.readResults(1), "unauthenticated read");
+    putAt(link, &Link::writeAuth, 1, SPEC_PROOF, 0);
+    expectFrame("01 00 00 02 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", link.readResults(1),
+                "the unauthenticated write left the cursor at 0");
+
+    // Only the new game is built.
+    link.syncResults(0xC0FFEE01, 3, std::ref(spec));
+    TEST_ASSERT_EQUAL(3, spec.built);
+    TEST_ASSERT_EQUAL(3, link.resultCount());
+    expectFrame(RESULT_1, link.readResults(1), "game 1");
+    expectFrame(RESULT_2, link.readResults(1), "game 2");
+    expectFrame("01 03 00 03 00 01 ee ff c0", link.readResults(1), "past the end");
+    expectFrame("01 03 00 03 00 01 ee ff c0", link.readResults(1), "stays past the end");
+    link.syncResults(0xC0FFEE01, 3, std::ref(spec));
+    TEST_ASSERT_EQUAL(3, spec.built);
+
+    // The cursor is per connection.
+    authenticate(link, 2, 0);
+    expectFrame(RESULT_0, link.readResults(2), "second connection from 0");
+    put(link, &Link::writeResults, 1, "01 00 00");
+    expectFrame(RESULT_0, link.readResults(1), "rewound");
+    expectFrame(RESULT_1, link.readResults(2), "second connection unaffected");
+    put(link, &Link::writeResults, 1, "01 02");
+    expectFrame(RESULT_1, link.readResults(1), "short write ignored");
+
+    // A reconnect starts at 0.
+    link.disconnect(2);
+    authenticate(link, 2, 0);
+    expectFrame(RESULT_0, link.readResults(2), "reconnect");
+
+    // A new tournament starts over, outside a sport mode there is none.
+    link.syncResults(0x0BADF00D, 0, std::ref(spec));
+    put(link, &Link::writeResults, 1, "01 00 00");
+    expectFrame("01 00 00 00 00 0d f0 ad 0b", link.readResults(1), "new tournament, empty");
+    link.syncResults(0x0BADF00D, 1, std::ref(spec));
+    TEST_ASSERT_EQUAL(4, spec.built);
+    expectFrame("01 00 00 01 00 0d f0 ad 0b 0d 0c 0b 0a 44 33 22 11 0b 07 01", link.readResults(1), "its first game");
+    link.syncResults(0, 0, std::ref(spec));
+    put(link, &Link::writeResults, 1, "01 00 00");
+    expectFrame("01 00 00 00 00 00 00 00 00", link.readResults(1), "no tournament");
+}
+
+// RESULTS_MAX games are listed, later ones are not built.
+void test_results_cap() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    authenticate(link, 1, 0);
+    int built = 0;
+    auto entryAt = [&built](const uint16_t i, uint8_t *out) {
+        built++;
+        Garmin::buildResultEntry(i, 0, 11, 0, 1, out);
+    };
+    link.syncResults(7, 200, entryAt);
+    TEST_ASSERT_EQUAL(Garmin::RESULTS_MAX, built);
+    TEST_ASSERT_EQUAL(Garmin::RESULTS_MAX, link.resultCount());
+    put(link, &Link::writeResults, 1, "01 7f 00");
+    expectFrame("01 7f 00 80 00 07 00 00 00 7f 00 00 00 00 00 00 00 0b 00 01", link.readResults(1), "last listed");
+    expectFrame("01 80 00 80 00 07 00 00 00", link.readResults(1), "past the cap");
+    link.syncResults(7, 201, entryAt);
+    TEST_ASSERT_EQUAL(Garmin::RESULTS_MAX, built);
+}
+
 // Spec 12 active roster: a swap changes the version, the reads and the pushed state.
 void test_roster_kind_swap() {
     Link link(fakeFill, fakeWord);
@@ -943,6 +1037,8 @@ int main() {
     RUN_TEST(test_push_spec_vector_and_retry);
     RUN_TEST(test_roster_reads);
     RUN_TEST(test_roster_kind_swap);
+    RUN_TEST(test_results_reads);
+    RUN_TEST(test_results_cap);
     RUN_TEST(test_pairing_one_key_per_connection_and_rekey);
     RUN_TEST(test_forget_all_drops_trust);
     RUN_TEST(test_connection_limit_and_enable);

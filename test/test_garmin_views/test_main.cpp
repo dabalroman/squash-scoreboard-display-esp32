@@ -750,6 +750,36 @@ static void test_menu_select_sport_and_describe() {
     TEST_ASSERT_EQUAL(DeviceModeState::ShortVolleyballMode, rig.requested[0]);
 }
 
+// --- RESULTS (spec 19): what the mode hands GarminService::publishResults --------------
+
+static void test_results_through_the_views() {
+    Rig rig;
+    squashRig(rig);
+    const Tournament *tournament = rig.mode->getTournament();
+    TEST_ASSERT_NOT_NULL(tournament);
+    TEST_ASSERT_NOT_EQUAL(0, tournament->getId());
+
+    rig.toPlaying();
+    // UNDO at 0:0 abandons the game: nothing finished.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(0, tournament->getFinishedGameCount());
+
+    startToIntro(rig);
+    skipToPlaying(rig);
+    winToMatchStart(rig, 1, 0);
+    TEST_ASSERT_EQUAL(1, tournament->getFinishedGameCount());
+    uint8_t entry[Garmin::RESULT_ENTRY_SIZE];
+    WatchSupport::resultEntry(tournament->getFinishedGame(0), entry);
+    const uint8_t want[Garmin::RESULT_ENTRY_SIZE] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0, 11, 1};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(want, entry, sizeof(want));
+
+    BatterySensor sensor;
+    BatteryMonitor battery(sensor);
+    rig.mode.reset(new ModeSwitchingMode(rig.led, rig.back, rig.eink, rig.remote, rig.onModeChange(), battery));
+    TEST_ASSERT_NULL(rig.mode->getTournament());
+}
+
 // --- FOCUS (spec 10.2 0x0E): the fob's A/B cursor move, nothing else ----------------------
 
 static void menuRig(Rig &rig, BatteryMonitor &battery) {
@@ -910,6 +940,7 @@ int main(int, char **) {
     RUN_TEST(test_padel_undo_with_nothing_to_step_back_leaves);
     RUN_TEST(test_volleyball_scores_through_the_same_path);
     RUN_TEST(test_menu_select_sport_and_describe);
+    RUN_TEST(test_results_through_the_views);
     RUN_TEST(test_menu_focus);
     RUN_TEST(test_choose_players_focus);
     RUN_TEST(test_choose_players_focus_padel_and_volleyball);

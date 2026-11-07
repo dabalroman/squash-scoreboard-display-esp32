@@ -6,6 +6,7 @@
 #include "UserProfile.h"
 #include "DeviceMode/Celebration/CelebrationVariant.h"
 #include "Garmin/WatchCommand.h"
+#include "Garmin/GarminProtocol.h"
 #include "Garmin/WatchState.h"
 #include "Tournament/Match/Match.h"
 #include "Tournament/Game/GameResult.h"
@@ -96,6 +97,15 @@ namespace WatchSupport {
         r.bajgiel = selectCelebrationVariant(match, result) == CelebrationVariant::Bajgiel;
         r.sidesSwapped = match.sidesSwapped();
         return r;
+    }
+
+    // A RESULTS entry (spec 19): the match's player A/B, not court sides.
+    inline void resultEntry(const FinishedGame &finished, uint8_t out[Garmin::RESULT_ENTRY_SIZE]) {
+        const Match &match = *finished.match;
+        const GameResult &result = match.getGameResult(finished.game);
+        const uint16_t turn = finished.game + 1;
+        Garmin::buildResultEntry(match.getPlayerA().getUid(), match.getPlayerB().getUid(), result.playerAScore,
+                                 result.playerBScore, static_cast<uint8_t>(turn > 255 ? 255 : turn), out);
     }
 }
 

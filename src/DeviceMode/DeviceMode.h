@@ -13,6 +13,8 @@
 #include "Display/EInk/EInkDisplay.h"
 #include "RemoteInput/RemoteInputManager.h"
 
+class Tournament;
+
 class DeviceMode {
 protected:
     LedDisplay &ledDisplay;
@@ -73,6 +75,11 @@ public:
             [this] { return goBack(); },
             [this, &command] { return activeView->handleWatchCommand(command); }
         );
+    }
+
+    // The sport modes' tournament, for the watch's RESULTS (spec 19); null elsewhere.
+    virtual const Tournament *getTournament() const {
+        return nullptr;
     }
 
     virtual void describeForWatch(WatchState &state) const {

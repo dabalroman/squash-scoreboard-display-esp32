@@ -2,6 +2,7 @@
 #define TOURNAMENT_H
 #include <deque>
 #include <vector>
+#include <esp_random.h>
 
 #include "Match/Match.h"
 #include "Match/MatchOrderKeeper.h"
@@ -15,8 +16,18 @@ class Tournament {
     std::deque<Match> matches;
     std::vector<UserProfile *> players;
     std::unique_ptr<Rules> rules;
+    // Every match's finished games in finish order (the watch's RESULTS, spec 19). RAM only.
+    std::vector<FinishedGame> finished;
+    // Lets a watch tell a new tournament from games appended to the one it cached.
+    uint32_t id;
 
     Match *activeMatch = nullptr;
+
+    static uint32_t newId() {
+        uint32_t v = 0;
+        while (v == 0) v = esp_random();
+        return v;
+    }
 
 public:
     Tournament(const Tournament &) = delete;
@@ -24,14 +35,14 @@ public:
 
     std::unique_ptr<MatchOrderKeeper> matchOrderKeeper;
 
-    explicit Tournament(std::unique_ptr<Rules> r) : rules(std::move(r)),
+    explicit Tournament(std::unique_ptr<Rules> r) : rules(std::move(r)), id(newId()),
                                                     matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
         printLn("Creating new match between %s and %s", userProfileA.getName(), userProfileB.getName());
         const auto newMatchId = matches.size();
-        matches.emplace_back(newMatchId, userProfileA, userProfileB, rules.get());
+        matches.emplace_back(newMatchId, userProfileA, userProfileB, rules.get(), &finished);
         return matches.back();
     }
 
@@ -90,6 +101,18 @@ public:
 
     size_t getMatchCount() const {
         return matches.size();
+    }
+
+    uint32_t getId() const {
+        return id;
+    }
+
+    size_t getFinishedGameCount() const {
+        return finished.size();
+    }
+
+    const FinishedGame &getFinishedGame(const size_t index) const {
+        return finished[index];
     }
 };
 

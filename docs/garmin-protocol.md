@@ -57,6 +57,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | Unauthenticated connection timeout | 10 s, then the board disconnects |
 | Heart rate expiry | 15 s after the watch's last HEART write (section 18) |
 | HEART notify rate | at most 1 per second per connection (section 18) |
+| Tournament id | `uint32`, random, new per tournament (sport mode entered, reboot); never `0x00000000`, which means "no tournament" (section 19) |
 
 UUIDs (fresh, not the POC's):
 
@@ -70,6 +71,7 @@ UUIDs (fresh, not the POC's):
 | AUTH | `0d780006-2f44-4f31-93b7-b78dc9e29735` |
 | PAIRING | `0d780007-2f44-4f31-93b7-b78dc9e29735` |
 | HEART | `0d780008-2f44-4f31-93b7-b78dc9e29735` |
+| RESULTS | `0d780009-2f44-4f31-93b7-b78dc9e29735` |
 
 ## 4. Advertising
 
@@ -187,14 +189,17 @@ Compatible changes made in v1 (no bump): SIDES_SWAPPED (#510) - PLAYING flags bi
 byte appended to INTRO (offset 16), CELEBRATION / GAME_OVER (offset 22) and MATCH_START (offset
 20, #513), still 1 and 2 chunks (section 11.3, 16.11). LAST_KNOWN / LAST_RIGHT (#509) - PLAYING
 flags bits 4-5, the newest point's side (section 11.3, 16.12); a board without them sends 0 there,
-which reads as "unknown". Store app 1.0.0 ignores them.
+which reads as "unknown". Store app 1.0.0 ignores them. RESULTS (#527) - a new characteristic,
+the tournament's finished games (section 19, 16.13); optional for the watch, since a v1 board
+from before it lacks the characteristic. Store app 1.0.0 never looks for it.
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
 
 ## 6. GATT layout
 
-One primary service, seven characteristics. One Connect IQ profile (limit is 3).
+One primary service, eight characteristics (RESULTS is optional for the watch, section 19). One
+Connect IQ profile (limit is 3).
 
 | Characteristic | Properties | Auth required | Purpose |
 |---|---|---|---|
@@ -205,9 +210,11 @@ One primary service, seven characteristics. One Connect IQ profile (limit is 3).
 | AUTH | read, write | no | read = challenge / result; write = proof |
 | PAIRING | write, read, notify | no | write = request; read/notify = result (this connection only) |
 | HEART | write (with response), notify | yes | write = this watch's heart rate; notify = the other watches' (section 18) |
+| RESULTS | write (with response), read | yes | write = set read cursor; read = finished game at cursor, cursor + 1 (section 19) |
 
-Before authentication the board accepts writes to COMMAND, ROSTER and HEART at the ATT level and
-**discards** them, answers reads of STATE and ROSTER with the 1-byte frame `[PROTO]`, and sends
+Before authentication the board accepts writes to COMMAND, ROSTER, HEART and RESULTS at the ATT
+level and **discards** them, answers reads of STATE, ROSTER and RESULTS with the 1-byte frame
+`[PROTO]`, and sends
 no notifications. Notify-only, never indications (unreliable on some watches).
 
 ### 6.1 VERSION (read, 2-20 B)
@@ -222,7 +229,7 @@ no notifications. Notify-only, never indications (unreliable on some watches).
 | Step | Request | Notes |
 |---|---|---|
 | 1 | scan, filter (4.4), `pairDevice()` | `pairDevice` does not persist across launches: every launch rescans |
-| 2 | (on connect) check service + all seven characteristics exist | any missing -> disconnect, treat as not a scoreboard |
+| 2 | (on connect) check service + the seven v1 characteristics exist (VERSION to HEART) | any missing -> disconnect, treat as not a scoreboard; RESULTS missing is not an error (section 19) |
 | 3 | read VERSION | out of range or `!=` advertised -> disconnect + message (section 5) |
 | 4 | read AUTH | challenge (8.1) |
 | 5 | write AUTH | proof |
@@ -230,6 +237,7 @@ no notifications. Notify-only, never indications (unreliable on some watches).
 | 7 | write STATE CCCD `01 00` | the board then notifies the full current state |
 | 8 | if `rosterVersion` differs from the cache of the active roster's kind: write ROSTER `[PROTO, 0]`, read `count` times | section 12 |
 | 9 | optional: write HEART CCCD `01 00` | only a watch that shows the other watches' heart rates; the board then notifies the current list if it is not empty (section 18) |
+| 10 | optional: write RESULTS `[PROTO, n]`, read | only a watch that shows the tournament; `n` = its cached count, 0 if none (section 19.2) |
 
 Pairing inserts its exchange (section 9) before step 4 on the same connection. Presses are
 ignored until step 7's state has arrived. Sharing the watch's own heart rate needs no CCCD: it is
@@ -650,6 +658,7 @@ ROSTER read - 19 B, or 3 B past the end:
 | HEART values per notify | 3 (every other connection) | `MAX_CONNECTIONS` - 1 |
 | HEART notifies | 1 / s per connection, newest content | section 18 |
 | Heart rate held by the board | latest per connection, RAM only, 15 s expiry | section 18 |
+| RESULTS games listed | 128 per tournament; later games are not listed | `Garmin::RESULTS_MAX`, section 19 |
 
 ## 15. Crypto availability
 
@@ -879,6 +888,23 @@ The rest of the game, flags byte only:
 Padel: in a gem the bits follow its rallies the same way; at gem 0:0 they name the previous gem's
 winner (an UNDO there steps back into that gem), at the set's start both are 0.
 
+### 16.13 RESULTS
+
+Squash, roster as 16.4 (ANNA `0x0A0B0C0D`, KRYSTIAN `0x11223344`, OLA `0x55667788`), tournament id
+`0xC0FFEE01`. Finished in this order: ANNA - KRYSTIAN 11:7, KRYSTIAN - OLA 11:4, then ANNA -
+KRYSTIAN again 9:11 (that pair's turn 2; KRYSTIAN won it).
+```
+RESULTS write (3 B):  01 00 00
+RESULTS read  (20 B): 01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01
+RESULTS read  (20 B): 01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01
+RESULTS read  (20 B): 01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02
+RESULTS read  ( 9 B): 01 03 00 03 00 01 ee ff c0                (past the end)
+```
+Later, "anything new?" with the 3 games cached: write `01 03 00`, read `01 03 00 03 00 01 ee ff c0`
+(nothing). Outside a sport mode the same write and read give `01 03 00 00 00 00 00 00 00` (no
+tournament: count 0, id 0). Unauthenticated read (1 B): `01`. A write `01 02` (2 B) or `00 00 00`
+(v0) is discarded and the cursor stays.
+
 ## 17. Open questions and deviations
 
 1. **Service UUID is not in `ADV_IND` (deviation from the locked filter).** UUID + locked
@@ -914,8 +940,8 @@ winner (an UNDO there steps back into that gem), at the set's start both are 0.
    chunk 1 min 6 / median 22 / max 247 ms, typically 6-9 ms. The second chunk does not cost a tick,
    so the state stays as specified.
 8. Connect IQ's per-profile characteristic limit is undocumented; the v0 profile (6 characteristics
-   + 2 CCCDs) registered and every entry resolved on the FR970 (#81 Gate 0). v1 adds HEART (7 + 3);
-   not yet verified on a watch.
+   + 2 CCCDs) registered and every entry resolved on the FR970 (#81 Gate 0). v1 adds HEART (7 + 3)
+   and RESULTS (8 + 3); not yet verified on a watch.
 9. Not protocol, for #80: WiFi + BLE against the RMT was **measured on V1 (2026-10-02)**: Dev
    Mode STA, advertising, 2 subscribed centrals at 20 notifies/s and fob presses in a match
    gave 0 bails, 0 stale, max 5 us late. Four connections were not measured (judged
@@ -999,3 +1025,69 @@ the first, and a later "show everyone" needs no protocol change.
 - Showing: enable the HEART CCCD after the first state (section 7 step 9) and show the first
   non-zero value (a two-watch match has one). Drop it at disconnect, when the state leaves PLAYING,
   or when the list is all zero; frames with a foreign `PROTO` are ignored.
+
+## 19. Tournament results (RESULTS)
+
+The finished games of the current tournament, for a watch that draws the standings (#525). The
+board is the source of truth: a watch never derives results from the states it observed.
+
+- **Characteristic** RESULTS `0d780009-2f44-4f31-93b7-b78dc9e29735`, write (with response) + read,
+  authentication required: before authentication writes are discarded and reads answer `[PROTO]`.
+  **Optional for the watch**: a v1 board from before #527 lacks it (section 5), so a watch that
+  does not find it hides the table and still connects.
+- **Tournament** = the games played since the board entered the current sport mode. It lives in
+  RAM only: leaving the sport mode or a reboot ends it, and the next one has a new
+  `tournamentId`. Nothing is persisted.
+- **Append-only, in finish order.** A finished game never changes or disappears (an UNDO at 0:0
+  leaves an unfinished game, never a finished one). A game appears once its winning point is
+  committed. Changes are not pushed: STATE is unchanged and a new game triggers no notify.
+- **Players A and B are the pair's own order** (fixed when the board first set that pair up), not
+  court sides: the exception to section 2, since a table needs the pair, not who stands where.
+  A later swap of sides does not change A and B for that pair's games.
+- **Winner = the higher score.** A game only finishes on a winning point, so the scores never tie
+  (padel: the set's gems, including 7-6 after a tiebreak).
+- **Turn** = the pair's k-th finished game, 1-based (ANNA - KRYSTIAN's second game is turn 2,
+  whatever other pairs played in between).
+- uids belong to the active roster (section 12): players in squash, teams in padel and volleyball.
+- At most 128 games are listed per tournament (section 14); later games are not, and `count`
+  stays 128.
+
+### 19.1 RESULTS frames
+
+Write (watch -> board) - 3 B: sets this connection's read cursor (0 at connect).
+
+| Off | Size | Field |
+|---|---|---|
+| 0 | 1 | `PROTO` |
+| 1 | 2 | `index` (`u16`) |
+
+Shorter, or a foreign `PROTO` -> discarded; trailing bytes are ignored (section 2).
+
+Read (board -> watch) - 20 B for a game, the 9 B header alone past the end. Each read returns the
+game at the cursor and advances it; past the end it stays.
+
+| Off | Size | Field |
+|---|---|---|
+| 0 | 1 | `PROTO` |
+| 1 | 2 | `index` (`u16`) - the cursor this read answers |
+| 3 | 2 | `count` (`u16`) - games listed now |
+| 5 | 4 | `tournamentId` (`u32`); `0` = no tournament (outside a sport mode), then `count` is 0 |
+| 9 | 4 | `uidA` |
+| 13 | 4 | `uidB` |
+| 17 | 1 | `scoreA` |
+| 18 | 1 | `scoreB` |
+| 19 | 1 | `turn` (1-based) |
+
+An empty tournament reads its own id with `count` 0.
+
+### 19.2 Watch (recommended)
+
+- **Incremental read.** Cache `(tournamentId, games)` per board. To catch up, write
+  `[PROTO, n]` with `n` = the cached count and read until a 9 B frame: 1 write + 1 read when
+  nothing is new.
+- **A different `tournamentId`, or a `count` below the cached one, drops the cache**: write
+  `[PROTO, 0]` and read all `count` games. `0` = no tournament: show nothing.
+- When to read: on entering the table screen and when the state shows a game just finished
+  (CELEBRATION, GAME_OVER); no polling during PLAYING. Each read costs one request tick (section
+  2), so a press waiting to be sent goes first.
+- Results stay in the watch's RAM, like the board's; nothing is persisted.

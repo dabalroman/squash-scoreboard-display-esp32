@@ -460,6 +460,7 @@ void publishWatchState() {
         state.setBusy(info.screen);
     }
     state.setSport(info.sport);
+    garminService.publishResults(deviceMode->getTournament());
     garminService.publish(state, lastUpdate);
 }
 

@@ -4,10 +4,12 @@ paths:
   - "src/DeviceMode/PadelMode/**"
   - "src/DeviceMode/*/Views/*GamePlayingView.h"
   - "test/test_rules/**"
+  - "test/test_tournament/**"
 ---
 
 # Match / Tournament / Rules
 
+- **Finished games are append-only**: `Match::finishGame()` is the only writer of `gameResults` and also appends `{match, index}` to the owning `Tournament`'s chronological `FinishedGame` log (the watch's RESULTS, `garmin.md`); never remove or rewrite a finished game. `Tournament::getId()` is random, never 0, new per instance.
 - `GameResult` stores slim post-game results. `winnerPlayerId` is a `uint8_t` player ID (not `GameSide`) — resolved at write-time in `Match::finishGame()` respecting swap state.
 - `Rules` (abstract) — `checkWinner(scoreA, scoreB)` returns `GameSide`. Implementations: `SquashRules`, `VolleyballRules`, `ShortVolleyballRules`, `PadelRules`. `Rules` also exposes `historyReserve()` so each sport pre-sizes its `GameScoreHistory` (Squash 32 default, Volleyball 64, Padel 16).
 - **Game ball** - `Rules::willWinOnNextPointScored(a, b, side)` (non-pure, no overrides) = not already won and `checkWinner` with that side +1 returns that side. Per side (bool), never a returned `GameSide`. `Game::willWinOnNextPointScored(side)` applies it to the **committed** score: an uncommitted point neither starts nor stops it (40:00 then an uncommitted 40:15 keeps the left breathing).

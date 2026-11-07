@@ -44,6 +44,12 @@ namespace Garmin {
     constexpr uint32_t HEART_EXPIRY_MS = 15000;
     constexpr uint32_t HEART_MIN_INTERVAL_MS = 1000;
 
+    // RESULTS (spec 19): header PROTO, index u16, count u16, tournamentId u32; then one entry.
+    constexpr uint8_t RESULTS_HEADER = 9;
+    constexpr uint8_t RESULT_ENTRY_SIZE = 11;
+    constexpr uint16_t RESULTS_MAX = 128;
+    static_assert(RESULTS_HEADER + RESULT_ENTRY_SIZE <= MAX_FRAME, "a RESULTS read must fit one frame");
+
     constexpr uint8_t ADV_FLAG_PAIRING = 0x01;
 
     constexpr const char *SERVICE_UUID = "0d780001-2f44-4f31-93b7-b78dc9e29735";
@@ -54,6 +60,7 @@ namespace Garmin {
     constexpr const char *AUTH_UUID = "0d780006-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *PAIRING_UUID = "0d780007-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *HEART_UUID = "0d780008-2f44-4f31-93b7-b78dc9e29735";
+    constexpr const char *RESULTS_UUID = "0d780009-2f44-4f31-93b7-b78dc9e29735";
 
     enum class AckStatus : uint8_t {
         Applied = 0,
@@ -368,6 +375,43 @@ namespace Garmin {
         f.data[0] = PROTO;
         memcpy(f.data + 1, bpm, HEART_LIST);
         f.len = static_cast<uint8_t>(1 + HEART_LIST);
+        return f;
+    }
+
+    // --- RESULTS (19) ---
+
+    // A/B = the match's players in creation order, not court sides; turn = this pair's k-th game (1-based).
+    inline void buildResultEntry(const uint32_t uidA, const uint32_t uidB, const uint8_t scoreA,
+                                 const uint8_t scoreB, const uint8_t turn, uint8_t out[RESULT_ENTRY_SIZE]) {
+        putU32(out, uidA);
+        putU32(out + 4, uidB);
+        out[8] = scoreA;
+        out[9] = scoreB;
+        out[10] = turn;
+    }
+
+    // RESULTS write: [PROTO, index u16]; shorter or a foreign PROTO is discarded.
+    inline bool parseResultsCursor(const uint8_t *in, const size_t len, uint16_t &index) {
+        if (len < 3 || in[0] != PROTO) return false;
+        index = getU16(in + 1);
+        return true;
+    }
+
+    // 20 B for an entry, the 9 B header past the end. The caller advances the cursor after a read.
+    inline Frame buildResultsRead(const uint16_t index, const uint16_t count, const uint32_t tournamentId,
+                                  const uint8_t *entries) {
+        Frame f{};
+        f.data[0] = PROTO;
+        putU16(f.data + 1, index);
+        putU16(f.data + 3, count);
+        putU32(f.data + 5, tournamentId);
+        if (index >= count) {
+            f.len = RESULTS_HEADER;
+            return f;
+        }
+        memcpy(f.data + RESULTS_HEADER, entries + static_cast<size_t>(index) * RESULT_ENTRY_SIZE,
+               RESULT_ENTRY_SIZE);
+        f.len = RESULTS_HEADER + RESULT_ENTRY_SIZE;
         return f;
     }
 

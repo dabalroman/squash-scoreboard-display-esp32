@@ -8,6 +8,8 @@
 #include "WatchCommand.h"
 #include "WatchState.h"
 
+class Tournament;
+
 /**
  * Garmin App Remote BLE peripheral (docs/garmin-protocol.md), the only NimBLE user. One
  * instance, at file scope in main.cpp. Board-agnostic.
@@ -57,6 +59,9 @@ public:
 
     // Once per 50 ms tick: notifies every subscribed watch whose state or ack changed, and HEART (spec 18).
     void publish(const WatchState &state, uint32_t now);
+    // Every publish: mirrors the finished games for RESULTS reads (spec 19); null outside the sport modes.
+    // Never pushes; cheap when nothing was added.
+    void publishResults(const Tournament *tournament);
     // The last state again, for acks made while nothing is described (overlay).
     void publishAcks(uint32_t now);
 

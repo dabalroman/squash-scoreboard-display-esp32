@@ -13,8 +13,9 @@
 #include "WatchState.h"
 
 /**
- * The board's protocol state (spec 6-12, 18) without NimBLE: connection slots, auth, pairing,
- * dedupe, the command queue, acks, state pushes, timeouts, the HEART relay and the in-RAM GarminData.
+ * The board's protocol state (spec 6-12, 18, 19) without NimBLE: connection slots, auth, pairing,
+ * dedupe, the command queue, acks, state pushes, timeouts, the HEART relay, the RESULTS mirror and
+ * the in-RAM GarminData.
  * GarminService feeds it the host task's events and sends what it hands back, so the host
  * suites test the logic the board runs.
  *
@@ -162,6 +163,40 @@ public:
     uint32_t rosterVersion() const {
         Guard g;
         return rosterVers[activeRoster];
+    }
+
+    // --- Tournament results (loop; spec 19) ---
+
+    /**
+     * Mirrors the tournament's finished games: `entryAt(i, out)` writes entry i's wire bytes.
+     * Finished games are append-only, so only new ones are copied; a new tournament id (or a
+     * shorter list) starts over. tid 0 / count 0 outside the sport modes. Past RESULTS_MAX
+     * games are not listed. Entries are built outside the lock, each lands under its own.
+     */
+    template<class EntryAt>
+    void syncResults(const uint32_t tid, uint16_t count, EntryAt entryAt) {
+        if (count > Garmin::RESULTS_MAX) count = Garmin::RESULTS_MAX;
+        uint16_t have;
+        {
+            Guard g;
+            if (tid != resultsTid || count < resultsCount) {
+                resultsTid = tid;
+                resultsCount = 0;
+            }
+            have = resultsCount;
+        }
+        for (uint16_t i = have; i < count; i++) {
+            uint8_t entry[Garmin::RESULT_ENTRY_SIZE];
+            entryAt(i, entry);
+            Guard g;
+            memcpy(results + static_cast<size_t>(i) * Garmin::RESULT_ENTRY_SIZE, entry, sizeof(entry));
+            resultsCount = static_cast<uint16_t>(i + 1);
+        }
+    }
+
+    uint16_t resultCount() const {
+        Guard g;
+        return resultsCount;
     }
 
     // --- Pairing window (loop) ---
@@ -415,6 +450,24 @@ public:
         return f;
     }
 
+    void writeResults(const uint16_t handle, const uint8_t *in, const size_t len) {
+        uint16_t index;
+        if (!Garmin::parseResultsCursor(in, len, index)) return;
+        Guard g;
+        Conn *c = find(handle);
+        if (c == nullptr || !c->authed) return;
+        c->resultsCursor = index;
+    }
+
+    Garmin::Frame readResults(const uint16_t handle) {
+        Guard g;
+        Conn *c = find(handle);
+        if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
+        const Garmin::Frame f = Garmin::buildResultsRead(c->resultsCursor, resultsCount, resultsTid, results);
+        if (c->resultsCursor < resultsCount) c->resultsCursor++;
+        return f;
+    }
+
     // Chunk 0 of the last published state, with this connection's ack (spec 11.1).
     Garmin::Frame readState(const uint16_t handle) {
         Guard g;
@@ -635,6 +688,7 @@ private:
         Garmin::Frame pairingReply = {};
         uint8_t lastSeq = 0;
         uint8_t rosterCursor = 0;
+        uint16_t resultsCursor = 0;
         uint8_t ackSeq = 0;
         Garmin::AckStatus ackStatus = Garmin::AckStatus::Applied;
         uint8_t stateSeq = 0;
@@ -686,6 +740,10 @@ private:
     uint32_t rosterVers[ROSTER_KINDS] = {Garmin::rosterVersion(0, nullptr), Garmin::rosterVersion(0, nullptr)};
     uint8_t activeRoster = 0;
     uint8_t pendingRoster = 0;
+
+    uint8_t results[Garmin::RESULTS_MAX * Garmin::RESULT_ENTRY_SIZE] = {};
+    uint16_t resultsCount = 0;
+    uint32_t resultsTid = 0;
 
     bool pairing = false;
     uint32_t pairingOpenedAt = 0;

@@ -656,6 +656,32 @@ void test_heart_frames() {
     TEST_ASSERT_EQUAL_STRING("0d780008-2f44-4f31-93b7-b78dc9e29735", HEART_UUID);
 }
 
+// Spec 16.13.
+void test_results_frames() {
+    uint8_t entries[3 * RESULT_ENTRY_SIZE];
+    buildResultEntry(0x0A0B0C0D, 0x11223344, 11, 7, 1, entries);
+    buildResultEntry(0x11223344, 0x55667788, 11, 4, 1, entries + RESULT_ENTRY_SIZE);
+    buildResultEntry(0x0A0B0C0D, 0x11223344, 9, 11, 2, entries + 2 * RESULT_ENTRY_SIZE);
+    const uint32_t tid = 0xC0FFEE01;
+    expectBuf("01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", buildResultsRead(0, 3, tid, entries), "game 0");
+    expectBuf("01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01", buildResultsRead(1, 3, tid, entries), "game 1");
+    expectBuf("01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02", buildResultsRead(2, 3, tid, entries), "game 2");
+    expectBuf("01 03 00 03 00 01 ee ff c0", buildResultsRead(3, 3, tid, entries), "past the end");
+    expectBuf("01 03 00 00 00 00 00 00 00", buildResultsRead(3, 0, 0, nullptr), "no tournament");
+
+    uint16_t index = 0xffff;
+    const std::vector<uint8_t> write = hex("01 03 00");
+    TEST_ASSERT_TRUE(parseResultsCursor(write.data(), write.size(), index));
+    TEST_ASSERT_EQUAL_UINT16(3, index);
+    const std::vector<uint8_t> wide = hex("01 34 12 ff");
+    TEST_ASSERT_TRUE_MESSAGE(parseResultsCursor(wide.data(), wide.size(), index) && index == 0x1234, "u16, trailing byte");
+    const std::vector<uint8_t> shortWrite = hex("01 02");
+    TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(shortWrite.data(), shortWrite.size(), index), "short");
+    const std::vector<uint8_t> foreign = hex("00 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(foreign.data(), foreign.size(), index), "foreign PROTO");
+    TEST_ASSERT_EQUAL_STRING("0d780009-2f44-4f31-93b7-b78dc9e29735", RESULTS_UUID);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_crc32_check_value);
@@ -681,5 +707,6 @@ int main() {
     RUN_TEST(test_focus);
     RUN_TEST(test_service_uuid_bytes);
     RUN_TEST(test_heart_frames);
+    RUN_TEST(test_results_frames);
     return UNITY_END();
 }

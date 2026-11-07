@@ -8,6 +8,14 @@
 #include "Tournament/Game/GameResult.h"
 #include "Utils.h"
 
+class Match;
+
+// One finished game in tournament order: the match's `game`-th result (0-based).
+struct FinishedGame {
+    const Match *match;
+    uint16_t game;
+};
+
 /**
  * Two preselected players play against each other in many rounds.
  * Lives as long as the tournament does.
@@ -19,9 +27,13 @@ class Match {
     UserProfile &playerB;
 
     std::unique_ptr<Game> game = nullptr;
+    // Append-only: finishGame() is the only writer, so a FinishedGame index stays valid.
     std::vector<GameResult> gameResults;
 
     Rules *rules;
+
+    // The tournament's chronological log; null outside a Tournament.
+    std::vector<FinishedGame> *finishedLog;
 
     bool playersSwappedCourtSides = false;
 
@@ -29,8 +41,9 @@ class Match {
     bool startSwapped = false;
 
 public:
-    Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules)
-        : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules) {
+    Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules,
+          std::vector<FinishedGame> *finishedLog = nullptr)
+        : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules), finishedLog(finishedLog) {
     }
 
     Match(const Match &) = delete;
@@ -71,7 +84,15 @@ public:
             winnerPlayerId,
         });
 
+        if (finishedLog != nullptr) {
+            finishedLog->push_back({this, static_cast<uint16_t>(gameResults.size() - 1)});
+        }
+
         game.reset();
+    }
+
+    const GameResult &getGameResult(const size_t index) const {
+        return gameResults[index];
     }
 
     const GameResult *getLastGameResult() const {
