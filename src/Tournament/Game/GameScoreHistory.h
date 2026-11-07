@@ -70,6 +70,17 @@ public:
         }
     }
 
+    /** Side of the newest point still standing (`lost` skipped); false when there is none. */
+    bool newest(GameSide &side) const {
+        for (auto it = history.rbegin(); it != history.rend(); ++it) {
+            if (it->status != GameScoreHistoryStatus::lost) {
+                side = it->side;
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Trailing streak of one side's committed entries, walked from the most
      * recent backwards. `scored` (uncommitted) entries are skipped so an

@@ -185,7 +185,9 @@ watch treats any non-zero status as a rejection); new flag bits (ignored); new c
 
 Compatible changes made in v1 (no bump): SIDES_SWAPPED (#510) - PLAYING flags bit 6, and a flags
 byte appended to INTRO (offset 16), CELEBRATION / GAME_OVER (offset 22) and MATCH_START (offset
-20, #513), still 1 and 2 chunks (section 11.3, 16.11). Store app 1.0.0 ignores them.
+20, #513), still 1 and 2 chunks (section 11.3, 16.11). LAST_KNOWN / LAST_RIGHT (#509) - PLAYING
+flags bits 4-5, the newest point's side (section 11.3, 16.12); a board without them sends 0 there,
+which reads as "unknown". Store app 1.0.0 ignores them.
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
@@ -507,7 +509,7 @@ PLAYING (body 21, padel 23; 2 chunks):
 |---|---|---|
 | 8 | 4 | `leftUid` |
 | 12 | 4 | `rightUid` |
-| 16 | 1 | flags: bit 0 UNCOMMITTED (scores include points inside the 4 s commit window), bit 1 TIEBREAK (padel), bit 2 GAME_BALL_LEFT, bit 3 GAME_BALL_RIGHT, bits 4-5 reserved 0, bit 6 SIDES_SWAPPED, bit 7 reserved 0 |
+| 16 | 1 | flags: bit 0 UNCOMMITTED (scores include points inside the 4 s commit window), bit 1 TIEBREAK (padel), bit 2 GAME_BALL_LEFT, bit 3 GAME_BALL_RIGHT, bit 4 LAST_KNOWN, bit 5 LAST_RIGHT (0 = left; 0 without LAST_KNOWN), bit 6 SIDES_SWAPPED, bit 7 reserved 0 |
 | 17 | 1 | `leftGames` |
 | 18 | 1 | `rightGames` |
 | 19 | 1 | `leftScore` |
@@ -531,6 +533,21 @@ change the state, so it is pushed); the watch shows it as a hint and never mirro
 Every watch on the board reads the same bit, so they agree on the match's own left
 and right; a watch against older firmware reads the bit as 0 and a missing MATCH_START / INTRO /
 result flags byte as 0 (section 5).
+
+**LAST_KNOWN / LAST_RIGHT** (PLAYING, every sport): the court side of the newest point of the
+current game that still stands, so a watch that lost its own point order (a reconnect, an app
+restart) can pick the side for UNDO (Open questions 4). Only that one point is sent, never the
+history. The newest point is the newest entry of the board's `GameScoreHistory` that is not
+`lost` (`scored` = uncommitted, or `committed`): an uncommitted point undone is erased, a
+committed one undone is `lost` until the commit erases it, so both are skipped. A side that
+scores again while its own undone point is still `lost` revives that entry in its old place, so
+the order is the one from before the undo.
+- Squash, volleyball, short volleyball: unknown (bits 4-5 both 0) when nothing stands - at 0:0,
+  or when only `lost` entries are left.
+- Padel: the newest standing rally of the current gem; with none (gem 0:0), the winner of the
+  previous gem of the set (the gem an UNDO there steps back into, 10.2); at the set's start
+  unknown.
+- A board without this addition sends both bits 0 (unknown); a watch then keeps its own fallback.
 
 CELEBRATION and GAME_OVER (body 23, 2 chunks):
 
@@ -737,28 +754,31 @@ Squash, ANNA left, KRYSTIAN right, games 1:0, score 4:3. The watch shows 5:3 pen
 COMMAND write (4 B): 01 08 07 00              SCORE left, seq 7
 ```
 The board applies it and pushes `stateSeq` 0x2a (body 21 B: PLAYING, squash, ack 7 APPLIED,
-UNCOMMITTED, games 1:0, score 5:3):
+UNCOMMITTED, LAST_KNOWN - the newest point is the left's -, games 1:0, score 5:3):
 ```
-STATE notify (20 B): 01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
+STATE notify (20 B): 01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11
 STATE notify ( 7 B): 01 2a 12 01 00 05 03
 ```
 `ackSeq` 7 settles the pending press. 4 s later the commit pushes the same body with flags
-`00`. A SCORE sent on GAME_OVER (`01 08 08 01`) comes back with `ackSeq` 8, `ackStatus` 1
-WRONG_SCREEN, and the watch rolls back.
+`10`. A board without LAST_KNOWN (section 5) sends `01`, then `00`. A SCORE sent on GAME_OVER
+(`01 08 08 01`) comes back with `ackSeq` 8, `ackStatus` 1 WRONG_SCREEN, and the watch rolls
+back.
 
 ### 16.7 Padel PLAYING
 
-Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed (flags `02`), ack 12:
+Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed, the last rally won by the left (flags
+`12`: TIEBREAK, LAST_KNOWN), ack 12:
 ```
-STATE notify (20 B): 01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 02
+STATE notify (20 B): 01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12
 STATE notify ( 9 B): 01 2b 12 01 00 06 06 03 02
 ```
 Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right -> 40:Ad
-(points 3, 4; flags `01`), ack 13:
+(points 3, 4; flags `31`: UNCOMMITTED, LAST_KNOWN, LAST_RIGHT), ack 13:
 ```
-STATE notify (20 B): 01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01
+STATE notify (20 B): 01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
 STATE notify ( 9 B): 01 2c 12 00 00 02 01 03 04
 ```
+A board without LAST_KNOWN / LAST_RIGHT (section 5) sends flags `02` and `01`.
 
 ### 16.8 Too-old and too-new board
 
@@ -813,13 +833,15 @@ won the first game. INTRO (body 17, `stateSeq` 0x30, flags `40`):
 ```
 STATE notify (20 B): 01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
 ```
-PLAYING, games 0:1, score 2:1, committed (body 21, `stateSeq` 0x31, flags `40`):
+PLAYING, games 0:1, score 2:1, committed, the newest point the left's (body 21, `stateSeq` 0x31,
+flags `50`: SIDES_SWAPPED, LAST_KNOWN):
 ```
-STATE notify (20 B): 01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
+STATE notify (20 B): 01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50
 STATE notify ( 7 B): 01 31 12 00 01 02 01
 ```
-With UNCOMMITTED and GAME_BALL_LEFT as well the flags byte is `45`. GAME_OVER, ANNA won 11:7,
-games 1:1, normal variant (body 23, `stateSeq` 0x32, flags `40` at the end):
+With UNCOMMITTED and GAME_BALL_LEFT as well the flags byte is `55`; a board without LAST_KNOWN
+(section 5) sends `40` and `45`. GAME_OVER, ANNA won 11:7, games 1:1, normal variant (body 23,
+`stateSeq` 0x32, flags `40` at the end):
 ```
 STATE notify (20 B): 01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
 STATE notify ( 9 B): 01 32 12 0b 07 01 01 00 40
@@ -830,7 +852,31 @@ MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still rev
 STATE notify (20 B): 01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
 STATE notify ( 7 B): 01 33 12 33 22 11 40
 ```
-Not swapped, the same states carry `00` in place of `40`.
+Not swapped, the same states carry bit 6 clear: `00` in place of `40`, PLAYING `10` in place of
+`50`.
+
+### 16.12 LAST_KNOWN / LAST_RIGHT
+
+Squash, ANNA left, KRYSTIAN right, games 0:0, a new game at 0:0: flags `00` (unknown). SCORE
+right, seq 1; the board pushes `stateSeq` 0x40 (body 21: ack 1 APPLIED, score 0:1, flags `31`:
+UNCOMMITTED, LAST_KNOWN, LAST_RIGHT):
+```
+COMMAND write (4 B): 01 08 01 01
+STATE notify (20 B): 01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
+STATE notify ( 7 B): 01 40 12 00 00 00 01
+```
+The rest of the game, flags byte only:
+
+| Step | Score | Flags | Newest point |
+|---|---|---|---|
+| the commit, 4 s later | 0:1 | `30` | right |
+| SCORE left | 1:1 | `11` | left |
+| UNDO left inside the window (the point is erased) | 0:1 | `30` | right |
+| UNDO right, a committed point (`lost` until the commit) | 0:0 | `01` | unknown |
+| the commit | 0:0 | `00` | unknown |
+
+Padel: in a gem the bits follow its rallies the same way; at gem 0:0 they name the previous gem's
+winner (an UNDO there steps back into that gem), at the set's start both are 0.
 
 ## 17. Open questions and deviations
 
@@ -852,6 +898,8 @@ Not swapped, the same states carry `00` in place of `40`.
    whole record (no truncation seen); the layout keeps the identifying 16 B first anyway.
 4. **UNDO carries a side.** The locked list has `UNDO` without arguments, but the board's
    undo is per side (C left, D right, `losePoint(side)`); there is no "undo the last point".
+   A watch without its own point order (after a reconnect) takes the side from the PLAYING flags'
+   LAST_KNOWN / LAST_RIGHT (11.3, #509).
 5. **Additions not in the locked lists:** `ackStatus` beside `ackSeq` (the watch needs to know a
    press was rejected to roll back); SYNC (`0x0D`) for re-requesting a full state; the pairing
    request carries the chosen code; the state header carries `sport` on every screen; FOCUS

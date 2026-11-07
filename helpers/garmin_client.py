@@ -69,6 +69,9 @@ ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUS
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
 # Bit 6 of the PLAYING flags and of the MATCH_START / INTRO / result flags byte (spec 11.3).
 SIDES_SWAPPED = 0x40
+# PLAYING flags bits 4-5: the newest point of the game and its side (spec 11.3).
+LAST_KNOWN = 0x10
+LAST_RIGHT = 0x20
 
 # The board drops a value 15 s after its last write (spec 18), so a live HR is re-sent well inside that.
 HEART_REFRESH_S = 5.0
@@ -191,6 +194,9 @@ def describe(body, names=None):
             left, right, flags, lg, rg, ls, rs = struct.unpack_from("<IIBBBBB", data)
             tags = [n for b, n in ((1, "UNCOMMITTED"), (2, "TIEBREAK"), (4, "BALL_L"), (8, "BALL_R"),
                                    (SIDES_SWAPPED, "SWAPPED")) if flags & b]
+            # Newest point's side; older firmware sends 0 = unknown, no tag (spec 5).
+            if flags & LAST_KNOWN:
+                tags.append("LAST_R" if flags & LAST_RIGHT else "LAST_L")
             out += f" {who(left)} {lg}:{rg} {who(right)} score {ls}:{rs}"
             if len(data) >= 15:
                 lp, rp = data[13], data[14]

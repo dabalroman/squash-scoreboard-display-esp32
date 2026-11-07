@@ -9,6 +9,7 @@
 #include "Garmin/WatchState.h"
 #include "Tournament/Match/Match.h"
 #include "Tournament/Game/GameResult.h"
+#include "Tournament/Game/GameScoreHistory.h"
 
 /**
  * What the sport views share for the watch (spec 10, 11.3). Host-includable: no
@@ -66,6 +67,18 @@ namespace WatchSupport {
         p.rightGames = standing.scoreOf(right.getId());
         p.sidesSwapped = match.sidesSwapped();
         return p;
+    }
+
+    // LAST_KNOWN / LAST_RIGHT (spec 11.3): the watch's BACK-key undo after a reconnect.
+    // GameSide::a is the left court side in every PLAYING view.
+    inline bool lastPoint(WatchState::Playing &p, const GameScoreHistory &history) {
+        GameSide side = GameSide::none;
+        if (!history.newest(side)) {
+            return false;
+        }
+        p.lastKnown = true;
+        p.lastRight = side == GameSide::b;
+        return true;
     }
 
     // CELEBRATION and GAME_OVER. `match` already holds `result`, so the games include it.

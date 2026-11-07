@@ -30,6 +30,8 @@ public:
         uint8_t leftScore;
         uint8_t rightScore;
         bool sidesSwapped;
+        bool lastKnown;   // the board knows the newest point of the current game
+        bool lastRight;   // that point is the right side's; ignored unless lastKnown
     };
 
     struct Result {
@@ -173,6 +175,7 @@ private:
         put32(p.rightUid);
         put8(static_cast<uint8_t>((p.uncommitted ? 0x01 : 0) | (p.tiebreak ? 0x02 : 0)
                                   | (p.gameBallLeft ? 0x04 : 0) | (p.gameBallRight ? 0x08 : 0)
+                                  | (p.lastKnown ? 0x10 : 0) | (p.lastKnown && p.lastRight ? 0x20 : 0)
                                   | sidesFlag(p.sidesSwapped)));
         put8(p.leftGames);
         put8(p.rightGames);

@@ -230,6 +230,7 @@ void test_squash_playing_state() {
     p.leftGames = 1;
     p.leftScore = 5;
     p.rightScore = 3;
+    p.lastKnown = true;   // the left's point is the newest
     s.setPlaying(p);
     TEST_ASSERT_EQUAL_UINT8(21, s.bodySize());
 
@@ -243,7 +244,7 @@ void test_squash_playing_state() {
 
     const std::vector<Frame> c = chunks(0x2a, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
-    expectBuf("01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01", c[0], "16.6 chunk 0");
+    expectBuf("01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11", c[0], "16.6 chunk 0");
     expectBuf("01 2a 12 01 00 05 03", c[1], "16.6 chunk 1");
 }
 
@@ -257,11 +258,12 @@ void test_padel_playing_state() {
     p.leftGames = 1;
     p.leftScore = 6;
     p.rightScore = 6;
+    p.lastKnown = true;   // the left won the last rally
     s.setPadelPlaying(p, 3, 2);
     TEST_ASSERT_EQUAL_UINT8(23, s.bodySize());
     std::vector<Frame> c = chunks(0x2b, s, 12, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
-    expectBuf("01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 02", c[0], "16.7 tiebreak chunk 0");
+    expectBuf("01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12", c[0], "16.7 tiebreak chunk 0");
     expectBuf("01 2b 12 01 00 06 06 03 02", c[1], "16.7 tiebreak chunk 1");
 
     p = WatchState::Playing{};
@@ -270,9 +272,11 @@ void test_padel_playing_state() {
     p.uncommitted = true;
     p.leftScore = 2;
     p.rightScore = 1;
+    p.lastKnown = true;
+    p.lastRight = true;
     s.setPadelPlaying(p, 3, 4);
     c = chunks(0x2c, s, 13, AckStatus::Applied);
-    expectBuf("01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 01", c[0], "16.7 ladder chunk 0");
+    expectBuf("01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.7 ladder chunk 0");
     expectBuf("01 2c 12 00 00 02 01 03 04", c[1], "16.7 ladder chunk 1");
 }
 
@@ -346,11 +350,12 @@ void test_sides_swapped_state() {
     p.leftScore = 2;
     p.rightScore = 1;
     p.sidesSwapped = true;
+    p.lastKnown = true;   // the left's point is the newest
     s.setPlaying(p);
     TEST_ASSERT_EQUAL_UINT8(21, s.bodySize());
     c = chunks(0x31, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
-    expectBuf("01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40", c[0], "16.11 PLAYING chunk 0");
+    expectBuf("01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50", c[0], "16.11 PLAYING chunk 0");
     expectBuf("01 31 12 00 01 02 01", c[1], "16.11 PLAYING chunk 1");
 
     // Bit 6 sits beside the other flags.
@@ -358,12 +363,13 @@ void test_sides_swapped_state() {
     p.gameBallLeft = true;
     s.setPlaying(p);
     c = chunks(0x31, s, 0, AckStatus::Applied);
-    TEST_ASSERT_EQUAL_HEX8(0x45, c[0].data[19]);
+    TEST_ASSERT_EQUAL_HEX8(0x55, c[0].data[19]);
     p.tiebreak = true;
     p.gameBallRight = true;
+    p.lastRight = true;
     s.setPlaying(p);
     c = chunks(0x31, s, 0, AckStatus::Applied);
-    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0x4f, c[0].data[19], "bits 4-5 stay reserved 0");
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0x7f, c[0].data[19], "bit 7 stays reserved 0");
 
     WatchState::Result r{};
     r.leftUid = ANNA;
@@ -385,6 +391,50 @@ void test_sides_swapped_state() {
     c = chunks(0x33, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     expectBuf("01 33 12 0b 07 01 01 00 40", c[1], "CELEBRATION chunk 1");
+}
+
+// Spec 16.12: the newest point's side, as the board's own history has it.
+void test_last_point_state() {
+    WatchState s;
+    s.setSport(SportId::Squash);
+    WatchState::Playing p{};
+    p.leftUid = ANNA;
+    p.rightUid = KRYSTIAN;
+    p.uncommitted = true;
+    p.rightScore = 1;
+    p.lastKnown = true;
+    p.lastRight = true;
+    s.setPlaying(p);
+    std::vector<Frame> c = chunks(0x40, s, 1, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    expectBuf("01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.12 chunk 0");
+    expectBuf("01 40 12 00 00 00 01", c[1], "16.12 chunk 1");
+
+    // The flags of the walk in 16.12.
+    struct Step { bool uncommitted, known, right; uint8_t flags; };
+    const Step steps[] = {
+        {false, false, false, 0x00},   // 0:0
+        {false, true, true, 0x30},     // committed
+        {true, true, false, 0x11},     // left scores
+        {false, true, true, 0x30},     // undone at once
+        {true, false, false, 0x01},    // the committed right point undone
+    };
+    for (const Step &step : steps) {
+        p.uncommitted = step.uncommitted;
+        p.lastKnown = step.known;
+        p.lastRight = step.right;
+        s.setPlaying(p);
+        c = chunks(0x41, s, 0, AckStatus::Applied);
+        TEST_ASSERT_EQUAL_HEX8(step.flags, c[0].data[19]);
+    }
+
+    // LAST_RIGHT is never sent without LAST_KNOWN.
+    p.uncommitted = false;
+    p.lastKnown = false;
+    p.lastRight = true;
+    s.setPlaying(p);
+    c = chunks(0x42, s, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL_HEX8(0x00, c[0].data[19]);
 }
 
 void test_state_change_detection() {
@@ -621,6 +671,7 @@ int main() {
     RUN_TEST(test_padel_playing_state);
     RUN_TEST(test_other_screens);
     RUN_TEST(test_sides_swapped_state);
+    RUN_TEST(test_last_point_state);
     RUN_TEST(test_state_change_detection);
     RUN_TEST(test_menu_clamped_to_buffer);
     RUN_TEST(test_chunk_boundaries);

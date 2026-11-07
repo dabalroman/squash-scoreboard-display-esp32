@@ -394,6 +394,12 @@ public:
         p.gameBallRight = breathes(GameSide::b);
         p.leftScore = game->getRealScore(GameSide::a);
         p.rightScore = game->getRealScore(GameSide::b);
+        // An empty gem's UNDO steps back into the last gem (stepBackToPreviousGem), whose winner
+        // is then the newest point; at the set's start there is none.
+        if (!WatchSupport::lastPoint(p, scorer.scoreHistory()) && !completedGems.empty()) {
+            p.lastKnown = true;
+            p.lastRight = completedGems.back().winner == GameSide::b;
+        }
         state.setPadelPlaying(p, watchPoint(GameSide::a), watchPoint(GameSide::b));
     }
 

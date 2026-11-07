@@ -255,19 +255,20 @@ static void test_squash_playing_score_undo_and_game_ball() {
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 1)));
 
     // Uncommitted: the temporary score, and no game ball yet (it reads the committed one).
+    // The newest point is Bob's: LAST_KNOWN | LAST_RIGHT.
     Body body = rig.describe();
     TEST_ASSERT_EQUAL(21, body.size);
-    const uint8_t uncommitted[13] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x01, 0, 0, 10, 1};
+    const uint8_t uncommitted[13] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x31, 0, 0, 10, 1};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(uncommitted, body.data(), 13);
 
     rig.commit();
     body = rig.describe();
-    const uint8_t gameBall[13] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x04, 0, 0, 10, 1};
+    const uint8_t gameBall[13] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x34, 0, 0, 10, 1};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(gameBall, body.data(), 13);
 
-    // UNDO right takes Bob's point back; not 0:0, so the game stays.
+    // UNDO right takes Bob's point back; not 0:0, so the game stays. Anna's is the newest now.
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 1)));
-    TEST_ASSERT_EQUAL_HEX8(0x01 | 0x04, rig.describe().data()[8]);
+    TEST_ASSERT_EQUAL_HEX8(0x01 | 0x04 | 0x10, rig.describe().data()[8]);
     TEST_ASSERT_EQUAL(0, rig.describe().data()[12]);
 }
 
@@ -548,14 +549,93 @@ static void test_squash_undo_at_zero_leaves_for_match_start() {
     TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
 }
 
-// --- padel ----------------------------------------------------------------------------
-
+// Points (padel: rallies) for one side, then past the commit window.
 static void rallies(Rig &rig, const uint8_t side, const int count) {
     for (int i = 0; i < count; i++) {
         TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, side)));
     }
     rig.commit();
 }
+
+// --- LAST_KNOWN / LAST_RIGHT: the newest point still standing (spec 11.3) ------------------
+
+static const uint8_t LAST_KNOWN = 0x10;
+static const uint8_t LAST_RIGHT = 0x20;
+
+static uint8_t lastBits(const Rig &rig) {
+    return rig.describe().data()[8] & (LAST_KNOWN | LAST_RIGHT);
+}
+
+static void test_squash_last_point_flags() {
+    Rig rig;
+    squashRig(rig);
+    rig.toPlaying();
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, lastBits(rig), "0:0: unknown");
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN, lastBits(rig));
+    rig.commit();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 1)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+
+    // An uncommitted point undone is erased: the left's is the newest again.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 1)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN, lastBits(rig));
+
+    // L, R committed; undo R marks it lost (until the commit), skipped either way.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 1)));
+    rig.commit();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 1)));
+    TEST_ASSERT_EQUAL_HEX8(0x01 | LAST_KNOWN, rig.describe().data()[8]);
+    rig.commit();
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN, lastBits(rig));
+
+    // Down to 0:0 by undoing a committed point: only a lost entry is left.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    TEST_ASSERT_EQUAL_HEX8(0x01, rig.describe().data()[8]);
+    rig.commit();
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, rig.describe().data()[8], "0:0 again: unknown");
+    TEST_ASSERT_EQUAL_HEX8(0x13, rig.describe().screen());
+}
+
+static void test_padel_last_point_flags() {
+    Rig rig;
+    padelRig(rig);
+    rig.toPlaying();
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, lastBits(rig), "set start: unknown");
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 1)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 1)));
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0, lastBits(rig), "back to the set's start");
+
+    // The right takes a gem; in the next gem the left's rally is the newest, undone the gem
+    // winner's again (an UNDO there steps back into that gem).
+    rallies(rig, 1, 4);
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+    TEST_ASSERT_EQUAL(1, rig.describe().data()[12]);
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN, lastBits(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+
+    // A committed rally undone (lost until the commit) is skipped the same way.
+    rallies(rig, 0, 1);
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN, lastBits(rig));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+    rig.commit();
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+
+    // Stepping back into the gem drops its winning rally: 0:40, the right's third rally newest.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));
+    const Body body = rig.describe();
+    TEST_ASSERT_EQUAL(0, body.data()[12]);
+    TEST_ASSERT_EQUAL(3, body.data()[14]);
+    TEST_ASSERT_EQUAL_HEX8(LAST_KNOWN | LAST_RIGHT, lastBits(rig));
+}
+
+// --- padel ----------------------------------------------------------------------------
 
 static void test_padel_playing_ladder_and_gem_ball() {
     Rig rig;
@@ -564,18 +644,18 @@ static void test_padel_playing_ladder_and_gem_ball() {
 
     TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(cmd(CommandId::Score, 2)));
 
-    // 40:15 committed: gem ball left, points 3 and 1.
+    // 40:15 committed: gem ball left, points 3 and 1, the newest rally the right's.
     rallies(rig, 0, 3);
     rallies(rig, 1, 1);
     Body body = rig.describe();
     TEST_ASSERT_EQUAL(23, body.size);
-    const uint8_t fortyFifteen[15] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x04, 0, 0, 0, 0, 3, 1};
+    const uint8_t fortyFifteen[15] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x34, 0, 0, 0, 0, 3, 1};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(fortyFifteen, body.data(), 15);
 
-    // The gem: 1:0 in gems, a fresh 0:0 ladder.
+    // The gem: 1:0 in gems, a fresh 0:0 ladder; the newest point is the gem winner's (left).
     rallies(rig, 0, 1);
     body = rig.describe();
-    const uint8_t oneLove[15] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x00, 0, 0, 1, 0, 0, 0};
+    const uint8_t oneLove[15] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0x10, 0, 0, 1, 0, 0, 0};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(oneLove, body.data(), 15);
 
     // UNDO at 0:0 of a new gem steps back into the last one (40:15 again), it does not leave.
@@ -585,6 +665,7 @@ static void test_padel_playing_ladder_and_gem_ball() {
     TEST_ASSERT_EQUAL(0, body.data()[11]);
     TEST_ASSERT_EQUAL(3, body.data()[13]);
     TEST_ASSERT_EQUAL(1, body.data()[14]);
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0x34, body.data()[8], "the step-back drops the winning rally: right newest");
 }
 
 static void test_padel_tiebreak_flag_and_raw_points() {
@@ -599,14 +680,14 @@ static void test_padel_tiebreak_flag_and_raw_points() {
     rallies(rig, 0, 5);
 
     const Body body = rig.describe();
-    TEST_ASSERT_EQUAL_HEX8(0x02, body.data()[8]);   // TIEBREAK, no gem ball at 5:0 of 7
+    TEST_ASSERT_EQUAL_HEX8(0x02 | 0x10, body.data()[8]);   // TIEBREAK, no gem ball at 5:0 of 7, left newest
     TEST_ASSERT_EQUAL(6, body.data()[11]);
     TEST_ASSERT_EQUAL(6, body.data()[12]);
     TEST_ASSERT_EQUAL(5, body.data()[13]);
     TEST_ASSERT_EQUAL(0, body.data()[14]);
 
     rallies(rig, 0, 1);
-    TEST_ASSERT_EQUAL_HEX8(0x02 | 0x04, rig.describe().data()[8]);   // set ball
+    TEST_ASSERT_EQUAL_HEX8(0x02 | 0x04 | 0x10, rig.describe().data()[8]);   // set ball
 }
 
 static void test_padel_undo_with_nothing_to_step_back_leaves() {
@@ -633,11 +714,12 @@ static void test_volleyball_scores_through_the_same_path() {
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 1)));
     const Body body = rig.describe();
     TEST_ASSERT_EQUAL(21, body.size);
-    TEST_ASSERT_EQUAL_HEX8(0x01, body.data()[8]);
+    TEST_ASSERT_EQUAL_HEX8(0x01 | 0x10 | 0x20, body.data()[8]);
     TEST_ASSERT_EQUAL(0, body.data()[11]);
     TEST_ASSERT_EQUAL(1, body.data()[12]);
 
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 1)));
+    TEST_ASSERT_EQUAL_HEX8_MESSAGE(0x00, rig.describe().data()[8], "0:0: unknown");
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Undo, 0)));   // 0:0 -> MatchStart
     rig.tick();
     TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
@@ -821,6 +903,8 @@ int main(int, char **) {
     RUN_TEST(test_sides_swapped_ignores_abandoned_game);
     RUN_TEST(test_sides_swapped_per_pair_and_kept);
     RUN_TEST(test_squash_undo_at_zero_leaves_for_match_start);
+    RUN_TEST(test_squash_last_point_flags);
+    RUN_TEST(test_padel_last_point_flags);
     RUN_TEST(test_padel_playing_ladder_and_gem_ball);
     RUN_TEST(test_padel_tiebreak_flag_and_raw_points);
     RUN_TEST(test_padel_undo_with_nothing_to_step_back_leaves);

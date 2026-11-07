@@ -235,6 +235,7 @@ public:
         p.gameBallRight = game->willWinOnNextPointScored(GameSide::b);
         p.leftScore = game->getTemporaryScore(GameSide::a);
         p.rightScore = game->getTemporaryScore(GameSide::b);
+        WatchSupport::lastPoint(p, game->getScoreHistory());
         state.setPlaying(p);
     }
 };
