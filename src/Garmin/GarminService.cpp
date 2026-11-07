@@ -398,6 +398,10 @@ bool GarminService::running() const {
     return gState == BleState::Running;
 }
 
+bool GarminService::failed() const {
+    return gState == BleState::Failed;
+}
+
 void GarminService::loop(const uint32_t now) {
     // printLn belongs to loop() (telnet is not core-0 safe), so the tasks only leave state.
     const uint8_t state = static_cast<uint8_t>(gState);

@@ -289,8 +289,9 @@ all", NVS wiped): the watch shows "pair again" rather than "untrusted".
 
 ## 9. Pairing
 
-1. User opens the board's settings (OPCJE; CONFIG on an English board) > GARMIN, makes sure AKTYWNY
-   (Enabled) is on and picks PARUJ (Pair). The board opens a 120 s window, draws a
+1. User opens the board's settings (OPCJE; CONFIG on an English board) > GARMIN and picks PARUJ
+   (Pair); if GARMIN is off, the board turns AKTYWNY (Enabled) on and opens the window once BLE
+   is up. The window is 120 s; the board draws a
    code, shows it on the LEDs, OLED and e-paper, and advertises `PAIRING` + code.
 2. Watch pairing screen lists matching advertisers (4.4 step 3) with their codes; the user picks
    the one whose code matches the board.

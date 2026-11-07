@@ -42,6 +42,9 @@ public:
     // NimBLE is up and advertising; every other hook is a no-op otherwise.
     bool running() const;
 
+    // Init failed (low heap, or blocked until a power cycle): enabling again will not help.
+    bool failed() const;
+
     // Every loop() pass: init/deinit outcome, NVS write, pairing expiry, timeouts.
     void loop(uint32_t now);
 

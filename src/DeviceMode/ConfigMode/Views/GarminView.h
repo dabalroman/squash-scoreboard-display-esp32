@@ -42,6 +42,8 @@ class GarminView final : public View {
 
     // Forgetting is irreversible: the first D arms it, a second D on the same row does it.
     bool forgetArmed = false;
+    // PARUJ pressed with BLE not up yet: the pairing window may open only once running().
+    bool pairPending = false;
     uint8_t shownPairedCount = 0;
 
     void setForgetArmed(const bool armed) {
@@ -64,18 +66,21 @@ public:
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
         if (remoteInputManager.buttonA.takeActionIfPossible()) {
+            pairPending = false;
             setForgetArmed(false);
             scrollable.cycleSelectedOption(-1);
             queueRender();
         }
 
         if (remoteInputManager.buttonB.takeActionIfPossible()) {
+            pairPending = false;
             setForgetArmed(false);
             scrollable.cycleSelectedOption(1);
             queueRender();
         }
 
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
+            pairPending = false;
             if (scrollable.getSelectedOptionId() == Row::enabled) {
                 garminService.setEnabled(!garminService.isEnabled());
             }
@@ -84,14 +89,20 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
+            if (scrollable.getSelectedOptionId() != Row::pair) {
+                pairPending = false;
+            }
             switch (scrollable.getSelectedOptionId()) {
                 case Row::enabled:
                     garminService.setEnabled(!garminService.isEnabled());
                     break;
                 case Row::pair:
-                    // Nothing to pair with until NimBLE is up; the row's red says so.
                     if (garminService.running()) {
                         onStateChange(ConfigModeState::GarminPairing);
+                    } else {
+                        // Pairing implies the mode; enabling again also retries a non-blocked failure.
+                        garminService.setEnabled(true);
+                        pairPending = true;
                     }
                     break;
                 case Row::forget:
@@ -109,6 +120,18 @@ public:
             }
 
             queueRender();
+        }
+
+        if (pairPending) {
+            if (garminService.running()) {
+                pairPending = false;
+                onStateChange(ConfigModeState::GarminPairing);
+                return;
+            }
+            if (garminService.failed()) {
+                pairPending = false;
+                queueRender();
+            }
         }
 
         // A pairing elsewhere or a forget lands here; the OLED is event-driven.
@@ -136,7 +159,9 @@ public:
                 ledDisplay.setGlyphsText(garminService.isEnabled() ? Str::LED_GARMIN_ON : Str::LED_GARMIN_OFF);
                 break;
             case Row::pair:
-                color = garminService.running() ? Colors::Blue : Colors::Red;
+                // Red only when starting is hopeless; otherwise D works (and waits if BLE is still coming up).
+                color = garminService.failed() ? Colors::Red : Colors::Blue;
+                blink = pairPending;
                 ledDisplay.setGlyphsText(Str::LED_GARMIN_PAIR);
                 break;
             case Row::forget:
