@@ -21,7 +21,9 @@
 #define PROGMEM
 #endif
 
+#ifndef VIEW_STUBS_OWN_DIGITAL_READ   // a suite that drives the fob pins defines its own
 inline int digitalRead(uint8_t) { return LOW; }
+#endif
 inline uint16_t analogRead(uint8_t) { return 0; }
 inline uint32_t analogReadMilliVolts(uint8_t) { return 0; }
 enum { ADC_11db = 3 };

@@ -108,7 +108,7 @@ public:
         }
 
         if (remoteInputManager.buttonD.takeActionIfPossible()) {
-            remoteInputManager.preventTriggerForMs();
+            // No all-button block: it would swallow presses in the intro, which passes them on.
             startMatch();
         }
     }

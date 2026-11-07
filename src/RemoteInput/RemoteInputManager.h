@@ -16,6 +16,8 @@
 
 
 class RemoteInputManager {
+    bool latchesPassedOn = false;
+
 public:
     RemoteInput buttonA;
     RemoteInput buttonB;
@@ -56,7 +58,31 @@ public:
         buttonD.setOnActionTaken(callback);
     }
 
+    bool anyActionPending() const {
+        return buttonA.hasPendingAction() || buttonB.hasPendingAction()
+            || buttonC.hasPendingAction() || buttonD.hasPendingAction();
+    }
+
+    /**
+     * The next clearLatchesForNewView() keeps the pending presses, so the view coming
+     * next takes them. One shot; clearLatches() (an overlay) cancels it.
+     */
+    void passLatchesToNextView() {
+        latchesPassedOn = true;
+    }
+
+    // Every sport mode's view swap: drops presses latched in between, unless passed on.
+    void clearLatchesForNewView() {
+        if (latchesPassedOn) {
+            latchesPassedOn = false;
+            return;
+        }
+
+        clearLatches();
+    }
+
     void clearLatches() {
+        latchesPassedOn = false;
         buttonA.clearLatch();
         buttonB.clearLatch();
         buttonC.clearLatch();

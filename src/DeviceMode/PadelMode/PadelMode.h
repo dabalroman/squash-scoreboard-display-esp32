@@ -31,7 +31,8 @@ class PadelMode final : public DeviceMode {
         previousState = state;
         // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
         // a press latched in between must not act on the new view's first frame.
-        remoteInputManager.clearLatches();
+        // Only a fob skip of the intro passes its press on.
+        remoteInputManager.clearLatchesForNewView();
 
         switch (state) {
             case PadelModeState::TournamentChoosePlayers:

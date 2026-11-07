@@ -42,15 +42,9 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        // Evaluated one by one, so every pending press is consumed, not just the first.
-        bool pressed = remoteInputManager.buttonA.takeActionIfPossible();
-        pressed = remoteInputManager.buttonB.takeActionIfPossible() || pressed;
-        pressed = remoteInputManager.buttonC.takeActionIfPossible() || pressed;
-        pressed = remoteInputManager.buttonD.takeActionIfPossible() || pressed;
-
-        if (pressed) {
-            // Otherwise the same press scores or undoes on GamePlaying.
-            remoteInputManager.preventTriggerForMs();
+        // Not taken here: GamePlaying takes the same press (score / undo, one buzzer tick).
+        if (remoteInputManager.anyActionPending()) {
+            remoteInputManager.passLatchesToNextView();
             skip();
         }
     }

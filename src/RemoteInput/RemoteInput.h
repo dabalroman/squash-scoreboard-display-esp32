@@ -118,6 +118,11 @@ public:
         return false;
     }
 
+    // Peek without taking: no debounce window, no buzzer tick.
+    bool hasPendingAction() const {
+        return canTakeAction;
+    }
+
     bool takeLongPressIfPossible() {
         if (!longPressLatched) {
             return false;
