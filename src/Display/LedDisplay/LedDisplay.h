@@ -322,6 +322,28 @@ public:
     }
 
     /**
+     * The Garmin pairing outcome (#523): the boot sweep from the panel centre in one
+     * colour, non-blocking on layer 2. Clears the base so only the ring shows.
+     */
+    void startRing(const Color color) {
+        resetAnimations();
+        setGlyphsGlyph(Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty);
+        setGlyphBlinking(false, false);
+        setColonAppearance();
+        setBorderEnabled(false);
+        setPlayersIndicatorsState(false);
+        sweep.setParams(LedSweepAnimation::ringParams());
+        sweep.setSolidColor(CRGB(color.r, color.g, color.b));
+        sweep.setOrigin(0.0f, 0.0f);
+        sweep.start(millis());
+        layers.set(LedLayerStack::LAYER_2, &sweep, BlendMode::Normal, LedTarget::Front, LayerMask::AllSlots);
+    }
+
+    bool ringActive() const {
+        return sweep.active(millis());
+    }
+
+    /**
      * Dims the lit `targets` on layer 1; 0 stops it. Called every frame, so the
      * phase restarts only when it was off - a repeat call just moves the mask.
      * resetAnimations() stops it.

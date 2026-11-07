@@ -196,7 +196,8 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 [](const DeviceModeState state) { requestDeviceMode(state); },
                 preferencesManager,
                 batteryMonitor,
-                garminService
+                garminService,
+                [](const uint8_t buzzerMode) { gBuzzer.playPairingOk(buzzerMode); }
             );
             break;
 

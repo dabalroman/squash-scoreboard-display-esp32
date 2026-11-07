@@ -56,7 +56,10 @@ inline void printLn(const char *, ...) {}
 #define BACK_DISPLAY_H
 class BackDisplay {
 public:
+    enum : uint8_t { ONE_CHAR_WIDTH_24pt7b = 26 };
     void clear() {}
+    void setCursorFromTopLeft(uint8_t, uint8_t = 0) {}
+    void print(const String &) {}
     void display() {}
     void initSmallFont() {}
     void initBigFont() {}
@@ -105,6 +108,7 @@ public:
     void showMatchScore(const char *, uint8_t, const char *, uint8_t, const char *) {}
     void showMenu(const char *, const EInkMenuRow *, uint8_t, uint8_t, const EInkFooter & = EInkFooter()) {}
     void showImage(const uint8_t *) {}
+    void showCode(const char *, const char *, const char *, const char *) {}
 };
 
 #endif

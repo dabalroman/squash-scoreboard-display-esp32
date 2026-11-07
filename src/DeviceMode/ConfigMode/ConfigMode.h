@@ -16,6 +16,9 @@ class ConfigMode final : public DeviceMode {
     PreferencesManager &preferencesManager;
     const BatteryMonitor &batteryMonitor;
     GarminService &garminService;
+    std::function<void(uint8_t)> onPairingOk;
+    // The active view while it is the pairing screen, else null; owned by activeView.
+    GarminPairingView *pairingView = nullptr;
 
     ConfigModeState state = ConfigModeState::Menu;
     ConfigModeState previousState = ConfigModeState::Menu;
@@ -30,6 +33,7 @@ class ConfigMode final : public DeviceMode {
         const ConfigModeState from = previousState;
         previousState = state;
         remoteInputManager.clearLatches();
+        pairingView = nullptr;
 
         // Coming back up lands on the row that went down.
         switch (state) {
@@ -39,11 +43,19 @@ class ConfigMode final : public DeviceMode {
                     [this](const ConfigModeState newState) { setState(newState); },
                     from == ConfigModeState::GarminPairing ? 1 : 0);
                 break;
-            case ConfigModeState::GarminPairing:
-                activeView = std::make_unique<GarminPairingView>(
+            case ConfigModeState::GarminPairing: {
+                auto view = std::make_unique<GarminPairingView>(
                     garminService,
-                    [this](const ConfigModeState newState) { setState(newState); });
+                    [this](const ConfigModeState newState) { setState(newState); },
+                    // The buzzer mode as edited here: save() has not applied it yet.
+                    [this] {
+                        if (onPairingOk) onPairingOk(preferencesManager.settings.buzzerMode);
+                    },
+                    [this] { saveAndLeave(); });
+                pairingView = view.get();
+                activeView = std::move(view);
                 break;
+            }
             case ConfigModeState::Menu:
             default:
                 activeView = makeMenu(from == ConfigModeState::Garmin ? Settings::garmin : 0);
@@ -53,6 +65,12 @@ class ConfigMode final : public DeviceMode {
         activeView->initLedDisplay(ledDisplay);
         activeView->initBackDisplay(backDisplay);
         activeView->initEInkDisplay(einkDisplay);
+    }
+
+    // Settings are saved, not discarded, however CONFIG is left.
+    void saveAndLeave() {
+        preferencesManager.save();
+        onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
     }
 
     std::unique_ptr<View> makeMenu(const uint8_t selectedOption) {
@@ -71,10 +89,12 @@ public:
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         PreferencesManager &preferencesManager,
         const BatteryMonitor &batteryMonitor,
-        GarminService &garminService
+        GarminService &garminService,
+        const std::function<void(uint8_t buzzerMode)> &onPairingOk
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
-          preferencesManager(preferencesManager), batteryMonitor(batteryMonitor), garminService(garminService) {
+          preferencesManager(preferencesManager), batteryMonitor(batteryMonitor), garminService(garminService),
+          onPairingOk(onPairingOk) {
 
         activeView = makeMenu(0);
         activeView->initLedDisplay(ledDisplay);
@@ -85,6 +105,10 @@ public:
     bool goBack() override {
         switch (state) {
             case ConfigModeState::GarminPairing:
+                // From the outcome on, the view decides where it goes (through the hand-over tick).
+                if (pairingView && pairingView->outcomeShown()) {
+                    return false;
+                }
                 setState(ConfigModeState::Garmin);
                 return true;
             case ConfigModeState::Garmin:
@@ -92,9 +116,7 @@ public:
                 return true;
             case ConfigModeState::Menu:
             default:
-                // Same contract as ConfigView's exit option: settings are saved, not discarded.
-                preferencesManager.save();
-                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                saveAndLeave();
                 return true;
         }
     }

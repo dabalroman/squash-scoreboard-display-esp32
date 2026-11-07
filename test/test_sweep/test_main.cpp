@@ -273,6 +273,63 @@ static void test_comeback_stops_on_reset_animations() {
     }
 }
 
+// ------------------------------------------------------------ pairing ring (#523) ---
+// startRing() over a busy screen: the base goes dark, the ring passes every live slot
+// in its one colour, and once it ends the frame is black.
+
+static const Color RING(255, 0, 0);
+
+static void busyScreen(LedDisplay &display) {
+    celebrationScreen(display);
+    display.setGlyphBlinking(true, true);
+}
+
+static void test_ring_covers_every_live_slot_and_ends_dark() {
+    const uint32_t duration = LedSweepAnimation::ringParams().durationMs;
+    CRGB buffer[Board::LED_COUNT];
+    LedDisplay display(buffer);
+    busyScreen(display);
+    g_fakeMillis = START;
+    display.startRing(RING);
+
+    bool reached[Board::LED_COUNT] = {};
+    for (uint32_t t = 0; t < duration; t += 5) {
+        g_fakeMillis = START + t;
+        TEST_ASSERT_TRUE_MESSAGE(display.ringActive(), "ring ended early");
+        fillPixels(buffer, Board::LED_COUNT, OFF);
+        display.render();
+        int lit = 0;
+        for (int i = 0; i < Board::LED_COUNT; i++) {
+            if (buffer[i] == OFF) continue;
+            lit++;
+            reached[i] = true;
+            CHECK(LedSlots::POS[i][0] != LedSlots::SKIP && isSwept(i), "t=%u lit SKIP slot %d", t, i);
+            CHECK(buffer[i].g == 0 && buffer[i].b == 0, "t=%u slot %d not the ring colour", t, i);
+        }
+        CHECK(lit > 0, "t=%u ring lit nothing", t);
+    }
+
+    for (int i = 0; i < Board::LED_COUNT; i++) {
+        CHECK(reached[i] || LedSlots::POS[i][0] == LedSlots::SKIP, "ring never reached slot %d", i);
+    }
+
+    g_fakeMillis = START + duration;
+    TEST_ASSERT_FALSE(display.ringActive());
+    fillPixels(buffer, Board::LED_COUNT, OFF);
+    display.render();
+    for (int i = 0; i < Board::LED_COUNT; i++) CHECK(buffer[i] == OFF, "slot %d lit after the ring", i);
+}
+
+// The boot geometry: same duration, band and single cycle.
+static void test_ring_uses_boot_geometry() {
+    const LedSweepAnimation::Params ring = LedSweepAnimation::ringParams();
+    const LedSweepAnimation::Params boot = LedSweepAnimation::bootParams();
+    TEST_ASSERT_EQUAL_UINT16(boot.durationMs, ring.durationMs);
+    TEST_ASSERT_EQUAL_UINT16(boot.band, ring.band);
+    TEST_ASSERT_EQUAL_UINT8(1, ring.repeats);
+    TEST_ASSERT_FALSE(ring.rainbow);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_board_led_count);
@@ -288,5 +345,7 @@ int main() {
     RUN_TEST(test_comeback_burst_normal_blend);
     RUN_TEST(test_comeback_burst_is_a_single_cycle);
     RUN_TEST(test_comeback_stops_on_reset_animations);
+    RUN_TEST(test_ring_covers_every_live_slot_and_ends_dark);
+    RUN_TEST(test_ring_uses_boot_geometry);
     return UNITY_END();
 }

@@ -10,7 +10,7 @@
 #include "LedSlotPositions.h"
 
 /**
- * A thin ring that grows from an origin outward across the front LEDs. Three
+ * A thin ring that grows from an origin outward across the front LEDs. Four
  * callers, one state machine, on both boards:
  *
  *   boot()         rainbow, one 1 s cycle, driven blocking from setup() by
@@ -21,6 +21,9 @@
  *   comeback()     (#60) the streak breaker's colour, one 800 ms cycle, a layer
  *                  over live GamePlaying. Origin is that player's half; it takes
  *                  LAYER_2 from the "on fire" smoke for its duration.
+ *   ring()         (#523) the Garmin pairing outcome, green or red: the boot
+ *                  sweep's centre origin and timing in one colour, a layer
+ *                  over a dark base, stepped from loop().
  *
  * An LedAnimation: it writes only the ring's lit slots into the layer buffer
  * (black, the buffer's fill, is transparent), never into pixels[]. SKIP slots in
@@ -53,6 +56,11 @@ public:
     /** #60 comeback burst: one cycle only, same band (shared radial-gap rule). */
     static Params comebackParams() {
         return Params{800, 0, 1, false, CRGB::Black, 690};
+    }
+
+    /** #523 pairing outcome: the boot geometry in one solid colour, filled by the caller. */
+    static Params ringParams() {
+        return Params{1000, 0, 1, false, CRGB::Black, 690};
     }
 
 private:

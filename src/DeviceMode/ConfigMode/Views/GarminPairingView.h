@@ -11,6 +11,10 @@
  * The pairing window: opened on entry, closed by the destructor, so every way out (C, D,
  * long C, the 120 s expiry, leaving the mode) closes it the same way. Shows the 4-digit
  * code on all three displays and the time left on the OLED and the e-paper.
+ *
+ * The outcome is a ring on the LEDs while the OLED and e-paper keep the code: green on
+ * success, then out of CONFIG to the sport menu; red on expiry, then back to GARMIN.
+ * C/D leave at once, with no ring.
  */
 class GarminPairingView final : public View {
     // The e-paper countdown step. Every change is a partial refresh (~0.5 s of flicker):
@@ -21,28 +25,51 @@ class GarminPairingView final : public View {
     enum : uint32_t { BLINK_FROM_S = 10 };
     enum : uint8_t { CODE_BASELINE = 50, COUNTDOWN_BASELINE = 63 };
 
+    // Paired / Expired: the outcome ring is pending, running or just ended (ringDone).
+    enum class Phase : uint8_t { Code, Paired, Expired, Leaving };
+
     GarminService &garminService;
     std::function<void(ConfigModeState)> onStateChange;
+    std::function<void()> onPaired;
+    std::function<void()> onLeaveConfig;
 
     uint16_t code = 0;
     uint32_t pairingsAtOpen = 0;
     uint32_t shownSeconds = UINT32_MAX;
-    bool leaving = false;
+    Phase phase = Phase::Code;
+    bool ringStarted = false;
+    bool ringDone = false;
 
     uint32_t remainingSeconds() const {
         return (garminService.pairingRemainingMs() + 999) / 1000;
     }
 
     void leave() {
-        leaving = true;
+        phase = Phase::Leaving;
         onStateChange(ConfigModeState::Garmin);
     }
 
+    bool showingRing() const {
+        return phase == Phase::Paired || phase == Phase::Expired;
+    }
+
 public:
-    GarminPairingView(GarminService &garminService, const std::function<void(ConfigModeState)> &onStateChange)
-        : garminService(garminService), onStateChange(onStateChange) {
+    // onPaired fires as the green ring starts; onLeaveConfig once it ends.
+    GarminPairingView(
+        GarminService &garminService,
+        const std::function<void(ConfigModeState)> &onStateChange,
+        const std::function<void()> &onPaired,
+        const std::function<void()> &onLeaveConfig
+    )
+        : garminService(garminService), onStateChange(onStateChange),
+          onPaired(onPaired), onLeaveConfig(onLeaveConfig) {
         code = garminService.openPairing();
         pairingsAtOpen = garminService.completedPairings();
+    }
+
+    // Success, expiry or a cancel: the view no longer takes a back.
+    bool outcomeShown() const {
+        return phase != Phase::Code;
     }
 
     ~GarminPairingView() override {
@@ -50,7 +77,22 @@ public:
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
-        if (leaving) {
+        if (phase == Phase::Leaving) {
+            return;
+        }
+
+        // Presses during the ring are dropped, not latched for the next view.
+        if (showingRing()) {
+            remoteInputManager.clearLatches();
+            if (!ringDone) {
+                return;
+            }
+            if (phase == Phase::Paired) {
+                phase = Phase::Leaving;
+                onLeaveConfig();
+            } else {
+                leave();
+            }
             return;
         }
 
@@ -61,10 +103,17 @@ public:
         }
 
         // Done once a watch has paired and authenticated with its key - not at key delivery:
-        // closing the window wipes the key reply the watch may not have read yet. Also on
-        // expiry, or when the window was closed under us (the feature failed or stopped).
-        if (garminService.completedPairings() != pairingsAtOpen || !garminService.pairingOpen()) {
-            leave();
+        // closing the window wipes the key reply the watch may not have read yet.
+        if (garminService.completedPairings() != pairingsAtOpen) {
+            garminService.closePairing();
+            phase = Phase::Paired;
+            onPaired();
+            return;
+        }
+
+        // Expiry, or the window closed under us (the feature failed or stopped).
+        if (!garminService.pairingOpen()) {
+            phase = Phase::Expired;
             return;
         }
 
@@ -78,6 +127,11 @@ public:
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetAnimations();
+        // restoreView() after an Overlay: the outcome is not replayed, the view hands over.
+        if (phase != Phase::Code) {
+            ringStarted = ringDone = true;
+            return;
+        }
         ledDisplay.setColonAppearance();
         ledDisplay.setGlyphsGlyph(
             LedDisplay::digitToGlyph(code / 1000 % 10),
@@ -93,15 +147,33 @@ public:
         ledDisplay.setBorderAppearance(Colors::Blue, Colors::Blue);
     }
 
-    // Every tick: the glyph blink is a per-frame render.
+    // Every tick: the glyph blink and the ring are per-frame renders.
     void renderLedDisplay(LedDisplay &ledDisplay) override {
+        if (phase == Phase::Leaving) {
+            return;
+        }
+
+        if (showingRing()) {
+            if (!ringStarted) {
+                ringStarted = true;
+                ledDisplay.startRing(phase == Phase::Paired ? Colors::Green : Colors::Red);
+            }
+            // Checked before display(): an ended ring would show one black frame.
+            if (!ledDisplay.ringActive()) {
+                ringDone = true;
+                return;
+            }
+            ledDisplay.display();
+            return;
+        }
+
         const bool blink = shownSeconds <= BLINK_FROM_S;
         ledDisplay.setGlyphBlinking(blink, blink);
         ledDisplay.display();
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        if (!shouldRenderBack || leaving) {
+        if (!shouldRenderBack || phase != Phase::Code) {
             return;
         }
 
@@ -125,7 +197,8 @@ public:
     }
 
     void renderEInkDisplay(EInkDisplay &einkDisplay) override {
-        if (!einkDisplay.available() || leaving) {
+        // The code screen stays through the ring: no extra partial for the outcome.
+        if (!einkDisplay.available() || phase != Phase::Code) {
             return;
         }
 

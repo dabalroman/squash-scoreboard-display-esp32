@@ -63,6 +63,15 @@ class Buzzer {
         return steps;
     }
 
+    // A rising short-long pair: unlike the tick, back, celebration and low-battery sounds.
+    static const uint16_t *pairingOkPattern() {
+        static const uint16_t steps[] = {
+            60, 60,
+            200, 0
+        };
+        return steps;
+    }
+
     // Unknown mode bytes sound, like ALWAYS.
     bool audible() const {
         return mode == PrefsBuzzer::OFF ? false : mode == PrefsBuzzer::IN_MATCH ? inMatch : true;
@@ -123,6 +132,15 @@ public:
             return;
         }
         playPattern(lowBatteryPattern());
+    }
+
+    // Confirms a watch pairing, which only happens in CONFIG, where IN_MATCH is silent:
+    // only Off silences it. `editedMode` is CONFIG's unsaved value, not yet in `mode`.
+    void playPairingOk(const uint8_t editedMode) {
+        if (editedMode == PrefsBuzzer::OFF) {
+            return;
+        }
+        playPattern(pairingOkPattern());
     }
 
     void playBack() {
