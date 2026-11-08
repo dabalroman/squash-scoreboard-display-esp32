@@ -7,6 +7,7 @@
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Tournament/Tournament.h"
+#include "Tournament/SelectionStore.h"
 #include "Tournament/Rules/PadelRules.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/PadelMatchStartGameView.h"
@@ -28,6 +29,10 @@ class PadelMode final : public DeviceMode {
     }
 
     void handleStateChange() {
+        // START (fob or watch) is the only way out of the choose list forward.
+        if (previousState == PadelModeState::TournamentChoosePlayers && state == PadelModeState::MatchStartGame) {
+            SelectionStore::save(SelectionStore::Sport::Padel, tournament.getPlayers());
+        }
         previousState = state;
         // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
         // a press latched in between must not act on the new view's first frame.
@@ -111,6 +116,7 @@ public:
 
         ledDisplay.setSameSideMode(true);
         backDisplay.setSameSideMode(true);
+        SelectionStore::restore(SelectionStore::Sport::Padel, tournament, users);
         setState(PadelModeState::TournamentChoosePlayers);
     }
 

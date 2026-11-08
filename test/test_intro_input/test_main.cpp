@@ -25,7 +25,8 @@ inline int digitalRead(const uint8_t pin) { return pin < 8 && g_pinHigh[pin] ? 1
 using Garmin::AckStatus;
 using Garmin::CommandId;
 
-void setUp() {}
+// Modes restore the last START selection (SelectionStore): every test starts without one.
+void setUp() { HostNvs::reset(); }
 void tearDown() {}
 
 static const uint8_t PIN_A = 1, PIN_B = 2, PIN_C = 3, PIN_D = 4;

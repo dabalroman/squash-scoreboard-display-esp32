@@ -5,6 +5,7 @@
 #include "DeviceMode/DeviceMode.h"
 #include "DeviceMode/View.h"
 #include "Tournament/Tournament.h"
+#include "Tournament/SelectionStore.h"
 #include "Tournament/Rules/Rules.h"
 #include "RemoteDevelopmentService/LoggerHelper.h"
 #include "Views/VolleyballMatchStartGameView.h"
@@ -29,6 +30,10 @@ class VolleyballMode final : public DeviceMode {
     }
 
     void handleStateChange() {
+        // START (fob or watch) is the only way out of the choose list forward.
+        if (previousState == VolleyballModeState::TournamentChoosePlayers && state == VolleyballModeState::MatchStartGame) {
+            SelectionStore::save(SelectionStore::Sport::Volleyball, tournament.getPlayers());
+        }
         previousState = state;
         // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
         // a press latched in between must not act on the new view's first frame.
@@ -112,6 +117,7 @@ public:
 
         ledDisplay.setSameSideMode(true);
         backDisplay.setSameSideMode(true);
+        SelectionStore::restore(SelectionStore::Sport::Volleyball, tournament, users);
         setState(VolleyballModeState::TournamentChoosePlayers);
     }
 

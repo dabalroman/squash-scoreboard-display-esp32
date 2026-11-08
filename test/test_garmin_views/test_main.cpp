@@ -20,7 +20,8 @@
 using Garmin::AckStatus;
 using Garmin::CommandId;
 
-void setUp() {}
+// Modes restore the last START selection (SelectionStore): every test starts without one.
+void setUp() { HostNvs::reset(); }
 void tearDown() {}
 
 static const uint32_t UID_ANNA = 0xA0000001;
@@ -200,6 +201,45 @@ static void test_squash_choose_players() {
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
     TEST_ASSERT_EQUAL(1, rig.requested.size());
     TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+}
+
+// The START selection comes back on the next mode entry, per sport, minus deleted profiles.
+static void test_selection_restored_on_mode_entry() {
+    {
+        Rig rig;
+        squashRig(rig);
+        rig.tick();
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_CEZ)));
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_ANNA)));
+        TEST_ASSERT_EQUAL(0, HostNvs::writeCount());  // toggling writes nothing
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartTournament)));
+        rig.tick();
+        TEST_ASSERT_EQUAL(1, HostNvs::writeCount());
+    }
+    {
+        Rig rig;
+        squashRig(rig);
+        rig.tick();
+        TEST_ASSERT_EQUAL_HEX8(0x10, rig.describe().screen());
+        TEST_ASSERT_EQUAL_HEX32(0x5, u32(rig.describe().data()));
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartTournament)));
+        rig.tick();
+        TEST_ASSERT_EQUAL(1, HostNvs::writeCount());  // same selection: no rewrite
+    }
+    {
+        Rig rig;
+        padelRig(rig);
+        rig.tick();
+        TEST_ASSERT_EQUAL_HEX32(0, u32(rig.describe().data()));
+    }
+    {
+        Rig rig;
+        rig.users = {&rig.anna, &rig.bob};  // Cez deleted since
+        squashRig(rig);
+        rig.tick();
+        TEST_ASSERT_EQUAL_HEX32(0x1, u32(rig.describe().data()));
+        TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(cmd(CommandId::StartTournament)));
+    }
 }
 
 static void test_squash_match_start() {
@@ -921,6 +961,7 @@ int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_route_pending_is_busy_even_for_back);
     RUN_TEST(test_squash_choose_players);
+    RUN_TEST(test_selection_restored_on_mode_entry);
     RUN_TEST(test_squash_match_start);
     RUN_TEST(test_squash_playing_score_undo_and_game_ball);
     RUN_TEST(test_squash_winning_commit_through_loop);
