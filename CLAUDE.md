@@ -96,7 +96,7 @@ python helpers/led_positions.py v1 --check; python helpers/led_positions.py v2 -
 Logs: `printLn` goes to telnet (port 23) and, on both boards, to USB CDC (115200)
 whenever a host is attached (`if (Serial)` in `LoggerHelper.h`).
 
-A pre-build script (`helpers/version_increment.py`) auto-increments the firmware version on each build - once **per env**, so a two-env build bumps it twice. It tolerates a UTF-8 BOM in `version.txt` (a BOM once broke every build).
+A pre-build script (`helpers/version_increment.py`) auto-increments the firmware version on each build - once **per env**, so a two-env build bumps it twice. It tolerates a UTF-8 BOM in `version.txt` (a BOM once broke every build). To build an exact release version, set `version.txt` to `X.Y.-1` right before each build (the bump runs first, so it yields `X.Y.0`); an upload rebuilds, so set it again before `-t upload`.
 
 ## Hard rules
 
