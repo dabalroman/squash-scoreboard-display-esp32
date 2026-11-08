@@ -1,7 +1,7 @@
 # Garmin App Remote - BLE protocol (v1)
 
 Contract between the scoreboard firmware (task #80) and the Connect IQ watch app (task #81).
-Spec for task #79. Background and measurements: the POC (see `docs/garmin-remote-poc.md`).
+Spec for task #79. Background and measurements: the POC (task #66).
 
 Status: **protocol version 1, frozen** at the first public Connect IQ store release (watch app
 1.0.0); v0 was the development version and never reached the public. An incompatible change now
