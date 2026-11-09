@@ -1,0 +1,74 @@
+characteristic:
+  identifier: scbd.characteristic.roster
+  name: ROSTER
+  uuid: ROSTER_UUID
+  properties: [write, read]
+  auth_required: true
+  description: >-
+    The active roster (players or teams): a write sets the per-connection read cursor, each read
+    returns the entry at the cursor and advances it.
+  usage: >-
+    The watch re-reads the roster only when the state's rosterVersion differs from its cache of the
+    kind the state's sport names. Before authentication a read answers the 1-byte [PROTO] and
+    writes are discarded.
+  see: "#12-roster-sync"
+
+  frames:
+    - frame: write
+      name: Write (set cursor)
+      access: write
+      sender: watch
+      size: 2
+      description: Sets this connection's read cursor (0 at connect).
+      usage: One write + `count` reads re-reads the whole roster.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: index
+          type: uint8
+          description: Entry index to read next.
+
+    - frame: read
+      name: Read
+      access: read
+      sender: board
+      size: [3, 19]
+      description: One roster entry, or just the header past the end.
+      usage: >-
+        Each read returns the entry at the cursor and advances it; past the end the cursor stays and
+        the read returns the 3-byte header alone.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: index
+          type: uint8
+          description: The cursor this read answers.
+        - field: count
+          type: uint8
+          description: Roster size.
+        - field: uid
+          type: uint32
+          present_if: index < count
+          description: The profile or team id.
+        - field: r
+          type: uint8
+          present_if: index < count
+          description: Red component, raw stored colour.
+        - field: g
+          type: uint8
+          present_if: index < count
+          description: Green component.
+        - field: b
+          type: uint8
+          present_if: index < count
+          description: Blue component.
+        - field: name
+          type: utf8s
+          size: ROSTER_NAME_SIZE
+          padding: nul
+          present_if: index < count
+          description: Printable ASCII, NUL-padded (a 9-character name has no NUL).

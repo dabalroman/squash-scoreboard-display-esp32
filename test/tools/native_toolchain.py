@@ -6,8 +6,19 @@ import glob
 import os
 import re
 import subprocess
+import sys
 
 Import("env")
+
+# Hold the protocol to its one definition: fail the native build if the firmware tests drift from
+# docs/protocol/*.yaml. Runs once per native env (idempotent, cheap).
+_check = os.path.normpath(os.path.join(env.subst("$PROJECT_DIR"), "helpers", "check_protocol.py"))
+_proc = subprocess.run([sys.executable, _check, "--repo", "firmware", "--repo", "client"],
+                       capture_output=True, text=True)
+print(_proc.stdout.strip())
+if _proc.returncode != 0:
+    print(_proc.stderr.strip())
+    env.Exit(1)
 
 PATTERN = "C:/Program Files/JetBrains/CLion */bin/mingw/bin"
 

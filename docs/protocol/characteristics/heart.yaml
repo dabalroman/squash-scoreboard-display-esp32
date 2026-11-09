@@ -1,0 +1,53 @@
+characteristic:
+  identifier: scbd.characteristic.heart
+  name: HEART
+  uuid: HEART_UUID
+  properties: [write, notify]
+  auth_required: true
+  description: >-
+    Heart-rate relay: the watch writes its wearer's value, the board notifies the other connected
+    watches' values.
+  usage: >-
+    A write is accepted only while the board's last published screen is PLAYING, else discarded.
+    The board only relays - it never shows, logs or stores a heart rate. Values are held in RAM per
+    connection and expire 15 s after the last write.
+  see: "#181-heart-frames"
+
+  frames:
+    - frame: write
+      name: Write
+      access: write
+      sender: watch
+      size: 2
+      description: This watch's current heart rate, or a clear.
+      usage: >-
+        Shared while PLAYING, at most once per second, at least every 5 s while a reading exists so
+        it never expires; 0 clears mine.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: bpm
+          type: uint8
+          description: 1-255 = this watch's heart rate; 0 = clear mine.
+
+    - frame: notify
+      name: Notify
+      access: notify
+      sender: board
+      size: 4
+      description: The other connections' current values.
+      usage: >-
+        Sent to every authenticated connection that enabled the HEART CCCD, at most once per second
+        per connection with the newest content, always. The receiver's own value is never in its
+        list; all zero = nobody else is sharing.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: values
+          type: uint8[]
+          size: HEART_LIST
+          description: The other connections' non-zero values in connection-slot order, padded with 0.

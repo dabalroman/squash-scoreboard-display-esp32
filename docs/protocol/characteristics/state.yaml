@@ -1,0 +1,204 @@
+characteristic:
+  identifier: scbd.characteristic.state
+  name: STATE
+  uuid: STATE_UUID
+  properties: [read, notify]
+  auth_required: true
+  description: >-
+    The board's current screen state: a body split into chunked notifications, plus a read of chunk
+    0 for a quick sync check.
+  usage: >-
+    The board notifies the full current state on CCCD enable and on every change (coalesced to at
+    most one push per loop() tick per connection, always the newest content), and answers a read
+    with chunk 0. Before authentication a read answers the 1-byte [PROTO] and nothing is notified.
+    ackSeq / ackStatus are per connection.
+  see: "#11-state"
+
+  frames:
+    - frame: chunk
+      name: Chunk
+      access: notify
+      sender: board
+      size: [4, 20]
+      description: One chunk of a state body, preceded by PROTO, stateSeq and index/count.
+      usage: >-
+        The watch reassembles chunks with the same stateSeq; a chunk with a different stateSeq
+        discards the incomplete set. Chunks of one push are sent back to back, in order.
+      chunked: {body: state_body}
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: state_seq
+          type: uint8
+          description: Per-connection push counter, +1 per push, wraps.
+        - field: index_count
+          type: uint8
+          description: index << 4 | count (index 0-14, count 1-15).
+        - field: body
+          type: uint8[]
+          size: rest
+          description: Body bytes for this chunk.
+
+structures:
+  - name: state_body
+    description: "The state body: a fixed header then per-screen data (11.2)."
+    structure:
+      - field: screen
+        type: uint8
+        enum: screen
+        description: The board's current screen.
+      - field: sport
+        type: uint8
+        enum: sport
+        description: The sport the current mode belongs to, 0 outside a sport.
+      - field: ack_seq
+        type: uint8
+        description: Sequence number of the command this push acknowledges, 0 = none.
+      - field: ack_status
+        type: uint8
+        enum: ack_status
+        description: Verdict on that command.
+      - field: roster_version
+        type: uint32
+        description: CRC-32 of the active roster.
+      - field: screen_data
+        switch: screen
+        cases:
+          MENU: menu_body
+          CHOOSE_PLAYERS: choose_players_body
+          MATCH_START: match_start_body
+          INTRO: intro_body
+          PLAYING: playing_body
+          CELEBRATION: result_body
+          GAME_OVER: result_body
+        description: The per-screen data (11.3); absent on BOOTING, CONFIG, PROFILE.
+
+  - name: menu_body
+    offset: 8
+    description: "MENU screen data: the sport list with the highlighted row."
+    structure:
+      - field: cursor
+        type: uint8
+        enum: sport
+        description: Sport of the highlighted row, 0 on a non-sport row.
+      - field: n
+        type: uint8
+        description: Number of sports in the menu.
+      - field: sport_ids
+        type: uint8[]
+        size: n
+        description: Sport ids in menu order.
+
+  - name: choose_players_body
+    offset: 8
+    description: "CHOOSE_PLAYERS screen data: the tournament selection and the cursor."
+    structure:
+      - field: selected
+        type: uint32
+        description: Bit i = roster index i is in the tournament.
+      - field: cursor
+        type: uint32
+        description: Uid of the highlighted profile row, 0 on START.
+
+  - name: match_start_body
+    offset: 8
+    description: "MATCH_START screen data: the selection, the pair and the swap hint."
+    structure:
+      - field: selected
+        type: uint32
+        description: Bit i = roster index i is in the tournament.
+      - field: left_uid
+        type: uint32
+        description: Left court side's profile or team.
+      - field: right_uid
+        type: uint32
+        description: Right court side's profile or team.
+      - field: flags
+        type: uint8
+        description: Bit 6 SIDES_SWAPPED, other bits reserved 0.
+
+  - name: intro_body
+    offset: 8
+    description: "INTRO screen data: the pair and the swap hint."
+    structure:
+      - field: left_uid
+        type: uint32
+        description: Left court side's profile or team.
+      - field: right_uid
+        type: uint32
+        description: Right court side's profile or team.
+      - field: flags
+        type: uint8
+        description: Bit 6 SIDES_SWAPPED, other bits reserved 0.
+
+  - name: playing_body
+    offset: 8
+    description: "PLAYING screen data: the pair, the score and the point flags."
+    structure:
+      - field: left_uid
+        type: uint32
+        description: Left court side's profile or team.
+      - field: right_uid
+        type: uint32
+        description: Right court side's profile or team.
+      - field: flags
+        type: uint8
+        description: >-
+          Bit 0 UNCOMMITTED (scores include points inside the 4 s commit window), bit 1 TIEBREAK
+          (padel), bit 2 GAME_BALL_LEFT, bit 3 GAME_BALL_RIGHT, bit 4 LAST_KNOWN, bit 5 LAST_RIGHT
+          (0 = left; 0 without LAST_KNOWN), bit 6 SIDES_SWAPPED, bit 7 reserved 0.
+      - field: left_games
+        type: uint8
+        description: "Games won in the match (padel: sets)."
+      - field: right_games
+        type: uint8
+        description: "Games won in the match (padel: sets)."
+      - field: left_score
+        type: uint8
+        description: "Points in the current game (padel: gems in the current set)."
+      - field: right_score
+        type: uint8
+        description: "Points in the current game (padel: gems in the current set)."
+      - field: left_point
+        type: uint8
+        present_if: sport == padel
+        description: "Padel point: 0 Love, 1 15, 2 30, 3 40, 4 Ad; with TIEBREAK the raw tiebreak points."
+      - field: right_point
+        type: uint8
+        present_if: sport == padel
+        description: "Padel point: 0 Love, 1 15, 2 30, 3 40, 4 Ad; with TIEBREAK the raw tiebreak points."
+
+  - name: result_body
+    offset: 8
+    description: "CELEBRATION and GAME_OVER screen data: the finished game's result."
+    structure:
+      - field: left_uid
+        type: uint32
+        description: Left court side's profile or team.
+      - field: right_uid
+        type: uint32
+        description: Right court side's profile or team.
+      - field: winner
+        type: uint8
+        enum: side
+        description: Winner side (0 left, 1 right).
+      - field: left_score
+        type: uint8
+        description: "Left score of the finished game (padel: gems of the set)."
+      - field: right_score
+        type: uint8
+        description: "Right score of the finished game (padel: gems of the set)."
+      - field: left_games
+        type: uint8
+        description: "Left games after this game (padel: sets)."
+      - field: right_games
+        type: uint8
+        description: "Right games after this game (padel: sets)."
+      - field: variant
+        type: uint8
+        description: 0 normal, 1 bajgiel.
+      - field: flags
+        type: uint8
+        description: Bit 6 SIDES_SWAPPED, other bits reserved 0.

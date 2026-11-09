@@ -1,0 +1,120 @@
+# GSS-style characteristic definition. DRAFT (#565 step 1) - see ../README.md for the dialect.
+
+characteristic:
+  identifier: scbd.characteristic.auth
+  name: AUTH
+  uuid: AUTH_UUID
+  properties: [read, write]
+  auth_required: false
+  description: >-
+    Mutual challenge-response that unlocks COMMAND, STATE, ROSTER, HEART and RESULTS for one
+    connection. Each side proves it holds the per-watch key K by MACing the other side's fresh
+    nonce; neither the key nor anything replayable crosses the air.
+  usage: >-
+    Every connection, after the VERSION check and before the STATE subscription: the watch reads
+    the challenge, writes one proof, reads the result. One proof per connection - a second proof
+    write on the same connection is ignored, and after a failed proof the board disconnects 2 s
+    after answering.
+  see: "#8-authentication-mutual-every-connection"
+
+  frames:
+    - frame: challenge
+      name: Challenge
+      access: read
+      sender: board
+      size: 10
+      description: The board nonce Nb for this connection.
+      usage: >-
+        The watch reads AUTH before it has written a proof (connection sequence step 4) and keeps
+        Nb for its MAC. The board draws Nb once per connection, so every read before the proof
+        returns the same value.
+      structure:
+        - field: proto
+          type: uint8
+          size: 1
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          size: 1
+          value: auth_type.CHALLENGE
+          enum: auth_type
+          description: Marks this read as a challenge.
+        - field: nb
+          type: uint8[]
+          size: NONCE_SIZE
+          description: Board nonce, fresh per connection.
+
+    - frame: proof
+      name: Proof
+      access: write
+      sender: watch
+      size: 19
+      description: Which key the watch holds, its own nonce, and a MAC proving it holds that key.
+      usage: >-
+        The watch draws Nw, computes MAC("W" || Nb) with the key of the slot the board issued it,
+        and writes this frame once (step 5). The board checks the slot holds a key and compares
+        the MAC in constant time; on success the connection is authenticated and the slot's LRU
+        counter is bumped. A shorter frame, a foreign PROTO or a type other than PROOF is ignored.
+      structure:
+        - field: proto
+          type: uint8
+          size: 1
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          size: 1
+          value: auth_type.PROOF
+          enum: auth_type
+          description: Marks this write as a proof.
+        - field: slot
+          type: uint8
+          size: 1
+          range: [0, SLOT_COUNT - 1]
+          description: Board slot the watch's key was issued in (PAIRING result).
+        - field: nw
+          type: uint8[]
+          size: NONCE_SIZE
+          description: Watch nonce, fresh per attempt.
+        - field: watch_mac
+          type: uint8[]
+          size: MAC_SIZE
+          computed: MAC("W" || nb)
+          description: First 8 bytes of HMAC-SHA256(K, 0x57 || Nb).
+
+    - frame: result
+      name: Result
+      access: read
+      sender: board
+      size: [3, 11]
+      description: The board's verdict on the proof, and on success its own proof of K.
+      usage: >-
+        The watch reads AUTH after its proof (step 6). OK with a matching board MAC: the board is
+        trusted. OK with a wrong or missing MAC: the watch disconnects, marks the board untrusted
+        (no auto-reconnect until the user retries) and reports a failed authentication - an
+        impostor advertising the right board id cannot produce this MAC. BAD_PROOF or
+        UNKNOWN_SLOT: the watch shows "pair again".
+      structure:
+        - field: proto
+          type: uint8
+          size: 1
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          size: 1
+          value: auth_type.RESULT
+          enum: auth_type
+          description: Marks this read as a result.
+        - field: status
+          type: uint8
+          size: 1
+          enum: auth_status
+          description: Outcome of the proof.
+        - field: board_mac
+          type: uint8[]
+          size: MAC_SIZE
+          present_if: status == OK
+          computed: MAC("B" || nw)
+          description: First 8 bytes of HMAC-SHA256(K, 0x42 || Nw).

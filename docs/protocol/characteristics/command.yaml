@@ -1,0 +1,39 @@
+characteristic:
+  identifier: scbd.characteristic.command
+  name: COMMAND
+  uuid: COMMAND_UUID
+  properties: [write]
+  auth_required: true
+  description: >-
+    The one write path the watch uses to act on the board: semantic commands (select sport, score,
+    swap, start, ...) rather than raw button events.
+  usage: >-
+    The watch numbers commands per connection (first seq = 1, +1, wrapping 255 -> 1; 0 = none) and
+    sends at most one outstanding at a time. The board applies them in loop() and acknowledges via
+    the state's ackSeq/ackStatus; a duplicate seq is not applied, ack unchanged, full state
+    re-pushed. Before authentication writes are discarded.
+  see: "#101-command-frame-write-3-11-b"
+
+  frames:
+    - frame: command
+      name: Command
+      access: write
+      sender: watch
+      size: [3, 11]
+      description: A command id, its sequence number, and the command's arguments.
+      usage: The arguments depend on the command id (commands.yaml).
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: cmd
+          type: uint8
+          description: Command id.
+        - field: seq
+          type: uint8
+          description: Sequence number, 1-255.
+        - field: args
+          switch: cmd
+          cases: commands
+          description: The command's arguments.

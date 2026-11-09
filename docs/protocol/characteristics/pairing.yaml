@@ -1,0 +1,91 @@
+characteristic:
+  identifier: scbd.characteristic.pairing
+  name: PAIRING
+  uuid: PAIRING_UUID
+  properties: [write, read, notify]
+  auth_required: false
+  description: >-
+    The one-time pairing exchange: the watch sends the code it picked, the board answers with a
+    fresh key on success.
+  usage: >-
+    The watch writes the request with the code shown next to the chosen board; the board answers in
+    the write's callback, so the result is readable as soon as the write response arrives. The
+    result is delivered to this connection only (read, or notified if subscribed). The key crosses
+    the air in plaintext once, inside the user-opened window - security rests on the keys.
+  see: "#91-pairing-frames"
+
+  frames:
+    - frame: none
+      name: None (no request yet)
+      access: read
+      sender: board
+      size: 2
+      description: What a read returns before the watch has written a request.
+      usage: The watch reads this on a fresh connection to confirm no pairing is in progress.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: pairing_type.NONE
+          enum: pairing_type
+          description: Marks this read as "no request".
+
+    - frame: request
+      name: Request
+      access: write
+      sender: watch
+      size: 4
+      description: The watch asks to pair, carrying the code it picked from the advertising.
+      usage: >-
+        Sent once on the pairing connection. The board answers RESULT whether the code matched or
+        not; a request while the window is closed gets WINDOW_CLOSED.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: pairing_type.REQUEST
+          enum: pairing_type
+          description: Marks this write as a pairing request.
+        - field: code
+          type: uint16
+          description: The 4-digit code shown next to the chosen board.
+
+    - frame: result
+      name: Result
+      access: read
+      sender: board
+      size: [3, 20]
+      description: "The board's answer: status, and on success the slot id and key."
+      usage: >-
+        Read (or notified) after the request. OK carries slotId + the 16-byte key the watch stores
+        as {boardId, slotId, key}. Any non-zero status means no key: the watch shows why and the
+        user may retry. The board restarts its 10 s unauthenticated timeout on delivery.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: pairing_type.RESULT
+          enum: pairing_type
+          description: Marks this read as a pairing result.
+        - field: status
+          type: uint8
+          enum: pairing_status
+          description: Outcome of the request.
+        - field: slot
+          type: uint8
+          present_if: status == OK
+          description: Board slot the new key was issued in.
+        - field: key
+          type: uint8[]
+          size: KEY_SIZE
+          present_if: status == OK
+          description: The watch's new 16-byte HMAC key.

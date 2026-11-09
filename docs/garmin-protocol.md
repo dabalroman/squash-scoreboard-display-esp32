@@ -41,37 +41,56 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 
 ## 3. Constants
 
-| Name | Value |
-|---|---|
-| `PROTO` | `0x01` (v1, frozen at store release 1.0.0; v0 was development-only) |
-| Company id | `0xFFFF` (Bluetooth SIG test id, until a registered one exists) |
-| Product magic | `53 43 42 44` (ASCII `SCBD`), 4 bytes, frozen forever |
-| Board id | `uint32`, random, generated on the first enable of the feature, stored in NVS; never `0x00000000` or `0xFFFFFFFF` |
-| Pairing window | 120 s |
-| Pairing code | 4 decimal digits, `0000`-`9999`, fresh random per window |
-| Key | 16 random bytes per paired watch |
-| Nonces | 8 random bytes, fresh per connection (board) / per attempt (watch) |
-| MAC truncation | first 8 bytes of HMAC-SHA256 |
-| Paired watches (board) | 8; the 9th pairing evicts the least recently authenticated slot |
-| Concurrent connections | 4; the board advertises while fewer are open |
-| Unauthenticated connection timeout | 10 s, then the board disconnects |
-| Heart rate expiry | 15 s after the watch's last HEART write (section 18) |
-| HEART notify rate | at most 1 per second per connection (section 18) |
-| Tournament id | `uint32`, random, new per tournament (sport mode entered, reboot); never `0x00000000`, which means "no tournament" (section 19) |
+<!-- generated: constants -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+| Name | Value | Meaning |
+|---|---|---|
+| `PROTO` | `0x01` | Protocol version. Byte 0 of every characteristic value and the advertised version byte. |
+| `COMPANY_ID` | `0xFFFF` | Bluetooth SIG test company id carried in the manufacturer data, until a registered one exists. |
+| `ADV_FLAG_PAIRING` | `0x01` | Bit 0 of the advertising flags byte: the pairing window is open and the code is present. |
+| `MAX_FRAME` | 20 | Maximum frame size in bytes; every read, write and notify is at most this. |
+| `MAX_ADV` | 31 | Maximum BLE advertising payload in bytes. |
+| `CHUNK_HEADER` | 3 | Fixed STATE notify header: PROTO, stateSeq, index<<4 \| count. |
+| `CHUNK_BODY` | 17 | Body bytes per STATE notify chunk. |
+| `MAX_CHUNKS` | 15 | Maximum chunks one state body splits into. |
+| `MAX_STATE_BODY` | 255 | Maximum state body length in bytes. |
+| `STATE_HEADER` | 8 | Fixed state body header: screen, sport, ackSeq, ackStatus, rosterVersion (u32). |
+| `KEY_SIZE` | 16 | Length of the per-watch HMAC key the board issues on pairing. |
+| `NONCE_SIZE` | 8 | Length of the board nonce Nb and the watch nonce Nw. |
+| `MAC_SIZE` | 8 | Truncated MAC length - the first 8 bytes of HMAC-SHA256. |
+| `SLOT_COUNT` | 8 | Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot. |
+| `MAX_CONNECTIONS` | 4 | Concurrent BLE connections the board accepts; it stops advertising while all are open. |
+| `ROSTER_ENTRY_SIZE` | 16 | Wire size of one roster entry: uid (u32), r, g, b, then a 9-byte name. |
+| `ROSTER_NAME_SIZE` | 9 | Bytes of the roster entry's name field, printable ASCII, NUL-padded. |
+| `VERSION_TEXT_MAX` | 19 | Maximum firmware version string bytes in the VERSION read. |
+| `PAIRING_CODE_COUNT` | 10000 | Number of distinct pairing codes (0000-9999). |
+| `PAIRING_WINDOW_MS` | 120000 ms | How long the pairing window stays open. |
+| `UNAUTH_TIMEOUT_MS` | 10000 ms | How long an unauthenticated connection may stay open before the board disconnects it. |
+| `FAILED_PROOF_DISCONNECT_MS` | 2000 ms | Delay before the board disconnects after answering a failed AUTH proof. |
+| `HEART_LIST` | 3 | Heart-rate values per HEART notify (every other connection at the 4-connection limit). |
+| `HEART_EXPIRY_MS` | 15000 ms | How long a shared heart-rate value lasts after its last write. |
+| `HEART_MIN_INTERVAL_MS` | 1000 ms | Minimum interval between HEART notifies to one connection. |
+| `RESULTS_HEADER` | 9 | RESULTS read header: PROTO, index (u16), count (u16), tournamentId (u32). |
+| `RESULT_ENTRY_SIZE` | 11 | Wire size of one finished-game entry: uidA, uidB, scoreA, scoreB, turn. |
+| `RESULTS_MAX` | 128 | Most finished games listed per tournament. |
+<!-- /generated: constants -->
 
 UUIDs (fresh, not the POC's):
 
-| Item | UUID |
-|---|---|
-| Service | `0d780001-2f44-4f31-93b7-b78dc9e29735` |
-| VERSION | `0d780002-2f44-4f31-93b7-b78dc9e29735` |
-| COMMAND | `0d780003-2f44-4f31-93b7-b78dc9e29735` |
-| STATE | `0d780004-2f44-4f31-93b7-b78dc9e29735` |
-| ROSTER | `0d780005-2f44-4f31-93b7-b78dc9e29735` |
-| AUTH | `0d780006-2f44-4f31-93b7-b78dc9e29735` |
-| PAIRING | `0d780007-2f44-4f31-93b7-b78dc9e29735` |
-| HEART | `0d780008-2f44-4f31-93b7-b78dc9e29735` |
-| RESULTS | `0d780009-2f44-4f31-93b7-b78dc9e29735` |
+<!-- generated: uuids -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+| Name | UUID | Item |
+|---|---|---|
+| `SERVICE_UUID` | `0d780001-2f44-4f31-93b7-b78dc9e29735` | The Garmin App Remote primary service. |
+| `VERSION_UUID` | `0d780002-2f44-4f31-93b7-b78dc9e29735` | VERSION characteristic. |
+| `COMMAND_UUID` | `0d780003-2f44-4f31-93b7-b78dc9e29735` | COMMAND characteristic. |
+| `STATE_UUID` | `0d780004-2f44-4f31-93b7-b78dc9e29735` | STATE characteristic. |
+| `ROSTER_UUID` | `0d780005-2f44-4f31-93b7-b78dc9e29735` | ROSTER characteristic. |
+| `AUTH_UUID` | `0d780006-2f44-4f31-93b7-b78dc9e29735` | AUTH characteristic. |
+| `PAIRING_UUID` | `0d780007-2f44-4f31-93b7-b78dc9e29735` | PAIRING characteristic. |
+| `HEART_UUID` | `0d780008-2f44-4f31-93b7-b78dc9e29735` | HEART characteristic. |
+| `RESULTS_UUID` | `0d780009-2f44-4f31-93b7-b78dc9e29735` | RESULTS characteristic. |
+<!-- /generated: uuids -->
 
 ## 4. Advertising
 
@@ -99,37 +118,37 @@ Even without the Flags AD it is 34. Moving it to the scan response does not help
   service UUID is verified **after** connecting, from the GATT table (section 7, step 2).
   This is a deviation from the locked decision - see Open questions.
 
-### 4.2 `ADV_IND` (19 B)
+<!-- generated: frames:ADVERTISING -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**ADV_IND** (advertise, board -> watch, 19 B): The identifying manufacturer data, then the Flags AD.
 
-| Off | Size | Field | Value |
+| Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | AD length | `0x0F` (15) |
-| 1 | 1 | AD type | `0xFF` manufacturer specific |
-| 2 | 2 | Company id | `FF FF` |
-| 4 | 4 | Product magic | `53 43 42 44` |
-| 8 | 1 | `PROTO` | board's protocol version |
-| 9 | 4 | Board id | `uint32` |
-| 13 | 1 | Flags | bit 0 `PAIRING` (window open); bits 1-7 reserved, sent 0, ignored |
-| 14 | 2 | Pairing code | `uint16` 0-9999 while `PAIRING`, else `0x0000` (ignored) |
-| 16 | 3 | Flags AD | `02 01 06` (LE General Discoverable, BR/EDR not supported) |
+| 0 | 1 | `ad_len` | `0x0F` - Length of this AD structure (15 bytes follow). |
+| 1 | 1 | `ad_type` | `0xFF` - Manufacturer specific. |
+| 2 | 2 | `company_id` | `COMPANY_ID` (`0xFFFF`) - Company id. |
+| 4 | 4 | `magic` | `53 43 42 44` - Product magic. |
+| 8 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 9 | 4 | `board_id` | Board id, drawn per board. |
+| 13 | 1 | `flags` | Bit 0 PAIRING (window open); bits 1-7 reserved, sent 0, ignored. |
+| 14 | 2 | `pairing_code` | Pairing code 0-9999 while PAIRING, else 0x0000 (ignored). |
+| 16 | 3 | `flags_ad` | `02 01 06` - Flags AD: LE General Discoverable, BR/EDR not supported. |
 
-Manufacturer payload after the company id = 12 bytes (offsets 4-15). **Frozen forever, in every
-protocol version:** company id, magic, and the version byte directly after the magic - so any
-watch app, old or new, can identify any board and classify its version.
+Broadcast always while BLE is up. The watch's pre-connect filter matches company id + magic (+ version + board id + flags) on this payload. The manufacturer bytes after the company id are frozen across protocol versions.
 
-### 4.3 `SCAN_RSP` (30 B)
+**SCAN_RSP** (scan_response, board -> watch, 30 B): The 128-bit service UUID and the local name.
 
-| Off | Size | Field | Value |
+| Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | AD length | `0x11` (17) |
-| 1 | 1 | AD type | `0x07` complete list of 128-bit service UUIDs |
-| 2 | 16 | Service UUID | little-endian |
-| 18 | 1 | AD length | `0x0B` (11) |
-| 19 | 1 | AD type | `0x09` complete local name |
-| 20 | 10 | Name | `Score-XXXX`, `XXXX` = low 16 bits of the board id, uppercase hex |
+| 0 | 1 | `ad_len` | `0x11` - Length of this AD structure (17 bytes follow). |
+| 1 | 1 | `ad_type` | `7` - Complete list of 128-bit service UUIDs. |
+| 2 | 16 | `service_uuid` | `SERVICE_UUID` - The primary service UUID, little-endian. |
+| 18 | 1 | `name_len` | `0x0B` - Length of the name AD structure (11 bytes follow). |
+| 19 | 1 | `name_type` | `9` - Complete local name. |
+| 20 | 10 | `name` | Score-XXXX, XXXX = low 16 bits of the board id, uppercase hex. |
 
-The name is for humans only and never used for matching. The watch, which cannot see it, labels
-a board `Scoreboard XXXX` from the same 16 bits, so phone tools and the watch agree.
+For phones and BLE tools that scan actively; the watch never uses it. The name is for humans only and never used for matching.
+<!-- /generated: frames:ADVERTISING -->
 
 NimBLE-Arduino adds `addServiceUUID` and the name to the advertising data by default; #80 must
 build both payloads explicitly (`setAdvertisementData` / `setScanResponseData`).
@@ -201,28 +220,38 @@ advertising data; the VERSION characteristic's UUID and its byte 0.
 One primary service, eight characteristics (RESULTS is optional for the watch, section 19). One
 Connect IQ profile (limit is 3).
 
+<!-- generated: gatt -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
 | Characteristic | Properties | Auth required | Purpose |
 |---|---|---|---|
-| VERSION | read | no | `PROTO` + firmware version string |
-| COMMAND | write (with response) | yes | semantic commands |
-| STATE | read, notify | yes | screen state (notify = full, chunked; read = chunk 0) |
-| ROSTER | write, read | yes | write = set read cursor; read = entry at cursor, cursor + 1 |
-| AUTH | read, write | no | read = challenge / result; write = proof |
-| PAIRING | write, read, notify | no | write = request; read/notify = result (this connection only) |
-| HEART | write (with response), notify | yes | write = this watch's heart rate; notify = the other watches' (section 18) |
-| RESULTS | write (with response), read | yes | write = set read cursor; read = finished game at cursor, cursor + 1 (section 19) |
+| AUTH | read, write | no | Mutual challenge-response that unlocks COMMAND, STATE, ROSTER, HEART and RESULTS for one connection. Each side proves it holds the per-watch key K by MACing the other side's fresh nonce; neither the key nor anything replayable crosses the air. |
+| COMMAND | write | yes | The one write path the watch uses to act on the board: semantic commands (select sport, score, swap, start, ...) rather than raw button events. |
+| HEART | write, notify | yes | Heart-rate relay: the watch writes its wearer's value, the board notifies the other connected watches' values. |
+| PAIRING | write, read, notify | no | The one-time pairing exchange: the watch sends the code it picked, the board answers with a fresh key on success. |
+| RESULTS | write, read | yes | The finished games of the current tournament, for a watch that draws the standings. |
+| ROSTER | write, read | yes | The active roster (players or teams): a write sets the per-connection read cursor, each read returns the entry at the cursor and advances it. |
+| STATE | read, notify | yes | The board's current screen state: a body split into chunked notifications, plus a read of chunk 0 for a quick sync check. |
+| VERSION | read | no | The board's protocol version and firmware version string, read once on connect to confirm compatibility. |
+<!-- /generated: gatt -->
 
 Before authentication the board accepts writes to COMMAND, ROSTER, HEART and RESULTS at the ATT
 level and **discards** them, answers reads of STATE, ROSTER and RESULTS with the 1-byte frame
 `[PROTO]`, and sends
 no notifications. Notify-only, never indications (unreliable on some watches).
 
-### 6.1 VERSION (read, 2-20 B)
+### 6.1 VERSION
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1-19 | Firmware version, ASCII, no NUL (`version.txt`, e.g. `0.6.187`) |
+<!-- generated: frames:VERSION -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Version** (read, board -> watch, 2-20 B): PROTO followed by the firmware version string.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1-19 | `version` | Firmware version, ASCII, no NUL (e.g. 0.6.187). |
+
+Read once per connection; a shorter or foreign-PROTO value is ignored.
+<!-- /generated: frames:VERSION -->
 
 ## 7. Connection sequence (watch)
 
@@ -265,32 +294,41 @@ One proof per connection: after a failed proof the board answers the result and 
 
 ### 8.1 AUTH frames
 
-Challenge (read, before a proof) - 10 B:
+<!-- generated: frames:AUTH -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Challenge** (read, board -> watch, 10 B): The board nonce Nb for this connection.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Type `0x00` CHALLENGE |
-| 2 | 8 | `Nb` |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x00` CHALLENGE - Marks this read as a challenge. `0` CHALLENGE, `1` PROOF, `2` RESULT |
+| 2 | 8 | `nb` | Board nonce, fresh per connection. |
 
-Proof (write) - 19 B:
+The watch reads AUTH before it has written a proof (connection sequence step 4) and keeps Nb for its MAC. The board draws Nb once per connection, so every read before the proof returns the same value.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Type `0x01` PROOF |
-| 2 | 1 | `slotId` (0-7) |
-| 3 | 8 | `Nw` |
-| 11 | 8 | `MAC("W" \|\| Nb)` |
+**Proof** (write, watch -> board, 19 B): Which key the watch holds, its own nonce, and a MAC proving it holds that key.
 
-Result (read, after a proof) - 11 B on success, 3 B on failure:
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x01` PROOF - Marks this write as a proof. `0` CHALLENGE, `1` PROOF, `2` RESULT |
+| 2 | 1 | `slot` | Board slot the watch's key was issued in (PAIRING result). Range 0-SLOT_COUNT - 1. |
+| 3 | 8 | `nw` | Watch nonce, fresh per attempt. |
+| 11 | 8 | `watch_mac` | First 8 bytes of HMAC-SHA256(K, 0x57 \|\| Nb). |
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Type `0x02` RESULT |
-| 2 | 1 | Status: `0` OK, `1` BAD_PROOF, `2` UNKNOWN_SLOT |
-| 3 | 8 | `MAC("B" \|\| Nw)` - present only with status 0 |
+The watch draws Nw, computes MAC("W" \|\| Nb) with the key of the slot the board issued it, and writes this frame once (step 5). The board checks the slot holds a key and compares the MAC in constant time; on success the connection is authenticated and the slot's LRU counter is bumped. A shorter frame, a foreign PROTO or a type other than PROOF is ignored.
+
+**Result** (read, board -> watch, 3-11 B): The board's verdict on the proof, and on success its own proof of K.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x02` RESULT - Marks this read as a result. `0` CHALLENGE, `1` PROOF, `2` RESULT |
+| 2 | 1 | `status` | Outcome of the proof. `0` OK, `1` BAD_PROOF, `2` UNKNOWN_SLOT |
+| 3 | 8 | `board_mac` | First 8 bytes of HMAC-SHA256(K, 0x42 \|\| Nw). Present only when `status == OK`. |
+
+The watch reads AUTH after its proof (step 6). OK with a matching board MAC: the board is trusted. OK with a wrong or missing MAC: the watch disconnects, marks the board untrusted (no auto-reconnect until the user retries) and reports a failed authentication - an impostor advertising the right board id cannot produce this MAC. BAD_PROOF or UNKNOWN_SLOT: the watch shows "pair again".
+<!-- /generated: frames:AUTH -->
 
 `BAD_PROOF` / `UNKNOWN_SLOT` mean the board no longer holds this watch's key (evicted, "forget
 all", NVS wiped): the watch shows "pair again" rather than "untrusted".
@@ -325,57 +363,82 @@ The 10 s unauthenticated timeout restarts when a pairing result is delivered.
 
 ### 9.1 PAIRING frames
 
-Request (write) - 4 B:
+<!-- generated: frames:PAIRING -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**None (no request yet)** (read, board -> watch, 2 B): What a read returns before the watch has written a request.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Type `0x01` REQUEST |
-| 2 | 2 | Code `uint16` (the one shown next to the chosen board) |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x00` NONE - Marks this read as "no request". `0` NONE, `1` REQUEST, `2` RESULT |
 
-Result (read; also notified if the watch subscribed) - 20 B on success, 3 B on failure; before
-any request a read returns `[PROTO, 0x00]` (2 B, NONE):
+The watch reads this on a fresh connection to confirm no pairing is in progress.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Type `0x02` RESULT |
-| 2 | 1 | Status: `0` OK, `1` WINDOW_CLOSED, `2` BAD_CODE, `3` FULL_RETRY (key storage busy) |
-| 3 | 1 | `slotId` - status 0 only |
-| 4 | 16 | Key - status 0 only |
+**Request** (write, watch -> board, 4 B): The watch asks to pair, carrying the code it picked from the advertising.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x01` REQUEST - Marks this write as a pairing request. `0` NONE, `1` REQUEST, `2` RESULT |
+| 2 | 2 | `code` | The 4-digit code shown next to the chosen board. |
+
+Sent once on the pairing connection. The board answers RESULT whether the code matched or not; a request while the window is closed gets WINDOW_CLOSED.
+
+**Result** (read, board -> watch, 3-20 B): The board's answer: status, and on success the slot id and key.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `type` | `0x02` RESULT - Marks this read as a pairing result. `0` NONE, `1` REQUEST, `2` RESULT |
+| 2 | 1 | `status` | Outcome of the request. `0` OK, `1` WINDOW_CLOSED, `2` BAD_CODE, `3` FULL_RETRY |
+| 3 | 1 | `slot` | Board slot the new key was issued in. Present only when `status == OK`. |
+| 4 | 16 | `key` | The watch's new 16-byte HMAC key. Present only when `status == OK`. |
+
+Read (or notified) after the request. OK carries slotId + the 16-byte key the watch stores as {boardId, slotId, key}. Any non-zero status means no key: the watch shows why and the user may retry. The board restarts its 10 s unauthenticated timeout on delivery.
+<!-- /generated: frames:PAIRING -->
 
 The board answers within the write's access callback, so the result is readable as soon as the
 write response arrives.
 
 ## 10. Commands
 
-### 10.1 COMMAND frame (write, 3-11 B)
+### 10.1 COMMAND frame
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | Command id |
-| 2 | 1 | `seq` (1-255) |
-| 3 | 0-8 | Arguments |
+<!-- generated: frames:COMMAND -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Command** (write, watch -> board, 3-11 B): A command id, its sequence number, and the command's arguments.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `cmd` | Command id. |
+| 2 | 1 | `seq` | Sequence number, 1-255. |
+| 3 | n | `args` | The command's arguments. - the command table (10.2) |
+
+The arguments depend on the command id (commands.yaml).
+<!-- /generated: frames:COMMAND -->
 
 ### 10.2 Command table
 
-| Id | Name | Args | Size | Valid on | Board effect (equivalent today) |
+<!-- generated: commands -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+| Id | Name | Args | Size | Valid on | Board effect |
 |---|---|---|---|---|---|
-| `0x01` | SELECT_SPORT | `sport` u8 | 4 | MENU | enter that sport's CHOOSE_PLAYERS (cursor to the row + D). Sport not in the menu -> INVALID |
-| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | `DeviceMode::goBack()`: CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER -> MATCH_START; PROFILE -> MENU through its C/D exit, not `goBack()` (which drops the setup AP; a long C there stays a no-op). Never on PLAYING (a game must not be discarded) |
-| `0x03` | TOGGLE_PLAYER | `uid` u32 | 7 | CHOOSE_PLAYERS | add / remove that profile (D on its row). Unknown uid -> INVALID |
-| `0x04` | START_TOURNAMENT | - | 3 | CHOOSE_PLAYERS | -> MATCH_START (D on START). Fewer than 2 selected -> INVALID |
-| `0x05` | SET_PAIR | `leftUid` u32, `rightUid` u32 | 11 | MATCH_START | make the match between them with `leftUid` on the left. Not both selected, or equal -> INVALID |
-| `0x06` | SWAP_SIDES | - | 3 | MATCH_START | swap court sides (C) |
-| `0x07` | START_MATCH | - | 3 | MATCH_START | -> INTRO (D) |
-| `0x08` | SCORE | `side` u8 | 4 | PLAYING | point to that side (A / B); padel: a rally |
-| `0x09` | UNDO | `side` u8 | 4 | PLAYING | undo that side's last point (C = left, D = right); padel: also steps back across gems. At 0:0 with nothing to step back -> MATCH_START, as the board's C/D does |
-| `0x0A` | SKIP | - | 3 | INTRO, CELEBRATION | INTRO -> PLAYING; CELEBRATION -> GAME_OVER |
-| `0x0B` | NEXT_GAME | - | 3 | GAME_OVER | -> MATCH_START, same pair (C/D) |
-| `0x0C` | *(unused)* | - | - | - | never sent; the board answers UNKNOWN_CMD. Leaving a match is BACK, as on the fob (see Open questions 6) |
-| `0x0D` | SYNC | - | 3 | every screen, incl. busy | no state change; re-push the full state |
-| `0x0E` | FOCUS | `target` u32 | 7 | MENU, CHOOSE_PLAYERS | move the board's cursor to a row without acting on it (A / B scrolling, silent). MENU: `target` = a `sport` id the menu lists; CHOOSE_PLAYERS: a profile's `uid`, or 0 for the START row. A row the screen does not show (MENU: 0, an unlisted sport, anything above 0xFF; CHOOSE_PLAYERS: an unknown uid) -> INVALID. APPLIED also when the cursor already sits there |
+| `0x01` | SELECT_SPORT | `sport` uint8 | 4 | MENU | Enter that sport's CHOOSE_PLAYERS (cursor to the row + D). |
+| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | DeviceMode::goBack(): one step back toward the menu. |
+| `0x03` | TOGGLE_PLAYER | `uid` uint32 | 7 | CHOOSE_PLAYERS | Add or remove that profile (D on its row). |
+| `0x04` | START_TOURNAMENT | - | 3 | CHOOSE_PLAYERS | -> MATCH_START (D on START). |
+| `0x05` | SET_PAIR | `left_uid` uint32, `right_uid` uint32 | 11 | MATCH_START | Make the match between leftUid and rightUid, leftUid on the left. |
+| `0x06` | SWAP_SIDES | - | 3 | MATCH_START | Swap court sides (C). |
+| `0x07` | START_MATCH | - | 3 | MATCH_START | -> INTRO (D). |
+| `0x08` | SCORE | `side` uint8 | 4 | PLAYING | Point to that side (A / B); padel: a rally. |
+| `0x09` | UNDO | `side` uint8 | 4 | PLAYING | Undo that side's last point (C = left, D = right). |
+| `0x0A` | SKIP | - | 3 | INTRO, CELEBRATION | INTRO -> PLAYING; CELEBRATION -> GAME_OVER. |
+| `0x0B` | NEXT_GAME | - | 3 | GAME_OVER | -> MATCH_START, same pair (C/D). |
+| `0x0C` | UNUSED_0C | - | - | - | Reserved; never sent. |
+| `0x0D` | SYNC | - | 3 | ALL | No state change; re-push the full state. |
+| `0x0E` | FOCUS | `target` uint32 | 7 | MENU, CHOOSE_PLAYERS | Move the board's cursor to a row without acting on it (A / B scrolling, silent). |
+<!-- /generated: commands -->
 
 `side` other than 0/1 -> INVALID. Scoring through BLE bypasses the RF receiver's debounce;
 `seq` deduplication replaces it.
@@ -416,19 +479,19 @@ A frame with a foreign `PROTO` is dropped without any ack.
 
 ### 11.1 Chunks (STATE notify)
 
-A state is a **body** (section 11.2) split into chunks of at most 17 body bytes:
+<!-- generated: frames:STATE -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Chunk** (notify, board -> watch, 4-20 B): One chunk of a state body, preceded by PROTO, stateSeq and index/count.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | `stateSeq` (u8, per connection, +1 per push, wraps) |
-| 2 | 1 | `index << 4 \| count` (index 0-14, count 1-15) |
-| 3 | 1-17 | body bytes `[index * 17, index * 17 + 17)` |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `state_seq` | Per-connection push counter, +1 per push, wraps. |
+| 2 | 1 | `index_count` | index << 4 \| count (index 0-14, count 1-15). |
+| 3 | 1-17 | `body` | Body bytes for this chunk. |
 
-Max body 255 B. The watch reassembles chunks with the same `stateSeq`; a chunk with a different
-`stateSeq` discards the incomplete set. Chunks of one push are sent back to back, in order.
-A READ of STATE returns chunk 0 of the current state (sync check: screen, ack, roster version);
-the full state comes from notifications (pushed on CCCD enable and on every change) or SYNC.
+The watch reassembles chunks with the same stateSeq; a chunk with a different stateSeq discards the incomplete set. Chunks of one push are sent back to back, in order.
+<!-- /generated: frames:STATE -->
 
 The board pushes on every change of the body, coalesced to at most one push per `loop()` tick
 (50 ms) per connection, always with the newest content. `ackSeq` / `ackStatus` are per
@@ -608,16 +671,32 @@ the one every uid in the current state belongs to (CHOOSE_PLAYERS' selection and
 - A watch that ignores the kind (one cache slot per board) still works: it re-reads on every
   switch between a team sport and the rest.
 
-ROSTER read - 19 B, or 3 B past the end:
+<!-- generated: frames:ROSTER -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Write (set cursor)** (write, watch -> board, 2 B): Sets this connection's read cursor (0 at connect).
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | `index` |
-| 2 | 1 | `count` (roster size) |
-| 3 | 4 | `uid` |
-| 7 | 3 | `r`, `g`, `b` (raw stored colour) |
-| 10 | 9 | name, printable ASCII, NUL-padded (a 9-character name has no NUL) |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `index` | Entry index to read next. |
+
+One write + `count` reads re-reads the whole roster.
+
+**Read** (read, board -> watch, 3-19 B): One roster entry, or just the header past the end.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `index` | The cursor this read answers. |
+| 2 | 1 | `count` | Roster size. |
+| 3 | 4 | `uid` | The profile or team id. Present only when `index < count`. |
+| 7 | 1 | `r` | Red component, raw stored colour. Present only when `index < count`. |
+| 8 | 1 | `g` | Green component. Present only when `index < count`. |
+| 9 | 1 | `b` | Blue component. Present only when `index < count`. |
+| 10 | 9 | `name` | Printable ASCII, NUL-padded (a 9-character name has no NUL). Present only when `index < count`. |
+
+Each read returns the entry at the cursor and advances it; past the end the cursor stays and the read returns the 3-byte header alone.
+<!-- /generated: frames:ROSTER -->
 
 ## 13. Optimistic rendering (watch)
 
@@ -672,239 +751,437 @@ section 16 were computed with Python's `hmac` / `hashlib`.
 
 ## 16. Worked examples (test vectors)
 
-Synthetic values throughout: board id `0x12345678`, key `00 01 .. 0f`, slot 2,
-`Nb = a0 a1 .. a7`, `Nw = b0 b1 .. b7`, pairing code 4271 (`0x10AF`). All bytes hex.
+<!-- generated: scenarios -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+Synthetic values shared by every scenario: board id 0x12345678, key 00..0f, slot 2, Nb a0..a7, Nw b0..b7, pairing code 4271 (0x10AF).
 
 ### 16.1 Advertising
 
-Normal (`ADV_IND`, 19 B):
+The two advertising payloads the board broadcasts while BLE is up, and the VERSION read the watch makes once connected to confirm compatibility.
+
+`advertising/adv_normal` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06
+0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06    (19 B)
 ```
-Pairing, code 4271 (19 B):
+The identifying manufacturer data first, then the Flags AD. Board id is the little-endian fixture; flags 0 = no pairing window, pairing code ignored.
+
+`advertising/adv_pairing` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06
+0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06    (19 B)
 ```
-`SCAN_RSP` (30 B; service UUID little-endian, name `Score-5678`):
+The pairing window is open, so flags bit 0 is set and the drawn code 4271 (0x10AF) is carried little-endian. The watch lists only advertisers with bit 0 set.
+
+`advertising/scan_rsp` - ADVERTISING scan_response:
 ```
-11 07 35 97 e2 c9 8d b7 b7 93 31 4f 44 2f 01 00 78 0d 0b 09 53 63 6f 72 65 2d 35 36 37 38
+11 07 35 97 e2 c9 8d b7 b7 93 31 4f 44 2f 01 00 78 0d 0b 09 53 63 6f 72 65 2d 35 36 37 38    (30 B)
 ```
-VERSION read for firmware `0.6.187` (8 B): `01 30 2e 36 2e 31 38 37`
+The 128-bit service UUID little-endian, then the local name Score-XXXX where XXXX is the low 16 bits of the board id (0x5678). Phones and BLE tools see this; the watch never scans it and verifies the UUID from the GATT table instead.
+
+`advertising/version` - VERSION read:
+```
+01 30 2e 36 2e 31 38 37    (8 B)
+```
+PROTO then the firmware version string, read once on connect. The watch compares PROTO with the advertised byte; both must be in range and equal.
 
 ### 16.2 Mutual authentication
 
+A paired watch reconnects to its board and both sides prove they hold the same key K (slot 2) before the board unlocks state and commands for this connection.
+
+`auth/challenge` - AUTH read:
 ```
-AUTH read   (10 B): 01 00 a0 a1 a2 a3 a4 a5 a6 a7
+01 00 a0 a1 a2 a3 a4 a5 a6 a7    (10 B)
+```
+First read on a fresh connection. The board drew Nb when the watch connected; the watch needs it to build a proof the board can check and that is useless on any other connection.
+
+`auth/proof` - AUTH write:
+```
+01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae    (19 B)
   HMAC-SHA256(K, 57 a0 a1 a2 a3 a4 a5 a6 a7)
     = 4e470a94b924acae1ef4234f341a5c760ddebc1858661c39580b7201b2a95047
-AUTH write  (19 B): 01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae
+```
+The watch names its slot, sends a fresh Nw for the board to MAC, and proves it holds K by MACing "W" || Nb. The "W" prefix keeps the watch's MAC from ever equalling a board MAC over the same nonce.
+
+`auth/result_ok` - AUTH read:
+```
+01 02 00 18 57 e1 b4 a9 6e bf 5a    (11 B)
   HMAC-SHA256(K, 42 b0 b1 b2 b3 b4 b5 b6 b7)
     = 1857e1b4a96ebf5a8236582beab5ab29d65cef89dc6c9aab8e492a0a97ed76ce
-AUTH read   (11 B): 01 02 00 18 57 e1 b4 a9 6e bf 5a
-Failure     ( 3 B): 01 02 01
 ```
+The proof matched, so the connection is authenticated. The board answers with its own MAC over "B" || Nw, which the watch checks before trusting anything the board sends - an impostor with the right board id fails here.
+
+`auth/result_bad_proof` (instead of `result_ok`) - AUTH read:
+```
+01 02 01    (3 B)
+```
+The same exchange when the board's slot 2 holds a different key (the watch was evicted and the slot reissued). No board MAC; the board disconnects 2 s later and the watch shows "pair again".
 
 ### 16.3 Pairing
 
+The watch sends the code it picked from the advertising and stores the key the board issues on a match.
+
+`pairing/request` - PAIRING write:
 ```
-PAIRING write (4 B):  01 01 af 10
-PAIRING read  (20 B): 01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
-Wrong code    (3 B):  01 02 02
+01 01 af 10    (4 B)
 ```
-The watch stores `{0x12345678, 2, 00 01 .. 0f}` and authenticates as in 16.2.
+The watch writes the request carrying the code 4271 (0x10AF, little-endian) it picked next to the chosen board. The type byte marks this as REQUEST.
 
-### 16.4 Roster read
-
-Roster: `ANNA` uid `0x0A0B0C0D` rgb `ff 00 00`; `KRYSTIAN` uid `0x11223344` rgb `00 40 ff`;
-`OLA` uid `0x55667788` rgb `00 c0 30`.
-
+`pairing/result_ok` - PAIRING read:
 ```
-rosterVersion input (49 B):
-  03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff
-  4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
-rosterVersion = 0x150fe75b (on the wire: 5b e7 0f 15)
-
-ROSTER write (2 B):  01 00
-ROSTER read  (19 B): 01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
-ROSTER read  (19 B): 01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
-ROSTER read  (19 B): 01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
-ROSTER read  (3 B):  01 03 03                 (past the end)
+01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f    (20 B)
 ```
+The code matched, so the board answers OK with the slot id and the 16-byte key the watch stores as {0x12345678, 2, 00..0f}. The key crosses the air once inside the open window.
 
-The roster above is the players roster. Teams roster (active in padel and volleyball):
-`ORLY` uid `0x21222324` rgb `ff 80 00`; `LISY` uid `0x31323334` rgb `00 ff 80`.
-
+`pairing/result_bad_code` (instead of `result_ok`) - PAIRING read:
 ```
-rosterVersion input (33 B):
-  02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80
-  4c 49 53 59 00 00 00 00 00
-rosterVersion = 0xdb5f702c (on the wire: 2c 70 5f db)
-
-ROSTER write (2 B):  01 00
-ROSTER read  (19 B): 01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
-ROSTER read  (19 B): 01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
-ROSTER read  (3 B):  01 02 02                 (past the end)
+01 02 02    (3 B)
 ```
+A code that does not match the board's. Non-zero status means no key follows: the watch shows why and the user may retry.
 
-Selecting padel from MENU switches the active roster: the next state carries `2c 70 5f db` at
-body offset 4 in place of `5b e7 0f 15`, and ROSTER reads return the teams. Back on MENU the
-version is `0x150fe75b` again.
+### 16.4 Roster read (players)
+
+The watch walks the players roster one entry per read: write sets the cursor, each read returns the entry at the cursor and advances it.
+
+`roster_read/write` - ROSTER write:
+```
+01 00    (2 B)
+```
+The watch sets the per-connection cursor to 0 before reading the whole roster.
+
+`roster_read/read_anna` - ROSTER read:
+```
+01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
+  CRC-32(03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00)
+    = 0x150fe75b
+```
+First entry: ANNA uid 0x0A0B0C0D rgb ff 00 00. The rosterVersion every state body carries is the CRC-32 of the 1-byte count plus each entry's 16-byte wire form - here 0x150fe75b.
+
+`roster_read/read_krystian` - ROSTER read:
+```
+01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
+```
+Second entry: KRYSTIAN uid 0x11223344 rgb 00 40 ff, name NUL-padded to 9 bytes.
+
+`roster_read/read_ola` - ROSTER read:
+```
+01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00    (19 B)
+```
+Third entry: OLA uid 0x55667788 rgb 00 c0 30.
+
+`roster_read/read_past_end` - ROSTER read:
+```
+01 03 03    (3 B)
+```
+Past the end the cursor stays at the last entry and the read returns the 3-byte header alone, so the watch knows it has the whole roster.
+
+**Roster read (teams)**
+
+The teams roster, active in padel and volleyball: the same walk, with the teams' own rosterVersion 0xdb5f702c.
+
+`roster_read_teams/write` - ROSTER write:
+```
+01 00    (2 B)
+```
+Same cursor write; the board serves the teams roster while a team sport is active.
+
+`roster_read_teams/read_orly` - ROSTER read:
+```
+01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00    (19 B)
+  CRC-32(02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00)
+    = 0xdb5f702c
+```
+First team ORLY uid 0x21222324 rgb ff 80 00; the teams rosterVersion is 0xdb5f702c.
+
+`roster_read_teams/read_lisy` - ROSTER read:
+```
+01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00    (19 B)
+```
+Second team LISY uid 0x31323334 rgb 00 ff 80.
+
+`roster_read_teams/read_past_end` - ROSTER read:
+```
+01 02 02    (3 B)
+```
+Past the end: the 3-byte header alone.
 
 ### 16.5 MENU state
 
-Cursor on padel, four sports. Body 14 B, one chunk, `stateSeq` 1:
+A MENU body in one chunk, the sport list with the highlighted row - the first place a state body's rosterVersion appears on the wire.
+
+`menu_state/menu` - STATE notify:
 ```
-STATE notify (17 B): 01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03
+01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03    (17 B)
 ```
+Cursor on padel, four sports listed. The body is 14 B, so it fits one chunk: header PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
 
 ### 16.6 SCORE with confirm (squash)
 
-Squash, ANNA left, KRYSTIAN right, games 1:0, score 4:3. The watch shows 5:3 pending at once:
+The watch scores a point optimistically and the board acknowledges it through the state header's ackSeq/ackStatus, then commits it 4 s later.
+
+`score_confirm/score` - COMMAND write:
 ```
-COMMAND write (4 B): 01 08 07 00              SCORE left, seq 7
+01 08 07 00    (4 B)
 ```
-The board applies it and pushes `stateSeq` 0x2a (body 21 B: PLAYING, squash, ack 7 APPLIED,
-UNCOMMITTED, LAST_KNOWN - the newest point is the left's -, games 1:0, score 5:3):
+SCORE left with sequence number 7; the watch shows the pending point at once.
+
+`score_confirm/state` - STATE notify:
 ```
-STATE notify (20 B): 01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11
-STATE notify ( 7 B): 01 2a 12 01 00 05 03
+01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11    (20 B)
+01 2a 12 01 00 05 03    (7 B)
 ```
-`ackSeq` 7 settles the pending press. 4 s later the commit pushes the same body with flags
-`10`. A board without LAST_KNOWN (section 5) sends `01`, then `00`. A SCORE sent on GAME_OVER
-(`01 08 08 01`) comes back with `ackSeq` 8, `ackStatus` 1 WRONG_SCREEN, and the watch rolls
-back.
+The board applied it and pushed PLAYING, squash, ack 7 APPLIED, flags 0x11 (UNCOMMITTED, LAST_KNOWN - the newest point is the left's), games 1:0, score 5:3. The 21 B body is two chunks; ackSeq 7 settles the pending press.
 
 ### 16.7 Padel PLAYING
 
-Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed, the last rally won by the left (flags
-`12`: TIEBREAK, LAST_KNOWN), ack 12:
+Two padel PLAYING bodies: a tiebreak and a ladder deuce, showing the extra left_point/right_point bytes and the TIEBREAK / LAST_RIGHT flags.
+
+`padel_playing/tiebreak` - STATE notify:
 ```
-STATE notify (20 B): 01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12
-STATE notify ( 9 B): 01 2b 12 01 00 06 06 03 02
+01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12    (20 B)
+01 2b 12 01 00 06 06 03 02    (9 B)
 ```
-Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right -> 40:Ad
-(points 3, 4; flags `31`: UNCOMMITTED, LAST_KNOWN, LAST_RIGHT), ack 13:
+Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed, the last rally won by the left (flags 0x12: TIEBREAK, LAST_KNOWN), ack 12.
+
+`padel_playing/ladder` - STATE notify:
 ```
-STATE notify (20 B): 01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
-STATE notify ( 9 B): 01 2c 12 00 00 02 01 03 04
+01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
+01 2c 12 00 00 02 01 03 04    (9 B)
 ```
-A board without LAST_KNOWN / LAST_RIGHT (section 5) sends flags `02` and `01`.
+Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right -> 40:Ad (points 3, 4; flags 0x31: UNCOMMITTED, LAST_KNOWN, LAST_RIGHT), ack 13.
 
 ### 16.8 Too-old and too-new board
 
-Store app 1.0.0 accepts exactly v1 (`MIN_BOARD_PROTO = MAX_BOARD_PROTO = 1`):
+The watch accepts exactly protocol v1; a foreign PROTO in the advertising or an unauthenticated read keeps it from trusting the board.
 
-| Advertising (`ADV_IND`) | `PROTO` | Watch |
-|---|---|---|
-| `0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06` | 0 | too old: no connect; "Update the scoreboard firmware (board v0, needs v1)" |
-| `0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06` | 2 | too new: no connect; "Update the watch app" |
+`board_version/too_old` - ADVERTISING advertise:
+```
+0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06    (19 B)
+```
+PROTO 0 in the ADV_IND (byte 8). Too old: no connect, "Update the scoreboard firmware (board v0, needs v1)".
 
-Unauthenticated read of STATE or ROSTER (1 B): `01`
+`board_version/too_new` - ADVERTISING advertise:
+```
+0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06    (19 B)
+```
+PROTO 2 in the ADV_IND. Too new: no connect, "Update the watch app". Only the version byte differs from adv_normal.
+
+`board_version/unauth_read` - STATE read:
+```
+01    (1 B)
+```
+An unauthenticated read of STATE (or ROSTER) answers the 1-byte [PROTO] and nothing else; no state is pushed until the connection authenticates.
 
 ### 16.9 FOCUS
 
-Roster of 16.4 (ANNA, KRYSTIAN, OLA). On MENU, focus squash, seq 3; the board answers with the
-cursor on squash (body 14, `stateSeq` 2):
+The watch moves the board's cursor silently with FOCUS, and the board answers with the new cursor position in the state.
+
+`focus/focus_squash` - COMMAND write:
 ```
-COMMAND write (7 B): 01 0e 03 01 00 00 00
-STATE notify (17 B): 01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
+01 0e 03 01 00 00 00    (7 B)
 ```
-On CHOOSE_PLAYERS (squash, ANNA and OLA selected), focus KRYSTIAN, seq 4 (body 16, `stateSeq`
-0x10):
+On MENU, focus the squash row (sport id 0x00000001), seq 3.
+
+`focus/menu_state` - STATE notify:
 ```
-COMMAND write (7 B): 01 0e 04 44 33 22 11
-STATE notify (19 B): 01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
+01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03    (17 B)
 ```
-Focus START, seq 5: `01 0e 05 00 00 00 00` (cursor bytes `00 00 00 00`). A uid not in the
-roster, `01 0e 06 78 56 34 12`, is acked 6 INVALID and the cursor stays. A 4-byte FOCUS
-(`01 0e 07 01`) is acked 7 MALFORMED.
+The board answers with the cursor on squash (body 14 B, stateSeq 2).
+
+`focus/focus_krystian` - COMMAND write:
+```
+01 0e 04 44 33 22 11    (7 B)
+```
+On CHOOSE_PLAYERS, focus KRYSTIAN's profile row (uid 0x11223344), seq 4.
+
+`focus/choose_players_state` - STATE notify:
+```
+01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11    (19 B)
+```
+CHOOSE_PLAYERS: ANNA (bit 0) and OLA (bit 2) selected (0x00000005), cursor on KRYSTIAN. Body 16 B, stateSeq 0x10.
+
+`focus/focus_start` - COMMAND write:
+```
+01 0e 05 00 00 00 00    (7 B)
+```
+Focus the START row: target 0 (cursor bytes 00 00 00 00), seq 5.
+
+`focus/focus_unknown_uid` - COMMAND write:
+```
+01 0e 06 78 56 34 12    (7 B)
+```
+A uid not in the roster (0x12345678), seq 6 - acked 6 INVALID and the cursor stays. The frame itself is well-formed, only the target is wrong.
+
+`focus/focus_malformed` - COMMAND write:
+```
+01 0e 07 01    (4 B)
+```
+A 4-byte FOCUS is too short (missing three target bytes), acked 7 MALFORMED.
 
 ### 16.10 HEART
 
-Squash PLAYING, three authenticated watches subscribed to HEART: A in connection slot 0, B in
-slot 1, C in slot 2; both writes land before the board's next tick.
+Three authenticated watches share heart rate while PLAYING; the board relays each watch the others' values in slot order, never its own.
+
+`heart/write_a` - HEART write:
 ```
-A: HEART write  (2 B): 01 92              146 bpm
-C: HEART write  (2 B): 01 7c              124 bpm
-A: HEART notify (4 B): 01 7c 00 00        C's value (A's own is left out)
-B: HEART notify (4 B): 01 92 7c 00        A, then C: slot order
-C: HEART notify (4 B): 01 92 00 00
-C: HEART write  (2 B): 01 00              C clears its value
-A: HEART notify (4 B): 01 00 00 00        nobody else is sharing (sent once A's 1 s window ends)
-B: HEART notify (4 B): 01 92 00 00
+01 92    (2 B)
 ```
-On MENU the same write `01 92` is discarded; a write `00 92` (v0) or `01` (1 B) is discarded.
-Leaving PLAYING notifies `01 00 00 00` to every subscriber that was last sent a non-empty list.
+Watch A (connection slot 0) writes 146 bpm (0x92) while PLAYING.
+
+`heart/write_c` - HEART write:
+```
+01 7c    (2 B)
+```
+Watch C (slot 2) writes 124 bpm (0x7c); both writes land before the next tick.
+
+`heart/notify_a` - HEART notify:
+```
+01 7c 00 00    (4 B)
+```
+A's notify carries C's value (0x7c); A's own is always left out.
+
+`heart/notify_b` - HEART notify:
+```
+01 92 7c 00    (4 B)
+```
+B's notify lists A then C in slot order, padded with 0.
+
+`heart/notify_c` - HEART notify:
+```
+01 92 00 00    (4 B)
+```
+C's notify lists A. After C clears its value, B is re-notified the same list (A only); A is notified 01 00 00 00 once its 1 s window ends.
+
+`heart/write_c_clear` - HEART write:
+```
+01 00    (2 B)
+```
+C clears its value with bpm 0.
+
+`heart/notify_a_empty` - HEART notify:
+```
+01 00 00 00    (4 B)
+```
+All zero = nobody else is sharing; sent once A's 1 s window ends.
+
+`heart/discard_v0` - HEART write:
+```
+00 92    (2 B)
+```
+A v0 (PROTO 0) write is dropped: byte 0 differs from PROTO.
+
+`heart/discard_short` - HEART write:
+```
+01    (1 B)
+```
+A 1-byte write is too short for the 2-byte frame and is discarded.
 
 ### 16.11 SIDES_SWAPPED
 
-Squash, the pair's first game was played KRYSTIAN left; now ANNA is left (reversed), KRYSTIAN
-won the first game. INTRO (body 17, `stateSeq` 0x30, flags `40`):
+The same pair played reversed (KRYSTIAN left in the first game, ANNA left now), so every state carries flags bit 6 SIDES_SWAPPED.
+
+`sides_swapped/intro` - STATE notify:
 ```
-STATE notify (20 B): 01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
+01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40    (20 B)
 ```
-PLAYING, games 0:1, score 2:1, committed, the newest point the left's (body 21, `stateSeq` 0x31,
-flags `50`: SIDES_SWAPPED, LAST_KNOWN):
+INTRO body 17 B, stateSeq 0x30, flags 0x40 (SIDES_SWAPPED).
+
+`sides_swapped/playing` - STATE notify:
 ```
-STATE notify (20 B): 01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50
-STATE notify ( 7 B): 01 31 12 00 01 02 01
+01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50    (20 B)
+01 31 12 00 01 02 01    (7 B)
 ```
-With UNCOMMITTED and GAME_BALL_LEFT as well the flags byte is `55`; a board without LAST_KNOWN
-(section 5) sends `40` and `45`. GAME_OVER, ANNA won 11:7, games 1:1, normal variant (body 23,
-`stateSeq` 0x32, flags `40` at the end):
+PLAYING, games 0:1, score 2:1, committed, the newest point the left's (flags 0x50: SIDES_SWAPPED, LAST_KNOWN).
+
+`sides_swapped/game_over` - STATE notify:
 ```
-STATE notify (20 B): 01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
-STATE notify ( 9 B): 01 32 12 0b 07 01 01 00 40
+01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00    (20 B)
+01 32 12 0b 07 01 01 00 40    (9 B)
 ```
-MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still reversed (body 21,
-`stateSeq` 0x33, flags `40` at the end):
+GAME_OVER, ANNA won 11:7, games 1:1, normal variant. Body 23 B, flags 0x40 at the end of chunk 1.
+
+`sides_swapped/match_start` - STATE notify:
 ```
-STATE notify (20 B): 01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
-STATE notify ( 7 B): 01 33 12 33 22 11 40
+01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+01 33 12 33 22 11 40    (7 B)
 ```
-Not swapped, the same states carry bit 6 clear: `00` in place of `40`, PLAYING `10` in place of
-`50`.
+MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still reversed (flags 0x40). Not swapped, these states carry bit 6 clear (00 in place of 40, 10 in place of 50).
 
 ### 16.12 LAST_KNOWN / LAST_RIGHT
 
-Squash, ANNA left, KRYSTIAN right, games 0:0, a new game at 0:0: flags `00` (unknown). SCORE
-right, seq 1; the board pushes `stateSeq` 0x40 (body 21: ack 1 APPLIED, score 0:1, flags `31`:
-UNCOMMITTED, LAST_KNOWN, LAST_RIGHT):
-```
-COMMAND write (4 B): 01 08 01 01
-STATE notify (20 B): 01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
-STATE notify ( 7 B): 01 40 12 00 00 00 01
-```
-The rest of the game, flags byte only:
+The newest point's side and the last rally's side are named in the flags byte, so the watch can undo without guessing which side is newest.
 
-| Step | Score | Flags | Newest point |
-|---|---|---|---|
-| the commit, 4 s later | 0:1 | `30` | right |
-| SCORE left | 1:1 | `11` | left |
-| UNDO left inside the window (the point is erased) | 0:1 | `30` | right |
-| UNDO right, a committed point (`lost` until the commit) | 0:0 | `01` | unknown |
-| the commit | 0:0 | `00` | unknown |
+`last_known/score_right` - COMMAND write:
+```
+01 08 01 01    (4 B)
+```
+SCORE right, seq 1, in a fresh game at 0:0 (flags were 0x00 unknown).
 
-Padel: in a gem the bits follow its rallies the same way; at gem 0:0 they name the previous gem's
-winner (an UNDO there steps back into that gem), at the set's start both are 0.
+`last_known/state` - STATE notify:
+```
+01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
+01 40 12 00 00 00 01    (7 B)
+```
+The board pushes stateSeq 0x40: ack 1 APPLIED, score 0:1, flags 0x31 (UNCOMMITTED, LAST_KNOWN, LAST_RIGHT).
+
+The rest of the game follows the flags byte only: the commit 4 s later keeps score 0:1 with flags 0x30 (right); SCORE left -> 1:1 flags 0x11 (left); UNDO left inside the window erases the point -> 0:1 flags 0x30 (right); UNDO right on a committed point -> 0:0 flags 0x01 (unknown); the commit -> 0:0 flags 0x00. In padel the bits follow a gem's rallies the same way.
 
 ### 16.13 RESULTS
 
-Squash, roster as 16.4 (ANNA `0x0A0B0C0D`, KRYSTIAN `0x11223344`, OLA `0x55667788`), tournament id
-`0xC0FFEE01`. Finished in this order: ANNA - KRYSTIAN 11:7, KRYSTIAN - OLA 11:4, then ANNA -
-KRYSTIAN again 9:11 (that pair's turn 2; KRYSTIAN won it).
-```
-RESULTS write (3 B):  01 00 00
-RESULTS read  (20 B): 01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01
-RESULTS read  (20 B): 01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01
-RESULTS read  (20 B): 01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02
-RESULTS read  ( 9 B): 01 03 00 03 00 01 ee ff c0                (past the end)
-```
-Later, "anything new?" with the 3 games cached: write `01 03 00`, read `01 03 00 03 00 01 ee ff c0`
-(nothing). Outside a sport mode the same write and read give `01 03 00 00 00 00 00 00 00` (no
-tournament: count 0, id 0). Unauthenticated read (1 B): `01`. A write `01 02` (2 B) or `00 00 00`
-(v0) is discarded and the cursor stays.
+The watch walks the finished games of a tournament one per read, ROSTER-style, to draw the standings.
 
+`results/write` - RESULTS write:
+```
+01 00 00    (3 B)
+```
+The watch sets the read cursor to 0 (index is uint16).
+
+`results/read_1` - RESULTS read:
+```
+01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01    (20 B)
+```
+ANNA - KRYSTIAN 11:7, the pair's first game.
+
+`results/read_2` - RESULTS read:
+```
+01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01    (20 B)
+```
+KRYSTIAN - OLA 11:4.
+
+`results/read_3` - RESULTS read:
+```
+01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02    (20 B)
+```
+ANNA - KRYSTIAN again, 9:11, the pair's second game (turn 2; KRYSTIAN won it).
+
+`results/read_past_end` - RESULTS read:
+```
+01 03 00 03 00 01 ee ff c0    (9 B)
+```
+Past the end: the 9-byte header alone. A catch-up write of [PROTO, n] with n = the cached count then reads until this 9-byte frame.
+
+`results/read_no_tournament` - RESULTS read:
+```
+01 03 00 00 00 00 00 00 00    (9 B)
+```
+Outside a sport mode: no tournament, count 0, id 0 - the watch drops its cache.
+
+`results/unauth_read` - RESULTS read:
+```
+01    (1 B)
+```
+An unauthenticated read answers the 1-byte [PROTO] only.
+
+`results/discard_short` - RESULTS write:
+```
+01 02    (2 B)
+```
+A 2-byte write is too short for the 3-byte cursor frame; the cursor stays.
+
+`results/discard_v0` - RESULTS write:
+```
+00 00 00    (3 B)
+```
+A v0 (PROTO 0) write is dropped; the cursor stays.
+<!-- /generated: scenarios -->
 ## 17. Open questions and deviations
 
 1. **Service UUID is not in `ADV_IND` (deviation from the locked filter).** UUID + locked
@@ -980,21 +1257,26 @@ logs or stores a heart rate (`docs/privacy-garmin.md`).
 
 ### 18.1 HEART frames
 
-Write (watch -> board) - 2 B:
+<!-- generated: frames:HEART -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Write** (write, watch -> board, 2 B): This watch's current heart rate, or a clear.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 1 | `bpm`: 1-255 = this watch's current heart rate; 0 = clear mine |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 1 | `bpm` | 1-255 = this watch's heart rate; 0 = clear mine. |
 
-Shorter, or a foreign `PROTO` -> discarded; trailing bytes are ignored (section 2).
+Shared while PLAYING, at most once per second, at least every 5 s while a reading exists so it never expires; 0 clears mine.
 
-Notify (board -> watch) - 4 B:
+**Notify** (notify, board -> watch, 4 B): The other connections' current values.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 3 | the **other** connections' current values, non-zero only, in connection-slot order, padded with 0 |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 3 | `values` | The other connections' non-zero values in connection-slot order, padded with 0. |
+
+Sent to every authenticated connection that enabled the HEART CCCD, at most once per second per connection with the newest content, always. The receiver's own value is never in its list; all zero = nobody else is sharing.
+<!-- /generated: frames:HEART -->
 
 The receiver's own value is never in its list. All zero = nobody else is sharing. A connection
 slot is the board's slot (0-3) a connection takes when it connects and keeps until it drops, so the
@@ -1054,29 +1336,33 @@ board is the source of truth: a watch never derives results from the states it o
 
 ### 19.1 RESULTS frames
 
-Write (watch -> board) - 3 B: sets this connection's read cursor (0 at connect).
+<!-- generated: frames:RESULTS -->
+<!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
+**Write (set cursor)** (write, watch -> board, 3 B): Sets this connection's read cursor (0 at connect).
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 2 | `index` (`u16`) |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 2 | `index` | Game index to read next. |
 
-Shorter, or a foreign `PROTO` -> discarded; trailing bytes are ignored (section 2).
+To catch up, the watch writes [PROTO, n] with n = its cached count and reads until a 9-byte frame.
 
-Read (board -> watch) - 20 B for a game, the 9 B header alone past the end. Each read returns the
-game at the cursor and advances it; past the end it stays.
+**Read** (read, board -> watch, 9-20 B): One finished game, or the 9-byte header alone past the end.
 
-| Off | Size | Field |
-|---|---|---|
-| 0 | 1 | `PROTO` |
-| 1 | 2 | `index` (`u16`) - the cursor this read answers |
-| 3 | 2 | `count` (`u16`) - games listed now |
-| 5 | 4 | `tournamentId` (`u32`); `0` = no tournament (outside a sport mode), then `count` is 0 |
-| 9 | 4 | `uidA` |
-| 13 | 4 | `uidB` |
-| 17 | 1 | `scoreA` |
-| 18 | 1 | `scoreB` |
-| 19 | 1 | `turn` (1-based) |
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 1 | 2 | `index` | The cursor this read answers. |
+| 3 | 2 | `count` | Games listed now. |
+| 5 | 4 | `tournament_id` | Tournament id; 0 = no tournament (then count is 0). |
+| 9 | 4 | `uid_a` | The pair's own A uid (not court side). Present only when `index < count`. |
+| 13 | 4 | `uid_b` | The pair's own B uid (not court side). Present only when `index < count`. |
+| 17 | 1 | `score_a` | A's score of the finished game. Present only when `index < count`. |
+| 18 | 1 | `score_b` | B's score of the finished game. Present only when `index < count`. |
+| 19 | 1 | `turn` | The pair's k-th finished game, 1-based. Present only when `index < count`. |
+
+Each read returns the game at the cursor and advances it; past the end it stays. A different tournamentId or a count below the cached one drops the watch's cache.
+<!-- /generated: frames:RESULTS -->
 
 An empty tournament reads its own id with `count` 0.
 

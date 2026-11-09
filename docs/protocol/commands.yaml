@@ -1,0 +1,151 @@
+# Every command id the watch may write. The board acks each via the state header's ackSeq/ackStatus.
+# Source: docs/garmin-protocol.md 10.2. `args` are fields in the same dialect as frame structures.
+
+commands:
+  - id: 0x01
+    name: SELECT_SPORT
+    description: Enter that sport's CHOOSE_PLAYERS (cursor to the row + D).
+    usage: >-
+      The watch sends it on MENU when the user picks a sport. A sport not in the menu -> INVALID.
+    see: "#102-command-table"
+    valid_on: [MENU]
+    args:
+      - field: sport
+        type: uint8
+        enum: sport
+        description: The sport to enter.
+
+  - id: 0x02
+    name: BACK
+    description: "DeviceMode::goBack(): one step back toward the menu."
+    usage: >-
+      CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER ->
+      MATCH_START; PROFILE -> MENU through its C/D exit. Never on PLAYING (a game must not be
+      discarded).
+    see: "#102-command-table"
+    valid_on: [CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE]
+    args: []
+
+  - id: 0x03
+    name: TOGGLE_PLAYER
+    description: Add or remove that profile (D on its row).
+    usage: The watch sends it on CHOOSE_PLAYERS to flip a profile's in/out. Unknown uid -> INVALID.
+    see: "#102-command-table"
+    valid_on: [CHOOSE_PLAYERS]
+    args:
+      - field: uid
+        type: uint32
+        description: The profile to toggle.
+
+  - id: 0x04
+    name: START_TOURNAMENT
+    description: -> MATCH_START (D on START).
+    usage: The watch sends it on CHOOSE_PLAYERS when the user taps START. Fewer than 2 selected -> INVALID.
+    see: "#102-command-table"
+    valid_on: [CHOOSE_PLAYERS]
+    args: []
+
+  - id: 0x05
+    name: SET_PAIR
+    description: Make the match between leftUid and rightUid, leftUid on the left.
+    usage: The watch sends it on MATCH_START to pick the pair. Not both selected, or equal -> INVALID.
+    see: "#102-command-table"
+    valid_on: [MATCH_START]
+    args:
+      - field: left_uid
+        type: uint32
+        description: The left court side's profile or team.
+      - field: right_uid
+        type: uint32
+        description: The right court side's profile or team.
+
+  - id: 0x06
+    name: SWAP_SIDES
+    description: Swap court sides (C).
+    usage: The watch sends it on MATCH_START to swap the pair's sides before starting.
+    see: "#102-command-table"
+    valid_on: [MATCH_START]
+    args: []
+
+  - id: 0x07
+    name: START_MATCH
+    description: -> INTRO (D).
+    usage: The watch sends it on MATCH_START to start the match's intro.
+    see: "#102-command-table"
+    valid_on: [MATCH_START]
+    args: []
+
+  - id: 0x08
+    name: SCORE
+    description: "Point to that side (A / B); padel: a rally."
+    usage: >-
+      The watch sends it on PLAYING for a scored point; side other than 0/1 -> INVALID. Scoring
+      through BLE bypasses the RF receiver's debounce; seq deduplication replaces it.
+    see: "#102-command-table"
+    valid_on: [PLAYING]
+    args:
+      - field: side
+        type: uint8
+        enum: side
+        description: The court side that scored.
+
+  - id: 0x09
+    name: UNDO
+    description: Undo that side's last point (C = left, D = right).
+    usage: >-
+      The watch sends it on PLAYING to step back; at 0:0 with nothing to step back -> MATCH_START,
+      as the board's C/D does.
+    see: "#102-command-table"
+    valid_on: [PLAYING]
+    args:
+      - field: side
+        type: uint8
+        enum: side
+        description: The side whose last point to undo.
+
+  - id: 0x0A
+    name: SKIP
+    description: INTRO -> PLAYING; CELEBRATION -> GAME_OVER.
+    usage: The watch sends it to skip the intro or the celebration.
+    see: "#102-command-table"
+    valid_on: [INTRO, CELEBRATION]
+    args: []
+
+  - id: 0x0B
+    name: NEXT_GAME
+    description: -> MATCH_START, same pair (C/D).
+    usage: The watch sends it on GAME_OVER to start the next game of the same pair.
+    see: "#102-command-table"
+    valid_on: [GAME_OVER]
+    args: []
+
+  - id: 0x0C
+    name: UNUSED_0C
+    description: Reserved; never sent.
+    usage: The board answers UNKNOWN_CMD. Leaving a match is BACK, as on the fob.
+    see: "#102-command-table"
+    valid_on: []
+    unused: true
+    args: []
+
+  - id: 0x0D
+    name: SYNC
+    description: No state change; re-push the full state.
+    usage: The watch sends it on any screen (including busy) to force a full state push.
+    see: "#102-command-table"
+    valid_on: [ALL]
+    args: []
+
+  - id: 0x0E
+    name: FOCUS
+    description: Move the board's cursor to a row without acting on it (A / B scrolling, silent).
+    usage: >-
+      MENU: target = a sport id the menu lists; CHOOSE_PLAYERS: a profile's uid, or 0 for the START
+      row. A row the screen does not show -> INVALID. APPLIED also when the cursor already sits
+      there; the board plays no sound for it.
+    see: "#102-command-table"
+    valid_on: [MENU, CHOOSE_PLAYERS]
+    args:
+      - field: target
+        type: uint32
+        description: A sport id (MENU) or a uid / 0 = START (CHOOSE_PLAYERS).

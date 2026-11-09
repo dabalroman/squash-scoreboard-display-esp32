@@ -1,0 +1,451 @@
+# Wire constants of protocol v1, Assigned Numbers style: one entry per value.
+# Source: docs/garmin-protocol.md sections 3, 4 and 14; the board's src/Garmin/GarminProtocol.h.
+# `type` drives rendering only: uint8/uint16/uint32 render hex, `size` renders a plain number.
+
+constants:
+  - name: PROTO
+    type: uint8
+    value: 0x01
+    description: Protocol version. Byte 0 of every characteristic value and the advertised version byte.
+    usage: >-
+      Both sides write their own PROTO first in every frame and drop any received frame whose
+      byte 0 differs (the board neither applies nor acknowledges it). The watch also range-checks
+      the advertised and the VERSION value before connecting.
+    see: "#5-versioning-and-compatibility"
+
+  - name: COMPANY_ID
+    type: uint16
+    value: 0xFFFF
+    description: Bluetooth SIG test company id carried in the manufacturer data, until a registered one exists.
+    usage: >-
+      The watch's pre-connect scan filter matches on it before checking the product magic, so
+      non-scoreboard advertisers are ignored without a connection.
+    see: "#4-advertising"
+
+  - name: ADV_FLAG_PAIRING
+    type: uint8
+    value: 0x01
+    description: "Bit 0 of the advertising flags byte: the pairing window is open and the code is present."
+    usage: >-
+      The board sets it while the pairing window is open; the watch's pairing screen lists only
+      advertisers with it set. Bits 1-7 are reserved, sent 0, ignored.
+    see: "#42-advind-19-b"
+
+  - name: MAX_FRAME
+    type: size
+    value: 20
+    description: Maximum frame size in bytes; every read, write and notify is at most this.
+    usage: >-
+      The Connect IQ write limit and the unnegotiated ATT MTU bound. Every layout below states its
+      total, and the checker rejects any frame that encodes longer.
+    see: "#2-conventions"
+
+  - name: MAX_ADV
+    type: size
+    value: 31
+    description: Maximum BLE advertising payload in bytes.
+    usage: ADV_IND and SCAN_RSP are built inside this bound.
+    see: "#4-advertising"
+
+  - name: CHUNK_HEADER
+    type: size
+    value: 3
+    description: "Fixed STATE notify header: PROTO, stateSeq, index<<4 | count."
+    usage: Prefixed to every state chunk; the body bytes follow.
+    see: "#111-chunks-state-notify"
+
+  - name: CHUNK_BODY
+    type: size
+    value: 17
+    description: Body bytes per STATE notify chunk.
+    usage: A body up to 255 B is split into chunks of at most this many body bytes.
+    see: "#111-chunks-state-notify"
+
+  - name: MAX_CHUNKS
+    type: size
+    value: 15
+    description: Maximum chunks one state body splits into.
+    usage: Bounds the chunk count and index (0-14) encoded in the chunk header.
+    see: "#111-chunks-state-notify"
+
+  - name: MAX_STATE_BODY
+    type: size
+    value: 255
+    description: Maximum state body length in bytes.
+    usage: An empty or oversized body is never pushed; 15 chunks cover 255 B.
+    see: "#14-limits"
+
+  - name: STATE_HEADER
+    type: size
+    value: 8
+    description: "Fixed state body header: screen, sport, ackSeq, ackStatus, rosterVersion (u32)."
+    usage: Prefixed to every screen's body; the screen data starts at offset 8.
+    see: "#112-body"
+
+  - name: KEY_SIZE
+    type: size
+    value: 16
+    description: Length of the per-watch HMAC key the board issues on pairing.
+    usage: Delivered once in the PAIRING result; both sides store it with the slot id.
+    see: "#9-pairing"
+
+  - name: NONCE_SIZE
+    type: size
+    value: 8
+    description: Length of the board nonce Nb and the watch nonce Nw.
+    usage: >-
+      The board draws Nb fresh per connection, the watch draws Nw fresh per proof attempt; each
+      side MACs the other's nonce, so a recorded exchange cannot be replayed.
+    see: "#8-authentication-mutual-every-connection"
+
+  - name: MAC_SIZE
+    type: size
+    value: 8
+    description: Truncated MAC length - the first 8 bytes of HMAC-SHA256.
+    usage: Length of both MACs in the AUTH proof and result.
+    see: "#15-crypto-availability"
+
+  - name: SLOT_COUNT
+    type: size
+    value: 8
+    description: Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot.
+    usage: Bounds the AUTH proof's slot id (0 to SLOT_COUNT - 1).
+    see: "#9-pairing"
+
+  - name: MAX_CONNECTIONS
+    type: size
+    value: 4
+    description: Concurrent BLE connections the board accepts; it stops advertising while all are open.
+    usage: Bounds the HEART notify's per-connection list and the board's connection slots.
+    see: "#14-limits"
+
+  - name: ROSTER_ENTRY_SIZE
+    type: size
+    value: 16
+    description: "Wire size of one roster entry: uid (u32), r, g, b, then a 9-byte name."
+    usage: Each ROSTER read returns one entry; the CRC is over every entry's 16-byte wire form.
+    see: "#12-roster-sync"
+
+  - name: ROSTER_NAME_SIZE
+    type: size
+    value: 9
+    description: Bytes of the roster entry's name field, printable ASCII, NUL-padded.
+    usage: A 9-character name has no NUL; shorter names are NUL-padded to this size.
+    see: "#12-roster-sync"
+
+  - name: VERSION_TEXT_MAX
+    type: size
+    value: 19
+    description: Maximum firmware version string bytes in the VERSION read.
+    usage: Keeps VERSION within the 20 B frame bound (1 byte PROTO + up to 19 text bytes).
+    see: "#61-version-read-2-20-b"
+
+  - name: PAIRING_CODE_COUNT
+    type: size
+    value: 10000
+    description: Number of distinct pairing codes (0000-9999).
+    usage: The board draws a fresh code per window; the code only picks the board in front of the user.
+    see: "#9-pairing"
+
+  - name: PAIRING_WINDOW_MS
+    type: size
+    value: 120000
+    unit: ms
+    description: How long the pairing window stays open.
+    usage: The board closes it on expiry, when the user leaves the screen, or once a paired watch authenticates.
+    see: "#9-pairing"
+
+  - name: UNAUTH_TIMEOUT_MS
+    type: size
+    value: 10000
+    unit: ms
+    description: How long an unauthenticated connection may stay open before the board disconnects it.
+    usage: Restarted when a pairing result is delivered; a connection that does not authenticate is dropped.
+    see: "#8-authentication-mutual-every-connection"
+
+  - name: FAILED_PROOF_DISCONNECT_MS
+    type: size
+    value: 2000
+    unit: ms
+    description: Delay before the board disconnects after answering a failed AUTH proof.
+    usage: Gives the watch time to read the failure result before the link drops.
+    see: "#8-authentication-mutual-every-connection"
+
+  - name: HEART_LIST
+    type: size
+    value: 3
+    description: Heart-rate values per HEART notify (every other connection at the 4-connection limit).
+    usage: The notify carries the other connections' non-zero values in slot order, padded with 0.
+    see: "#181-heart-frames"
+
+  - name: HEART_EXPIRY_MS
+    type: size
+    value: 15000
+    unit: ms
+    description: How long a shared heart-rate value lasts after its last write.
+    usage: A stale value is cleared; a watch sharing must write at least every 5 s to keep it alive.
+    see: "#18-heart-rate-relay-heart"
+
+  - name: HEART_MIN_INTERVAL_MS
+    type: size
+    value: 1000
+    unit: ms
+    description: Minimum interval between HEART notifies to one connection.
+    usage: The board relays at most one notify per second per connection, always the newest list.
+    see: "#182-when-the-board-notifies"
+
+  - name: RESULTS_HEADER
+    type: size
+    value: 9
+    description: "RESULTS read header: PROTO, index (u16), count (u16), tournamentId (u32)."
+    usage: Past the end a read returns this header alone; an empty tournament returns id + count 0.
+    see: "#191-results-frames"
+
+  - name: RESULT_ENTRY_SIZE
+    type: size
+    value: 11
+    description: "Wire size of one finished-game entry: uidA, uidB, scoreA, scoreB, turn."
+    usage: Appended to the 9-byte header when the cursor points at a game.
+    see: "#191-results-frames"
+
+  - name: RESULTS_MAX
+    type: size
+    value: 128
+    description: Most finished games listed per tournament.
+    usage: Later games are not listed and count stays at 128.
+    see: "#14-limits"
+
+uuids:
+  - name: SERVICE_UUID
+    value: 0d780001-2f44-4f31-93b7-b78dc9e29735
+    description: The Garmin App Remote primary service.
+    usage: The watch verifies it after connecting (step 2 of the connection sequence).
+    see: "#6-gatt-layout"
+
+  - name: VERSION_UUID
+    value: 0d780002-2f44-4f31-93b7-b78dc9e29735
+    description: VERSION characteristic.
+    usage: Read after connecting to check the board's PROTO and firmware version.
+    see: "#6-gatt-layout"
+
+  - name: COMMAND_UUID
+    value: 0d780003-2f44-4f31-93b7-b78dc9e29735
+    description: COMMAND characteristic.
+    usage: The watch writes semantic commands here (section 10).
+    see: "#6-gatt-layout"
+
+  - name: STATE_UUID
+    value: 0d780004-2f44-4f31-93b7-b78dc9e29735
+    description: STATE characteristic.
+    usage: The board notifies the screen state here (chunked) and answers reads with chunk 0.
+    see: "#6-gatt-layout"
+
+  - name: ROSTER_UUID
+    value: 0d780005-2f44-4f31-93b7-b78dc9e29735
+    description: ROSTER characteristic.
+    usage: Write sets the per-connection cursor; each read returns the entry at the cursor.
+    see: "#6-gatt-layout"
+
+  - name: AUTH_UUID
+    value: 0d780006-2f44-4f31-93b7-b78dc9e29735
+    description: AUTH characteristic.
+    usage: The watch reads the challenge, writes the proof, reads the result.
+    see: "#6-gatt-layout"
+
+  - name: PAIRING_UUID
+    value: 0d780007-2f44-4f31-93b7-b78dc9e29735
+    description: PAIRING characteristic.
+    usage: The watch writes the pairing request; the result is read/notified to this connection only.
+    see: "#6-gatt-layout"
+
+  - name: HEART_UUID
+    value: 0d780008-2f44-4f31-93b7-b78dc9e29735
+    description: HEART characteristic.
+    usage: The watch writes its heart rate; the board notifies the other watches' values.
+    see: "#6-gatt-layout"
+
+  - name: RESULTS_UUID
+    value: 0d780009-2f44-4f31-93b7-b78dc9e29735
+    description: RESULTS characteristic.
+    usage: Write sets the read cursor; each read returns the finished game at the cursor.
+    see: "#6-gatt-layout"
+
+enums:
+  - name: auth_type
+    type: uint8
+    description: Byte 1 of every AUTH frame - which of the three AUTH frames this is.
+    usage: >-
+      The board ignores an AUTH write whose type is not PROOF; the watch checks the type of a
+      read to tell a challenge (before its proof) from a result (after it).
+    see: "#81-auth-frames"
+    values:
+      - name: CHALLENGE
+        value: 0x00
+        description: Board nonce, offered to an unproven connection.
+      - name: PROOF
+        value: 0x01
+        description: The watch's slot, nonce and MAC over the board nonce.
+      - name: RESULT
+        value: 0x02
+        description: The board's verdict, with its own MAC on success.
+
+  - name: auth_status
+    type: uint8
+    description: Outcome of an AUTH proof.
+    usage: >-
+      Non-zero means the board does not hold this watch's key (evicted, "forget all", NVS wiped):
+      the watch shows "pair again", not "untrusted". The board disconnects 2 s after any failure.
+    see: "#8-authentication-mutual-every-connection"
+    values:
+      - name: OK
+        value: 0
+        description: Proof accepted; the connection is authenticated and the board's MAC follows.
+      - name: BAD_PROOF
+        value: 1
+        description: The slot holds a key, but the watch's MAC does not match it.
+      - name: UNKNOWN_SLOT
+        value: 2
+        description: The slot id is out of range or holds no key.
+
+  - name: pairing_type
+    type: uint8
+    description: Byte 1 of a PAIRING frame.
+    usage: >-
+      Before any request a read returns NONE; the watch writes REQUEST; the board answers RESULT
+      to this connection only.
+    see: "#91-pairing-frames"
+    values:
+      - name: NONE
+        value: 0x00
+        description: No request yet on this connection (read before a write).
+      - name: REQUEST
+        value: 0x01
+        description: The watch's pairing request carrying the code it picked.
+      - name: RESULT
+        value: 0x02
+        description: "The board's answer: status, and slotId + key on success."
+
+  - name: pairing_status
+    type: uint8
+    description: Outcome of a PAIRING request.
+    usage: >-
+      Non-zero means the board did not deliver a key: the watch shows why and the user may retry.
+      FULL_RETRY means the key storage was busy; the watch retries at once.
+    see: "#91-pairing-frames"
+    values:
+      - name: OK
+        value: 0
+        description: Window open and code matched; slotId and key follow.
+      - name: WINDOW_CLOSED
+        value: 1
+        description: No window is open (expired, or the user left the screen).
+      - name: BAD_CODE
+        value: 2
+        description: The code does not match the board's.
+      - name: FULL_RETRY
+        value: 3
+        description: Key storage busy; retry the request.
+
+  - name: ack_status
+    type: uint8
+    description: The board's verdict on a command, pushed beside ackSeq in the state header.
+    usage: >-
+      A non-zero status lets the watch roll back an optimistic press; a rejected command still
+      produces a state push. A foreign-PROTO frame is dropped without any ack.
+    see: "#103-sequence-numbers-and-acknowledgement"
+    values:
+      - name: APPLIED
+        value: 0
+        description: Command applied through the normal mode/view logic.
+      - name: WRONG_SCREEN
+        value: 1
+        description: Not valid on the current screen.
+      - name: INVALID
+        value: 2
+        description: Bad argument or precondition.
+      - name: UNKNOWN_CMD
+        value: 3
+        description: Command id not known (including the unused 0x0C).
+      - name: BUSY
+        value: 4
+        description: An overlay owns the displays, or a screen swap is pending.
+      - name: MALFORMED
+        value: 5
+        description: Frame too short.
+
+  - name: screen
+    type: uint8
+    description: The board's current screen, byte 0 of every state body.
+    usage: >-
+      Selects the screen data that follows in the body; a screen the watch does not know reads as
+      "board busy".
+    see: "#112-body"
+    values:
+      - name: BOOTING
+        value: 0x00
+        description: Before the first mode.
+      - name: MENU
+        value: 0x01
+        description: The sport list (PROFILE / CONFIG never shown to the watch).
+      - name: CONFIG
+        value: 0x02
+        description: Board settings; the watch shows "board busy".
+      - name: PROFILE
+        value: 0x03
+        description: Player setup; the watch shows "edit on phone" + BACK.
+      - name: CHOOSE_PLAYERS
+        value: 0x10
+        description: Roster with in/out selection and START.
+      - name: MATCH_START
+        value: 0x11
+        description: Left/right pick, swap, start.
+      - name: INTRO
+        value: 0x12
+        description: The pair, with SKIP.
+      - name: PLAYING
+        value: 0x13
+        description: Score, left/right point, undo.
+      - name: CELEBRATION
+        value: 0x14
+        description: The finished game's result, with SKIP.
+      - name: GAME_OVER
+        value: 0x15
+        description: The game's result, with NEXT_GAME / BACK.
+
+  - name: sport
+    type: uint8
+    description: The sport a mode belongs to; 0 outside a sport (byte 1 of the state body).
+    usage: >-
+      Drives the roster kind (teams vs players) and the PLAYING score interpretation; the watch
+      offers exactly the sports the board's MENU state lists.
+    see: "#112-body"
+    values:
+      - name: none
+        value: 0x00
+        description: No sport (BOOTING, MENU, CONFIG, PROFILE).
+      - name: squash
+        value: 0x01
+        description: Squash.
+      - name: volleyball
+        value: 0x02
+        description: Volleyball.
+      - name: short_volleyball
+        value: 0x03
+        description: Short volleyball.
+      - name: padel
+        value: 0x04
+        description: Padel.
+
+  - name: side
+    type: uint8
+    description: A court side as displayed, 0 left, 1 right (never player A/B).
+    usage: >-
+      Used by SCORE/UNDO arguments and the CELEBRATION/GAME_OVER winner byte.
+    see: "#2-conventions"
+    values:
+      - name: left
+        value: 0
+        description: Left court side.
+      - name: right
+        value: 1
+        description: Right court side.

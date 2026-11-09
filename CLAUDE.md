@@ -16,6 +16,13 @@ Firmware for a squash scoreboard display. Written in C++ using PlatformIO and th
 **Both boards are the same module on one pinout**; `BOARD_REV` means "which front panel".
 Board settings live in platformio.ini's `[s3]` section.
 
+**Two BLE clients** speak the board's protocol (source of truth `docs/protocol/*.yaml`, generated into
+`docs/garmin-protocol.md`; code in `src/Garmin/`):
+the Garmin watch app (sibling repo `squash-scoreboard-display-garmin-app`) and the Android tablet
+app (`squash-scoreboard-display-android-app`). The spec lives here and is written for any v1
+client, not the watch alone; `helpers/garmin_client.py` is the reference client for both. The
+spec and every test vector are held in sync by `helpers/check_protocol.py` (see `.claude/rules/garmin.md`).
+
 ## READ FIRST: two things that will break this device
 
 ### 1. The platform is PINNED. Do not upgrade it.
@@ -87,6 +94,7 @@ or anything else they cover:
 
 ```powershell
 pio test -e native_v1 -e native_v2        # all suites, both boards (-f test_<name> for one)
+python helpers/check_protocol.py           # BLE protocol: YAML -> markdown + firmware/client drift (garmin.md)
 python helpers/preview_glyphs.py check     # glyph table + 7-segment collapse vs V1
 python helpers/led_positions.py v1 --check; python helpers/led_positions.py v2 --check
 ```

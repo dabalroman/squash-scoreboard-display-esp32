@@ -1,0 +1,95 @@
+advertising:
+  identifier: scbd.advertising
+  name: ADVERTISING
+  description: >-
+    Legacy connectable undirected advertising (ADV_IND) plus the scan response (SCAN_RSP), BLE 4.0
+    features only, 31-byte payloads.
+  usage: >-
+    ADV_IND carries the identifying manufacturer data first, then Flags; SCAN_RSP carries the
+    128-bit service UUID and the local name for phones and BLE tools. The watch scans passively and
+    never sees SCAN_RSP; it verifies the service UUID from the GATT table after connecting instead.
+  see: "#4-advertising"
+
+  frames:
+    - frame: adv_ind
+      name: ADV_IND
+      access: advertise
+      sender: board
+      size: 19
+      description: The identifying manufacturer data, then the Flags AD.
+      usage: >-
+        Broadcast always while BLE is up. The watch's pre-connect filter matches company id + magic
+        (+ version + board id + flags) on this payload. The manufacturer bytes after the company id
+        are frozen across protocol versions.
+      structure:
+        - field: ad_len
+          type: uint8
+          value: 0x0F
+          description: Length of this AD structure (15 bytes follow).
+        - field: ad_type
+          type: uint8
+          value: 0xFF
+          description: Manufacturer specific.
+        - field: company_id
+          type: uint16
+          value: COMPANY_ID
+          description: Company id.
+        - field: magic
+          type: uint8[]
+          size: 4
+          value: "53 43 42 44"
+          description: Product magic.
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: board_id
+          type: uint32
+          description: Board id, drawn per board.
+        - field: flags
+          type: uint8
+          description: Bit 0 PAIRING (window open); bits 1-7 reserved, sent 0, ignored.
+        - field: pairing_code
+          type: uint16
+          description: Pairing code 0-9999 while PAIRING, else 0x0000 (ignored).
+        - field: flags_ad
+          type: uint8[]
+          size: 3
+          value: "02 01 06"
+          description: "Flags AD: LE General Discoverable, BR/EDR not supported."
+
+    - frame: scan_rsp
+      name: SCAN_RSP
+      access: scan_response
+      sender: board
+      size: 30
+      description: The 128-bit service UUID and the local name.
+      usage: >-
+        For phones and BLE tools that scan actively; the watch never uses it. The name is for
+        humans only and never used for matching.
+      structure:
+        - field: ad_len
+          type: uint8
+          value: 0x11
+          description: Length of this AD structure (17 bytes follow).
+        - field: ad_type
+          type: uint8
+          value: 0x07
+          description: Complete list of 128-bit service UUIDs.
+        - field: service_uuid
+          type: uuid128
+          size: 16
+          value: SERVICE_UUID
+          description: The primary service UUID, little-endian.
+        - field: name_len
+          type: uint8
+          value: 0x0B
+          description: Length of the name AD structure (11 bytes follow).
+        - field: name_type
+          type: uint8
+          value: 0x09
+          description: Complete local name.
+        - field: name
+          type: utf8s
+          size: 10
+          description: Score-XXXX, XXXX = low 16 bits of the board id, uppercase hex.

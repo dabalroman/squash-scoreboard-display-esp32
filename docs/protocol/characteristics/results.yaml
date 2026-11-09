@@ -1,0 +1,76 @@
+characteristic:
+  identifier: scbd.characteristic.results
+  name: RESULTS
+  uuid: RESULTS_UUID
+  properties: [write, read]
+  auth_required: true
+  description: >-
+    The finished games of the current tournament, for a watch that draws the standings.
+  usage: >-
+    ROSTER-style cursor: a write sets the per-connection read cursor, each read returns the game at
+    the cursor and advances it. The board is the source of truth; a watch never derives results
+    from the states it observed. Optional for the watch (a pre-#527 v1 board lacks it).
+  see: "#191-results-frames"
+
+  frames:
+    - frame: write
+      name: Write (set cursor)
+      access: write
+      sender: watch
+      size: 3
+      description: Sets this connection's read cursor (0 at connect).
+      usage: >-
+        To catch up, the watch writes [PROTO, n] with n = its cached count and reads until a 9-byte
+        frame.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: index
+          type: uint16
+          description: Game index to read next.
+
+    - frame: read
+      name: Read
+      access: read
+      sender: board
+      size: [9, 20]
+      description: One finished game, or the 9-byte header alone past the end.
+      usage: >-
+        Each read returns the game at the cursor and advances it; past the end it stays. A different
+        tournamentId or a count below the cached one drops the watch's cache.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: index
+          type: uint16
+          description: The cursor this read answers.
+        - field: count
+          type: uint16
+          description: Games listed now.
+        - field: tournament_id
+          type: uint32
+          description: Tournament id; 0 = no tournament (then count is 0).
+        - field: uid_a
+          type: uint32
+          present_if: index < count
+          description: The pair's own A uid (not court side).
+        - field: uid_b
+          type: uint32
+          present_if: index < count
+          description: The pair's own B uid (not court side).
+        - field: score_a
+          type: uint8
+          present_if: index < count
+          description: A's score of the finished game.
+        - field: score_b
+          type: uint8
+          present_if: index < count
+          description: B's score of the finished game.
+        - field: turn
+          type: uint8
+          present_if: index < count
+          description: The pair's k-th finished game, 1-based.

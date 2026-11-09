@@ -1,0 +1,31 @@
+characteristic:
+  identifier: scbd.characteristic.version
+  name: VERSION
+  uuid: VERSION_UUID
+  properties: [read]
+  auth_required: false
+  description: >-
+    The board's protocol version and firmware version string, read once on connect to confirm
+    compatibility.
+  usage: >-
+    The watch reads it in connection step 3 and compares PROTO with the advertised byte; both must
+    be in range and equal. Not notified.
+  see: "#61-version-read-2-20-b"
+
+  frames:
+    - frame: version
+      name: Version
+      access: read
+      sender: board
+      size: [2, 20]
+      description: PROTO followed by the firmware version string.
+      usage: Read once per connection; a shorter or foreign-PROTO value is ignored.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: version
+          type: utf8s
+          size: rest
+          description: Firmware version, ASCII, no NUL (e.g. 0.6.187).
