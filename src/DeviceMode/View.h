@@ -48,6 +48,9 @@ public:
         return Garmin::AckStatus::WrongScreen;
     }
 
+    // An offline game was added or removed (#563): a view caching a standing refreshes it.
+    virtual void onTournamentEdited() {}
+
     // The screen the watches see. Default: board busy.
     virtual void describeForWatch(WatchState &state) const {
         state.setBusy(Garmin::ScreenId::Booting);

@@ -74,7 +74,11 @@ public:
             command,
             viewChangePending() || !activeView,
             [this] { return goBack(); },
-            [this, &command] { return editOfflineGames(command); },
+            [this, &command] {
+                const Garmin::AckStatus status = editOfflineGames(command);
+                if (status == Garmin::AckStatus::Applied) activeView->onTournamentEdited();
+                return status;
+            },
             [this, &command] { return activeView->handleWatchCommand(command); }
         );
     }

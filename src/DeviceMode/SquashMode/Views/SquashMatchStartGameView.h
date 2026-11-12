@@ -173,6 +173,13 @@ public:
         }
     }
 
+    // The LED bar draws the cached standing, which an offline game just changed.
+    void onTournamentEdited() override {
+        if (match == nullptr) return;
+        setupMatchData();
+        queueRender();
+    }
+
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();
