@@ -868,6 +868,8 @@ CLIENT_STEPS = frozenset({
     "sides_swapped/playing", "last_known/score_right", "last_known/state",
     "results/write", "results/read_1", "results/read_2", "results/read_3", "results/read_past_end",
     "results/read_no_tournament", "results/unauth_read", "results/discard_short", "results/discard_v0",
+    "offline_games/add", "offline_games/add_illegal", "offline_games/remove", "offline_games/read_offline",
+    "offline_games/read_end_rev",
 })
 
 

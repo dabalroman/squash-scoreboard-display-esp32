@@ -15,6 +15,8 @@ Usage:
   python helpers/garmin_client.py roster               auth, read every roster entry
   python helpers/garmin_client.py results              auth, read the tournament's finished games (spec 19)
   python helpers/garmin_client.py results 3            the same from game 3 on ("anything new?" with 3 cached)
+  python helpers/garmin_client.py add-game 0x<uidA> 0x<uidB> 11 7   append an offline game (MATCH_START ... GAME_OVER)
+  python helpers/garmin_client.py remove-game 0        remove the offline game at that RESULTS index
   python helpers/garmin_client.py monitor              auth, print every state + HEART push until Ctrl+C
   python helpers/garmin_client.py heart 72             auth, send HR 72 (refreshed every 5 s), print the
                                                        others' HEART pushes until Ctrl+C, then clear it
@@ -63,6 +65,7 @@ COMMANDS = {
     "start_tournament": (0x04, ""), "set_pair": (0x05, "II"), "swap_sides": (0x06, ""),
     "start_match": (0x07, ""), "score": (0x08, "B"), "undo": (0x09, "B"), "skip": (0x0A, ""),
     "next_game": (0x0B, ""), "sync": (0x0D, ""), "focus": (0x0E, "I"),
+    "add_offline_game": (0x0F, "IIBB"), "remove_offline_game": (0x10, "IHH"),
 }
 SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10: "CHOOSE_PLAYERS",
            0x11: "MATCH_START", 0x12: "INTRO", 0x13: "PLAYING", 0x14: "CELEBRATION", 0x15: "GAME_OVER"}
@@ -223,12 +226,19 @@ def decode_heart(frame):
 
 
 def decode_result(frame):
-    """(index, count, tournament id, game) - game is (uidA, uidB, scoreA, scoreB, turn), None past the end."""
+    """(index, count, tournament id, game, rev) - game is (uidA, uidB, scoreA, scoreB, turn), None past
+    the end; rev only on the 11 B end frame (None on a game frame or an older board's 9 B one)."""
     if len(frame) < 9 or frame[0] != PROTO:
         return None
     index, count, tid = struct.unpack_from("<HHI", frame, 1)
-    game = struct.unpack_from("<IIBBB", frame, 9) if len(frame) >= 20 else None
-    return index, count, tid, game
+    if len(frame) >= 20:
+        return index, count, tid, struct.unpack_from("<IIBBB", frame, 9), None
+    return index, count, tid, None, struct.unpack_from("<H", frame, 9)[0] if len(frame) >= 11 else None
+
+
+def split_turn(turn):
+    """(offline, turn) - bit 7 of the RESULTS turn byte is OFFLINE (spec 19)."""
+    return bool(turn & 0x80), turn & 0x7F
 
 
 def describe_heart(values):
@@ -303,7 +313,8 @@ class Session:
         return entries
 
     async def read_results(self, start=0):
-        """(tournament id, count, [(index, game)]) from `start` on; None for a board without RESULTS."""
+        """(tournament id, count, [(index, game)], rev) from `start` on; None for a board without RESULTS.
+        rev is None for a board without offline support (9 B end frame)."""
         if self.client.services.get_characteristic(RESULTS) is None:
             return None
         await self.client.write_gatt_char(RESULTS, struct.pack("<BH", PROTO, start), response=True)
@@ -312,9 +323,9 @@ class Session:
             decoded = decode_result(bytes(await self.client.read_gatt_char(RESULTS)))
             if decoded is None:
                 sys.exit("RESULTS read refused (not authenticated?)")
-            index, count, tid, game = decoded
+            index, count, tid, game, rev = decoded
             if game is None:
-                return tid, count, games
+                return tid, count, games, rev
             games.append((index, game))
 
     async def command(self, frame, wait=3.0):
@@ -360,7 +371,7 @@ async def find_address(store, board):
 
 async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "results", "monitor", "send", "heart"])
+    ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "results", "add-game", "remove-game", "monitor", "send", "heart"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--keys", default=str(DEFAULT_KEYS))
     ap.add_argument("--board", help="board id (hex) from the key store")
@@ -445,6 +456,10 @@ async def main():
             await run_results(session, opts.args)
             return
 
+        if opts.action in ("add-game", "remove-game"):
+            await run_offline(session, opts.action, opts.args, opts.seq)
+            return
+
         first = await client.read_gatt_char(STATE)
         print(f"STATE read (chunk 0): {bytes(first).hex(' ')}")
         await session.subscribe()
@@ -488,17 +503,45 @@ async def run_results(session, args):
     if read is None:
         print("no RESULTS characteristic (firmware before #527)")
         return
-    tid, count, games = read
+    tid, count, games, rev = read
     if tid == 0:
         print("no tournament (not in a sport mode)")
         return
-    print(f"tournament {tid:08x}, {count} games")
+    print(f"tournament {tid:08x}, {count} games, " + (f"rev {rev}" if rev is not None else "rev n/a (no offline support)"))
     # Names of the active roster (the state's sport decides which, spec 12).
     def name(uid):
         return session.names.get(uid, f"{uid:08x}")
 
     for index, (uid_a, uid_b, score_a, score_b, turn) in games:
-        print(f"{index:3d}  turn {turn:2d}  {name(uid_a):>9} {score_a:2d}:{score_b:<2d} {name(uid_b)}")
+        offline, turn = split_turn(turn)
+        print(f"{index:3d}  turn {turn:2d}{' offline' if offline else '        '}  "
+              f"{name(uid_a):>9} {score_a:2d}:{score_b:<2d} {name(uid_b)}")
+
+
+async def run_offline(session, action, args, seq):
+    if action == "add-game":
+        if len(args) != 4:
+            sys.exit("add-game <uidA> <uidB> <scoreA> <scoreB>")
+        frame = build_command("add_offline_game", args, seq)
+    else:
+        if len(args) != 1:
+            sys.exit("remove-game <index>")
+        read = await session.read_results(0)
+        if read is None or read[0] == 0:
+            sys.exit("no tournament to remove from")
+        tid, _, _, rev = read
+        if rev is None:
+            sys.exit("board has no offline support (9 B RESULTS end frame)")
+        frame = build_command("remove_offline_game", [str(tid), str(rev), args[0]], seq)
+    await session.subscribe()
+    # The push that follows the subscription first.
+    try:
+        print(describe(await asyncio.wait_for(session.states.get(), 3.0), session.names))
+    except asyncio.TimeoutError:
+        print("no state push after subscribing")
+    body = await session.command(frame)
+    if body is not None:
+        print(f"result {ACKS.get(body[3], body[3])}")
 
 
 async def run_heart(session, args):

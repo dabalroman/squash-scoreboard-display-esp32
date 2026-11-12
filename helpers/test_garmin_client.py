@@ -94,6 +94,19 @@ class TestCommand(unittest.TestCase):
         self.assertEqual(gc.build_command("score", ["1"], 1), H("01 08 01 01"))
 
 
+class TestOfflineCommands(unittest.TestCase):
+    def test_build_offline(self):
+        # spec: offline_games/add
+        self.assertEqual(gc.build_command("add_offline_game", ["0x0A0B0C0D", "0x11223344", "0x0B", "0x07"], 5),
+                         H("01 0F 05 0D 0C 0B 0A 44 33 22 11 0B 07"))
+        # spec: offline_games/add_illegal
+        self.assertEqual(gc.build_command("add_offline_game", ["0x0A0B0C0D", "0x11223344", "0x0F", "0x03"], 6),
+                         H("01 0F 06 0D 0C 0B 0A 44 33 22 11 0F 03"))
+        # spec: offline_games/remove
+        self.assertEqual(gc.build_command("remove_offline_game", ["0xC0FFEE01", "0", "0"], 7),
+                         H("01 10 07 01 EE FF C0 00 00 00 00"))
+
+
 class TestState(unittest.TestCase):
     def test_state_decode(self):
         # spec: menu_state/menu
@@ -162,17 +175,27 @@ class TestResults(unittest.TestCase):
 
         # spec: results/read_1
         self.assertEqual(gc.decode_result(H("01 00 00 03 00 01 EE FF C0 0D 0C 0B 0A 44 33 22 11 0B 07 01")),
-                         (0, 3, 0xC0FFEE01, (0x0A0B0C0D, 0x11223344, 11, 7, 1)))
+                         (0, 3, 0xC0FFEE01, (0x0A0B0C0D, 0x11223344, 11, 7, 1), None))
         # spec: results/read_2
         self.assertEqual(gc.decode_result(H("01 01 00 03 00 01 EE FF C0 44 33 22 11 88 77 66 55 0B 04 01")),
-                         (1, 3, 0xC0FFEE01, (0x11223344, 0x55667788, 11, 4, 1)))
+                         (1, 3, 0xC0FFEE01, (0x11223344, 0x55667788, 11, 4, 1), None))
         # spec: results/read_3
         self.assertEqual(gc.decode_result(H("01 02 00 03 00 01 EE FF C0 0D 0C 0B 0A 44 33 22 11 09 0B 02")),
-                         (2, 3, 0xC0FFEE01, (0x0A0B0C0D, 0x11223344, 9, 11, 2)))
+                         (2, 3, 0xC0FFEE01, (0x0A0B0C0D, 0x11223344, 9, 11, 2), None))
         # spec: results/read_past_end
-        self.assertEqual(gc.decode_result(H("01 03 00 03 00 01 EE FF C0")), (3, 3, 0xC0FFEE01, None))
+        self.assertEqual(gc.decode_result(H("01 03 00 03 00 01 EE FF C0 00 00")), (3, 3, 0xC0FFEE01, None, 0))
+        # older firmware: 9 B end frame, no rev
+        self.assertEqual(gc.decode_result(H("01 03 00 03 00 01 EE FF C0")), (3, 3, 0xC0FFEE01, None, None))
         # spec: results/read_no_tournament
-        self.assertEqual(gc.decode_result(H("01 03 00 00 00 00 00 00 00")), (3, 0, 0, None))
+        self.assertEqual(gc.decode_result(H("01 03 00 00 00 00 00 00 00 00 00")), (3, 0, 0, None, 0))
+
+        # spec: offline_games/read_offline
+        self.assertEqual(gc.decode_result(H("01 00 00 01 00 01 EE FF C0 0D 0C 0B 0A 44 33 22 11 0B 07 81")),
+                         (0, 1, 0xC0FFEE01, (0x0A0B0C0D, 0x11223344, 11, 7, 0x81), None))
+        self.assertEqual(gc.split_turn(0x81), (True, 1))
+        self.assertEqual(gc.split_turn(0x02), (False, 2))
+        # spec: offline_games/read_end_rev
+        self.assertEqual(gc.decode_result(H("01 00 00 00 00 01 EE FF C0 01 00")), (0, 0, 0xC0FFEE01, None, 1))
 
         # spec: results/unauth_read
         self.assertIsNone(gc.decode_result(H("01")))
