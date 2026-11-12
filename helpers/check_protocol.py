@@ -873,6 +873,22 @@ CLIENT_STEPS = frozenset({
     "results/read_no_tournament", "results/unauth_read", "results/discard_short", "results/discard_v0",
     "offline_games/add", "offline_games/add_illegal", "offline_games/remove", "offline_games/read_offline",
     "offline_games/read_end_rev",
+    # 16.15 tablet tournament: the client builds/decodes every frame of it.
+    "tablet_begin/begin", "tablet_begin/begin_ack", "tablet_begin/roster_anna",
+    "tablet_begin/roster_krystian", "tablet_begin/status_begun", "tablet_begin/status_none",
+    "tablet_begin/wait_state", "tablet_mirror/commit", "tablet_mirror/commit_ack",
+    "tablet_mirror/mirror_0", "tablet_mirror/mirror_1", "tablet_mirror/mirror_2",
+    "tablet_mirror/results_2", "tablet_mirror/results_end", "tablet_mirror/status_mirrored",
+    "tablet_outbox/ack", "tablet_outbox/ack_ack", "tablet_outbox/cursor_outbox",
+    "tablet_outbox/cursor_status", "tablet_outbox/read_1", "tablet_outbox/read_2",
+    "tablet_outbox/read_end", "tablet_outbox/status", "tablet_outbox/status_acked",
+    "tablet_refusals/back", "tablet_refusals/back_ack", "tablet_refusals/begin_on_menu",
+    "tablet_refusals/begin_on_menu_ack", "tablet_refusals/begin_other_tid",
+    "tablet_refusals/begin_other_tid_ack", "tablet_refusals/commit_bad_crc",
+    "tablet_refusals/commit_bad_crc_ack", "tablet_refusals/remove", "tablet_refusals/remove_ack",
+    "tablet_repush/repush", "tablet_repush/repush_ack", "tablet_repush/roster_anna",
+    "tablet_repush/roster_krystian", "tablet_repush/roster_ola", "tablet_set_side/set_side",
+    "tablet_set_side/set_side_ack",
 })
 
 
