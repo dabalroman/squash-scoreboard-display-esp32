@@ -849,6 +849,9 @@ FIRMWARE_ENUMS = {
     "auth_status": "AuthStatus",
     "pairing_type": "PairingType",
     "pairing_status": "PairingStatus",
+    "tournament_write": "TournamentWrite",
+    "tournament_read": "TournamentRead",
+    "game_flags": "GameFlags",
 }
 
 # The scenario steps the client (helpers/garmin_client.py) must carry, tagged in

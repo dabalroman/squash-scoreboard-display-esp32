@@ -33,6 +33,24 @@ public:
     // Every mode build (spec 12): the roster the new mode's uids belong to. Cheap, no CRC.
     void useRoster(Garmin::RosterKind kind);
 
+    // --- Tablet tournament (spec 20), loop() only ---
+
+    // The pushed roster (count * 16 wire bytes) in its own slot; the stored ones stay. Returns its CRC.
+    uint32_t setTabletRoster(const uint8_t *entries, uint8_t count);
+    // Like useRoster(): effective with the next published state.
+    void useTabletRoster();
+    // On BEGIN_TOURNAMENT / COMMIT_MIRROR answering APPLIED or INVALID: copies entries
+    // 0..count-1 (16 B / 15 B each) into `out` and clears that stage.
+    void takeRosterStage(uint8_t count, uint8_t *out);
+    void takeMirrorStage(uint8_t count, uint8_t *out);
+    // Tablet mode ended: stages, pushed roster and snapshot cleared.
+    void endTablet();
+
+    // Writes the i-th un-ACKed board game (seq order) as a 15 B game entry, and its seq.
+    typedef void (*OutboxAt)(const void *context, uint16_t i, uint16_t &seq, uint8_t *out);
+    // Every publish: the STATUS / OUTBOX snapshot (all zero, count 0 outside tablet mode). Never pushes.
+    void publishTablet(const Garmin::TabletStatus &status, uint16_t outboxCount, OutboxAt at, const void *context);
+
     bool isEnabled() const;
 
     // Stores the flag (persisted on the next loop pass) and starts or stops BLE live.

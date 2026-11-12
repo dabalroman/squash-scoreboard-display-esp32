@@ -1051,6 +1051,204 @@ void test_watch_sport_table() {
     TEST_ASSERT_FALSE(WatchSport::modeForSport(0x05, mode));
 }
 
+namespace {
+    const char *ANNA_WRITE = "01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00";
+    const char *KRYSTIAN_WRITE = "01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00";
+
+    struct OutboxGame {
+        uint16_t seq;
+        Garmin::GameEntry game;
+    };
+
+    // Spec 16.15's outbox: the tracked game (seq 1) and the watch's offline game (seq 2).
+    std::vector<OutboxGame> specOutbox() {
+        std::vector<OutboxGame> out;
+        out.push_back({1, {0x5EED0001, 0x0A0B0C0D, 0x11223344, 11, 7, 0}});
+        out.push_back({2, {0x5EED0002, 0x11223344, 0x55667788, 11, 4, static_cast<uint8_t>(Garmin::GameFlags::Offline)}});
+        return out;
+    }
+
+    Garmin::TabletStatus specStatus(const uint16_t from, const uint16_t to) {
+        Garmin::TabletStatus st{};
+        st.tournamentId = 0x7AB1E001;
+        st.sport = static_cast<uint8_t>(Garmin::SportId::Squash);
+        st.rosterCount = 3;
+        st.rosterCrc = 0x150fe75b;
+        st.outboxFrom = from;
+        st.outboxTo = to;
+        return st;
+    }
+
+    // Returns how many entries the link asked for.
+    int sync(Link &link, const Garmin::TabletStatus &st, const std::vector<OutboxGame> &games) {
+        int calls = 0;
+        link.syncTablet(st, static_cast<uint16_t>(games.size()),
+                        [&games, &calls](const uint16_t i, uint16_t &seq, uint8_t *out) {
+                            calls++;
+                            seq = games[i].seq;
+                            Garmin::buildGameEntry(games[i].game, out);
+                        });
+        return calls;
+    }
+}
+
+// Spec 20: ROSTER_ENTRY / MIRROR_ENTRY land in one shared stage per board; take*Stage() copies
+// it out and clears it; before authentication writes are discarded.
+void test_tablet_staging() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    connectWithSpecNonce(link, 1, 0);
+    put(link, &Link::writeTournament, 1, ANNA_WRITE);
+    uint8_t stage[Garmin::TABLET_ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE];
+    link.takeRosterStage(1, stage);
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(0, Garmin::getU32(stage), "unauthenticated write staged");
+
+    putAt(link, &Link::writeAuth, 1, SPEC_PROOF, 0);
+    authenticate(link, 2, 0);
+    // Two connections, one stage.
+    put(link, &Link::writeTournament, 1, ANNA_WRITE);
+    put(link, &Link::writeTournament, 2, KRYSTIAN_WRITE);
+    // Discarded: index past the stage, short, foreign PROTO.
+    put(link, &Link::writeTournament, 1, "01 01 10 99 99 99 99 ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    put(link, &Link::writeTournament, 1, "01 01 02 99 99 99 99 ff 00 00 41 4e 4e 41 00 00 00 00");
+    put(link, &Link::writeTournament, 1, "00 01 02 99 99 99 99 ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    link.takeRosterStage(3, stage);
+    std::vector<uint8_t> want(3 * Garmin::ROSTER_ENTRY_SIZE, 0);
+    Garmin::buildRosterEntry(0x0A0B0C0D, 0xff, 0x00, 0x00, "ANNA", &want[0]);
+    Garmin::buildRosterEntry(0x11223344, 0x00, 0x40, 0xff, "KRYSTIAN", &want[16]);
+    TEST_ASSERT_EQUAL_MEMORY(want.data(), stage, want.size());
+    // Taken = cleared.
+    link.takeRosterStage(2, stage);
+    TEST_ASSERT_EQUAL_HEX32(0, Garmin::getU32(stage));
+    TEST_ASSERT_EQUAL_HEX32(0, Garmin::getU32(stage + 16));
+
+    // A rewritten index overwrites; the last mirror index is 127.
+    put(link, &Link::writeTournament, 1, "01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
+    put(link, &Link::writeTournament, 2, "01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02");
+    put(link, &Link::writeTournament, 2, "01 02 7f 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00");
+    put(link, &Link::writeTournament, 2, "01 02 80 04 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00");
+    std::vector<uint8_t> mirror(Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE);
+    link.takeMirrorStage(Garmin::RESULTS_MAX, mirror.data());
+    TEST_ASSERT_EQUAL_HEX32(0x5EED0002, Garmin::parseGameEntry(&mirror[0]).id);
+    TEST_ASSERT_EQUAL_HEX32(0x7AB10003, Garmin::parseGameEntry(&mirror[127 * Garmin::GAME_ENTRY_SIZE]).id);
+    link.takeMirrorStage(1, mirror.data());
+    TEST_ASSERT_EQUAL_HEX32(0, Garmin::parseGameEntry(&mirror[0]).id);
+
+    // endTablet clears both stages.
+    put(link, &Link::writeTournament, 1, ANNA_WRITE);
+    put(link, &Link::writeTournament, 1, "01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
+    link.endTablet();
+    link.takeRosterStage(1, stage);
+    link.takeMirrorStage(1, mirror.data());
+    TEST_ASSERT_EQUAL_HEX32(0, Garmin::getU32(stage));
+    TEST_ASSERT_EQUAL_HEX32(0, Garmin::parseGameEntry(&mirror[0]).id);
+}
+
+// Spec 16.15 through the link: STATUS at connect, the per-connection outbox cursor, OUTBOX_END.
+void test_tablet_reads() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    connectWithSpecNonce(link, 1, 0);
+    expectFrame("01", link.readTournament(1), "unauthenticated read");
+    putAt(link, &Link::writeAuth, 1, SPEC_PROOF, 0);
+    expectFrame("01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", link.readTournament(1), "no tournament");
+    put(link, &Link::writeTournament, 1, "01 03 01 01 00");
+    expectFrame("01 02 01 00", link.readTournament(1), "no tournament, outbox");
+
+    const std::vector<OutboxGame> games = specOutbox();
+    TEST_ASSERT_EQUAL(2, sync(link, specStatus(1, 2), games));
+    put(link, &Link::writeTournament, 1, "01 03 00 00 00");
+    expectFrame("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 02 00 00 00 00 00", link.readTournament(1), "status");
+    put(link, &Link::writeTournament, 1, "01 03 01 01 00");
+    expectFrame("01 01 01 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 00", link.readTournament(1), "read 1");
+    expectFrame("01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02", link.readTournament(1), "read 2");
+    expectFrame("01 02 03 00", link.readTournament(1), "read end");
+    expectFrame("01 02 03 00", link.readTournament(1), "end again, the cursor stays");
+    // OUTBOX_END as `which` is discarded: still on the outbox.
+    put(link, &Link::writeTournament, 1, "01 03 02 00 00");
+    expectFrame("01 02 03 00", link.readTournament(1), "cursor kept");
+
+    // Another connection starts on STATUS; its cursor is its own.
+    authenticate(link, 2, 0);
+    TEST_ASSERT_EQUAL_UINT8(20, link.readTournament(2).len);
+    put(link, &Link::writeTournament, 2, "01 03 01 02 00");
+    expectFrame("01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02", link.readTournament(2), "conn 2 from seq 2");
+
+    // A third game appended: only it is copied.
+    std::vector<OutboxGame> three = games;
+    three.push_back({3, {0x5EED0003, 0x0A0B0C0D, 0x55667788, 11, 2, 0}});
+    TEST_ASSERT_EQUAL(1, sync(link, specStatus(1, 3), three));
+    expectFrame("01 01 03 00 03 00 ed 5e 0d 0c 0b 0a 88 77 66 55 0b 02 00", link.readTournament(1), "appended read");
+    TEST_ASSERT_EQUAL(0, sync(link, specStatus(1, 3), three));
+
+    // A mirror acks seq 2 out of the middle while seq 4 arrives: same from, same count, so a restart.
+    std::vector<OutboxGame> gap;
+    gap.push_back(three[0]);
+    gap.push_back(three[2]);
+    gap.push_back({4, {0x5EED0004, 0x11223344, 0x55667788, 11, 1, 0}});
+    TEST_ASSERT_EQUAL(3, sync(link, specStatus(1, 4), gap));
+    put(link, &Link::writeTournament, 1, "01 03 01 02 00");
+    expectFrame("01 01 03 00 03 00 ed 5e 0d 0c 0b 0a 88 77 66 55 0b 02 00", link.readTournament(1), "seq 2 is gone");
+
+    // ACK through seq 3: a new outbox_from restarts the copy.
+    std::vector<OutboxGame> rest(1, gap[2]);
+    TEST_ASSERT_EQUAL(1, sync(link, specStatus(4, 4), rest));
+    put(link, &Link::writeTournament, 1, "01 03 01 01 00");
+    expectFrame("01 01 04 00 04 00 ed 5e 44 33 22 11 88 77 66 55 0b 01 00", link.readTournament(1), "only seq 4");
+
+    // Reconnect: the cursor is STATUS again.
+    link.disconnect(1);
+    authenticate(link, 1, 0);
+    TEST_ASSERT_EQUAL_UINT8(20, link.readTournament(1).len);
+
+    // Leaving tablet mode: all zero.
+    sync(link, Garmin::TabletStatus{}, std::vector<OutboxGame>());
+    expectFrame("01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", link.readTournament(1), "after leaving");
+    put(link, &Link::writeTournament, 1, "01 03 01 01 00");
+    expectFrame("01 02 01 00", link.readTournament(1), "empty outbox");
+}
+
+// The tablet's roster sits in a third slot: activated with the next published state, ROSTER
+// reads serve it, and the stored players come back untouched.
+void test_tablet_roster_slot() {
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    loadSpecRoster(link);
+    loadSpecTeams(link);
+    authenticate(link, 1, 0);
+    link.subscribe(1, Link::Sub::State, true);
+    const WatchState s = menuState();
+    Link::Push pushes[Garmin::MAX_CONNECTIONS];
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 0, pushes));
+
+    uint8_t two[2 * Garmin::ROSTER_ENTRY_SIZE];
+    Garmin::buildRosterEntry(0x0A0B0C0D, 0xff, 0x00, 0x00, "ANNA", two);
+    Garmin::buildRosterEntry(0x11223344, 0x00, 0x40, 0xff, "KRYSTIAN", two + 16);
+    TEST_ASSERT_EQUAL_HEX32(0xc694f1d4, link.setTabletRoster(2, two));
+    link.useTabletRoster();
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.rosterVersion());
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 50, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0xc694f1d4, Garmin::getU32(pushes[0].body + 4));
+    put(link, &Link::writeRoster, 1, "01 01");
+    expectFrame("01 01 02 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00", link.readRoster(1), "tablet entry 1");
+    expectFrame("01 02 02", link.readRoster(1), "tablet past the end");
+
+    // A re-push while active changes the version at once (same sport, same kind).
+    uint8_t three[3 * Garmin::ROSTER_ENTRY_SIZE];
+    memcpy(three, two, sizeof(two));
+    Garmin::buildRosterEntry(0x55667788, 0x00, 0xc0, 0x30, "OLA", three + 32);
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.setTabletRoster(3, three));
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, link.rosterVersion());
+
+    // Back to a stored kind; the stored teams are untouched.
+    link.useRoster(Garmin::RosterKind::Teams);
+    link.endTablet();
+    TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 100, pushes));
+    TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, link.rosterVersion());
+    put(link, &Link::writeRoster, 1, "01 01");
+    expectFrame("01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00", link.readRoster(1), "teams 1");
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_auth_spec_vector);
@@ -1078,5 +1276,8 @@ int main() {
     RUN_TEST(test_heart_cleared_on_disconnect_and_leaving_playing);
     RUN_TEST(test_heart_discards);
     RUN_TEST(test_heart_subscribe);
+    RUN_TEST(test_tablet_staging);
+    RUN_TEST(test_tablet_reads);
+    RUN_TEST(test_tablet_roster_slot);
     return UNITY_END();
 }

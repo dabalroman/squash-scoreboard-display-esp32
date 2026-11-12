@@ -551,7 +551,7 @@ void test_command_sizes() {
     const Case cases[] = {
         {0x01, 4}, {0x02, 3}, {0x03, 7}, {0x04, 3}, {0x05, 11}, {0x06, 3},
         {0x07, 3}, {0x08, 4}, {0x09, 4}, {0x0A, 3}, {0x0B, 3}, {0x0D, 3}, {0x0E, 7},
-        {0x0F, 13}, {0x10, 11},
+        {0x0F, 13}, {0x10, 11}, {0x11, 13}, {0x12, 12}, {0x13, 9}, {0x14, 8},
     };
     for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
         uint8_t frame[MAX_FRAME] = {PROTO, cases[k].id, 42};
@@ -574,7 +574,7 @@ void test_command_sizes() {
 
 void test_command_unknown_and_dropped() {
     WatchCommand cmd{};
-    const uint8_t unknownIds[] = {0x00, 0x0C, 0x11, 0x7F, 0xFF};
+    const uint8_t unknownIds[] = {0x00, 0x0C, 0x15, 0x7F, 0xFF};
     for (size_t k = 0; k < sizeof(unknownIds); k++) {
         const uint8_t frame[] = {PROTO, unknownIds[k], 9, 0, 0, 0, 0, 0, 0, 0, 0};
         const CommandParse r = parseCommand(frame, sizeof(frame), cmd);
@@ -826,6 +826,281 @@ void test_offline_games() {
     TEST_ASSERT_TRUE(parseCommand(remove.data(), remove.size() - 1, cmd) == CommandParse::Malformed && cmd.seq == 7);
 }
 
+namespace {
+    const uint32_t OLA = 0x55667788;
+    const uint32_t TABLET_TID = 0x7AB1E001;
+    // 16.15: rosterVersion of ANNA + KRYSTIAN, the first push.
+    const uint32_t TWO_ENTRY_CRC = 0xC694F1D4;
+
+    std::vector<Frame> chunksAt(const uint8_t stateSeq, const WatchState &state, const uint8_t ackSeq,
+                                const AckStatus ack, const uint32_t version) {
+        uint8_t body[STATE_HEADER + WatchState::MAX_DATA];
+        const uint8_t len = state.build(ackSeq, ack, version, body);
+        std::vector<Frame> out;
+        for (uint8_t i = 0; i < chunkCount(len); i++) out.push_back(buildStateChunk(stateSeq, body, len, i));
+        return out;
+    }
+
+    WatchCommand parsed(const char *frameHex) {
+        const std::vector<uint8_t> f = hex(frameHex);
+        WatchCommand cmd{};
+        TEST_ASSERT_TRUE(parseCommand(f.data(), f.size(), cmd) == CommandParse::Ok);
+        return cmd;
+    }
+
+    void expectChunks(const std::vector<Frame> &c, const char *first, const char *second, const char *what) {
+        TEST_ASSERT_EQUAL(2, c.size());
+        expectBuf(first, c[0], what);
+        expectBuf(second, c[1], what);
+    }
+
+    WatchState tabletMatchStart(const uint32_t selected, const uint32_t right) {
+        WatchState s;
+        s.setSport(SportId::Squash);
+        s.setMatchStart(selected, ANNA, right, false);
+        return s;
+    }
+}
+
+// Spec 16.15: the TOURNAMENT characteristic's frames, the four tablet commands and their acks.
+void test_tablet_frames() {
+    TEST_ASSERT_EQUAL_STRING("0d78000a-2f44-4f31-93b7-b78dc9e29735", TOURNAMENT_UUID);
+
+    WatchState wait;
+    wait.setBusy(ScreenId::TournamentWait);
+    const std::vector<Frame> w = chunks(0x60, wait, 0, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(1, w.size());
+    // spec: tablet_begin/wait_state
+    expectBuf("01 60 01 04 00 00 00 5b e7 0f 15", w[0], "TOURNAMENT_WAIT");
+
+    // spec: tablet_begin/status_none
+    expectBuf("01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", buildTournamentStatus(TabletStatus{}),
+              "no tournament");
+
+    // ROSTER_ENTRY carries the ROSTER read's 16-byte entry.
+    const std::vector<uint8_t> r = roster();
+    // spec: tablet_begin/roster_anna
+    // spec: tablet_repush/roster_anna
+    const std::vector<uint8_t> anna = hex("01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    // spec: tablet_begin/roster_krystian
+    // spec: tablet_repush/roster_krystian
+    const std::vector<uint8_t> krystian = hex("01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00");
+    // spec: tablet_repush/roster_ola
+    const std::vector<uint8_t> ola = hex("01 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00");
+    const std::vector<uint8_t> *writes[] = {&anna, &krystian, &ola};
+    for (uint8_t i = 0; i < 3; i++) {
+        TournamentWriteFrame f;
+        TEST_ASSERT_TRUE(parseTournamentWrite(writes[i]->data(), writes[i]->size(), f));
+        TEST_ASSERT_TRUE(f.type == TournamentWrite::RosterEntry && f.index == i);
+        TEST_ASSERT_EQUAL_MEMORY(&r[i * ROSTER_ENTRY_SIZE], f.entry, ROSTER_ENTRY_SIZE);
+    }
+    TEST_ASSERT_EQUAL_HEX32(TWO_ENTRY_CRC, rosterVersion(2, r.data()));
+
+    // spec: tablet_begin/begin
+    // spec: tablet_refusals/begin_on_menu
+    WatchCommand cmd = parsed("01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::BeginTournament && cmd.seq == 1);
+    TEST_ASSERT_EQUAL_HEX32(TABLET_TID, cmd.tournamentId);
+    TEST_ASSERT_TRUE(cmd.sport == static_cast<uint8_t>(SportId::Squash) && cmd.count == 2);
+    TEST_ASSERT_EQUAL_HEX32(TWO_ENTRY_CRC, cmd.crc);
+
+    // spec: tablet_begin/begin_ack
+    expectChunks(chunksAt(0x61, tabletMatchStart(0x3, KRYSTIAN), 1, AckStatus::Applied, TWO_ENTRY_CRC),
+                 "01 61 02 11 01 01 00 d4 f1 94 c6 03 00 00 00 0d 0c 0b 0a 44",
+                 "01 61 12 33 22 11 00", "begin ack");
+
+    TabletStatus st{};
+    st.tournamentId = TABLET_TID;
+    st.sport = static_cast<uint8_t>(SportId::Squash);
+    st.rosterCount = 2;
+    st.rosterCrc = TWO_ENTRY_CRC;
+    st.outboxFrom = 1;
+    // spec: tablet_begin/status_begun
+    expectBuf("01 00 01 e0 b1 7a 01 02 d4 f1 94 c6 01 00 00 00 00 00 00 00", buildTournamentStatus(st), "begun");
+
+    // spec: tablet_repush/repush
+    cmd = parsed("01 11 02 01 e0 b1 7a 01 03 5b e7 0f 15");
+    TEST_ASSERT_TRUE(cmd.count == 3 && cmd.crc == rosterVersion3());
+    // spec: tablet_repush/repush_ack
+    expectChunks(chunks(0x62, tabletMatchStart(0x7, KRYSTIAN), 2, AckStatus::Applied),
+                 "01 62 02 11 01 02 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "01 62 12 33 22 11 00", "repush ack");
+
+    // Outbox.
+    st.rosterCount = 3;
+    st.rosterCrc = rosterVersion3();
+    st.outboxTo = 2;
+    // spec: tablet_outbox/status
+    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 02 00 00 00 00 00", buildTournamentStatus(st), "outbox");
+
+    TournamentWriteFrame f;
+    // spec: tablet_outbox/cursor_outbox
+    const std::vector<uint8_t> toOutbox = hex("01 03 01 01 00");
+    TEST_ASSERT_TRUE(parseTournamentWrite(toOutbox.data(), toOutbox.size(), f));
+    TEST_ASSERT_TRUE(f.type == TournamentWrite::Cursor && f.which == TournamentRead::Outbox && f.seq == 1);
+
+    const GameEntry tracked = {0x5EED0001, ANNA, KRYSTIAN, 11, 7, 0};
+    const GameEntry offline = {0x5EED0002, KRYSTIAN, OLA, 11, 4, static_cast<uint8_t>(GameFlags::Offline)};
+    uint8_t e[GAME_ENTRY_SIZE];
+    buildGameEntry(tracked, e);
+    // spec: tablet_outbox/read_1
+    expectBuf("01 01 01 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 00", buildOutboxRead(1, e), "outbox 1");
+    buildGameEntry(offline, e);
+    // spec: tablet_outbox/read_2
+    expectBuf("01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02", buildOutboxRead(2, e), "outbox 2");
+    // spec: tablet_outbox/read_end
+    expectBuf("01 02 03 00", buildOutboxEnd(3), "outbox end");
+
+    // spec: tablet_outbox/ack
+    cmd = parsed("01 13 03 01 e0 b1 7a 02 00");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::AckOutbox && cmd.tournamentId == TABLET_TID && cmd.upTo == 2);
+    // spec: tablet_outbox/ack_ack
+    expectChunks(chunks(0x63, tabletMatchStart(0x7, KRYSTIAN), 3, AckStatus::Applied),
+                 "01 63 02 11 01 03 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "01 63 12 33 22 11 00", "ack ack");
+
+    // spec: tablet_outbox/cursor_status
+    const std::vector<uint8_t> toStatus = hex("01 03 00 00 00");
+    TEST_ASSERT_TRUE(parseTournamentWrite(toStatus.data(), toStatus.size(), f));
+    TEST_ASSERT_TRUE(f.type == TournamentWrite::Cursor && f.which == TournamentRead::Status);
+    st.outboxFrom = 3;
+    // spec: tablet_outbox/status_acked
+    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 00 00 00 00", buildTournamentStatus(st), "acked");
+
+    // Mirror.
+    // spec: tablet_mirror/mirror_0
+    const std::vector<uint8_t> m0 = hex("01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
+    // spec: tablet_mirror/mirror_1
+    const std::vector<uint8_t> m1 = hex("01 02 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02");
+    // spec: tablet_mirror/mirror_2
+    const std::vector<uint8_t> m2 = hex("01 02 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00");
+    const std::vector<uint8_t> *mirror[] = {&m0, &m1, &m2};
+    uint8_t staged[3 * GAME_ENTRY_SIZE];
+    for (uint8_t i = 0; i < 3; i++) {
+        TEST_ASSERT_TRUE(parseTournamentWrite(mirror[i]->data(), mirror[i]->size(), f));
+        TEST_ASSERT_TRUE(f.type == TournamentWrite::MirrorEntry && f.index == i);
+        memcpy(staged + i * GAME_ENTRY_SIZE, f.entry, GAME_ENTRY_SIZE);
+    }
+    const GameEntry pending = parseGameEntry(staged);
+    TEST_ASSERT_TRUE(pending.id == 0x5EED0001 && pending.uidA == ANNA && pending.uidB == KRYSTIAN);
+    TEST_ASSERT_TRUE(pending.scoreA == 11 && pending.scoreB == 7
+                     && pending.flags == static_cast<uint8_t>(GameFlags::Pending));
+    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(GameFlags::Offline), parseGameEntry(staged + 15).flags);
+    TEST_ASSERT_EQUAL_HEX32(0x7AB10003, parseGameEntry(staged + 30).id);
+    TEST_ASSERT_EQUAL_HEX32(0x8050D643, mirrorCrc(3, staged));
+    TEST_ASSERT_EQUAL_HEX32(0xD202EF8D, mirrorCrc(0, nullptr));
+
+    // spec: tablet_mirror/commit
+    cmd = parsed("01 12 04 01 e0 b1 7a 03 43 d6 50 80");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::CommitMirror && cmd.tournamentId == TABLET_TID && cmd.count == 3);
+    TEST_ASSERT_EQUAL_HEX32(0x8050D643, cmd.crc);
+    // spec: tablet_mirror/commit_ack
+    expectChunks(chunks(0x64, tabletMatchStart(0x7, KRYSTIAN), 4, AckStatus::Applied),
+                 "01 64 02 11 01 04 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "01 64 12 33 22 11 00", "commit ack");
+
+    // RESULTS after the commit: the offline game, then the (+) game; the PENDING one is not listed.
+    uint8_t listed[2 * RESULT_ENTRY_SIZE];
+    buildResultEntry(KRYSTIAN, OLA, 11, 4, 1 | TURN_OFFLINE, listed);
+    buildResultEntry(ANNA, OLA, 11, 9, 1, listed + RESULT_ENTRY_SIZE);
+    // spec: tablet_mirror/results_2
+    expectBuf("01 01 00 02 00 01 e0 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 01", buildResultsRead(1, 2, TABLET_TID, 1, listed),
+              "mirrored game");
+    // spec: tablet_mirror/results_end
+    expectBuf("01 02 00 02 00 01 e0 b1 7a 01 00", buildResultsRead(2, 2, TABLET_TID, 1, listed), "mirror rev");
+    st.mirrorCrc = 0x8050D643;
+    // spec: tablet_mirror/status_mirrored
+    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 43 d6 50 80", buildTournamentStatus(st), "mirrored");
+
+    // spec: tablet_set_side/set_side
+    cmd = parsed("01 14 05 01 88 77 66 55");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::SetSide && cmd.side == 1 && cmd.uid == OLA && cmd.hasValidSide());
+    // spec: tablet_set_side/set_side_ack
+    expectChunks(chunks(0x65, tabletMatchStart(0x7, OLA), 5, AckStatus::Applied),
+                 "01 65 02 11 01 05 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
+                 "01 65 12 77 66 55 00", "set side ack");
+
+    // spec: tablet_refusals/begin_other_tid
+    cmd = parsed("01 11 06 02 e0 b1 7a 01 03 5b e7 0f 15");
+    TEST_ASSERT_EQUAL_HEX32(0x7AB1E002, cmd.tournamentId);
+    // spec: tablet_refusals/begin_other_tid_ack
+    expectChunks(chunks(0x66, tabletMatchStart(0x7, OLA), 6, AckStatus::Invalid),
+                 "01 66 02 11 01 06 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
+                 "01 66 12 77 66 55 00", "other tid ack");
+    // spec: tablet_refusals/commit_bad_crc
+    cmd = parsed("01 12 07 01 e0 b1 7a 00 00 00 00 00");
+    TEST_ASSERT_TRUE(cmd.count == 0 && cmd.crc == 0 && cmd.crc != mirrorCrc(0, nullptr));
+    // spec: tablet_refusals/commit_bad_crc_ack
+    expectChunks(chunks(0x67, tabletMatchStart(0x7, OLA), 7, AckStatus::Invalid),
+                 "01 67 02 11 01 07 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
+                 "01 67 12 77 66 55 00", "bad crc ack");
+    // spec: tablet_refusals/remove
+    cmd = parsed("01 10 08 01 e0 b1 7a 01 00 00 00");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::RemoveOfflineGame && cmd.tournamentId == TABLET_TID && cmd.rev == 1);
+    // spec: tablet_refusals/remove_ack
+    expectChunks(chunks(0x68, tabletMatchStart(0x7, OLA), 8, AckStatus::WrongScreen),
+                 "01 68 02 11 01 08 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
+                 "01 68 12 77 66 55 00", "remove ack");
+    // spec: tablet_refusals/back
+    cmd = parsed("01 02 09");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::Back && cmd.seq == 9);
+    // spec: tablet_refusals/back_ack
+    expectChunks(chunks(0x69, tabletMatchStart(0x7, OLA), 9, AckStatus::WrongScreen),
+                 "01 69 02 11 01 09 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
+                 "01 69 12 77 66 55 00", "back ack");
+
+    WatchState menu;
+    const SportId sports[] = {SportId::Padel, SportId::Squash, SportId::Volleyball, SportId::ShortVolleyball};
+    menu.setMenu(SportId::Padel, sports, 4);
+    const std::vector<Frame> mc = chunks(0x02, menu, 1, AckStatus::WrongScreen);
+    TEST_ASSERT_EQUAL(1, mc.size());
+    // spec: tablet_refusals/begin_on_menu_ack
+    expectBuf("01 02 01 01 00 01 01 5b e7 0f 15 04 04 04 01 02 03", mc[0], "begin on MENU");
+}
+
+// Discards and lengths of the TOURNAMENT writes and the tablet commands.
+void test_tablet_frame_edges() {
+    TournamentWriteFrame f;
+    const std::vector<uint8_t> anna = hex("01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(anna.data(), anna.size() - 1, f), "short roster entry");
+    std::vector<uint8_t> v = anna;
+    v[0] = 0x00;
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "foreign PROTO");
+    v = anna;
+    v[2] = TABLET_ROSTER_MAX;
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "roster index past the stage");
+    v[2] = TABLET_ROSTER_MAX - 1;
+    TEST_ASSERT_TRUE(parseTournamentWrite(v.data(), v.size(), f) && f.index == TABLET_ROSTER_MAX - 1);
+    v.push_back(0xEE);
+    TEST_ASSERT_TRUE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "trailing bytes ignored");
+
+    std::vector<uint8_t> game = hex("01 02 7f 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
+    TEST_ASSERT_TRUE(parseTournamentWrite(game.data(), game.size(), f) && f.index == 127);
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(game.data(), game.size() - 1, f), "short game");
+    game[2] = 128;
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(game.data(), game.size(), f), "game index past the stage");
+
+    const std::vector<uint8_t> end = hex("01 03 02 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(end.data(), end.size(), f), "cursor OUTBOX_END");
+    const std::vector<uint8_t> cursor = hex("01 03 01 34 12");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(cursor.data(), 4, f), "short cursor");
+    TEST_ASSERT_TRUE(parseTournamentWrite(cursor.data(), cursor.size(), f) && f.seq == 0x1234);
+    const std::vector<uint8_t> unknown = hex("01 04 00 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(unknown.data(), unknown.size(), f), "unknown type");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(unknown.data(), 1, f), "no type");
+
+    TEST_ASSERT_EQUAL_UINT8(13, commandSize(static_cast<uint8_t>(CommandId::BeginTournament)));
+    TEST_ASSERT_EQUAL_UINT8(12, commandSize(static_cast<uint8_t>(CommandId::CommitMirror)));
+    TEST_ASSERT_EQUAL_UINT8(9, commandSize(static_cast<uint8_t>(CommandId::AckOutbox)));
+    TEST_ASSERT_EQUAL_UINT8(8, commandSize(static_cast<uint8_t>(CommandId::SetSide)));
+    WatchCommand cmd{};
+    const std::vector<uint8_t> setSide = hex("01 14 05 01 88 77 66 55");
+    TEST_ASSERT_TRUE(parseCommand(setSide.data(), setSide.size() - 1, cmd) == CommandParse::Malformed && cmd.seq == 5);
+    const std::vector<uint8_t> ack = hex("01 13 03 01 e0 b1 7a 34 12");
+    TEST_ASSERT_TRUE(parseCommand(ack.data(), ack.size(), cmd) == CommandParse::Ok && cmd.upTo == 0x1234);
+    TEST_ASSERT_EQUAL_UINT8(20, buildTournamentStatus(TabletStatus{}).len);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_crc32_check_value);
@@ -853,5 +1128,7 @@ int main() {
     RUN_TEST(test_heart_frames);
     RUN_TEST(test_results_frames);
     RUN_TEST(test_offline_games);
+    RUN_TEST(test_tablet_frames);
+    RUN_TEST(test_tablet_frame_edges);
     return UNITY_END();
 }

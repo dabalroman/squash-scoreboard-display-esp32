@@ -106,7 +106,7 @@ namespace {
         }
     };
 
-    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing, Heart, Results };
+    enum class Chr : uint8_t { Command, State, Roster, Auth, Pairing, Heart, Results, Tournament };
 
     // Host task. Every write is length-checked by the GarminLink parsers before anything
     // is touched; what an unauthenticated connection may do is decided there.
@@ -132,6 +132,9 @@ namespace {
                     break;
                 case Chr::Results:
                     frame = gLink.readResults(handle);
+                    break;
+                case Chr::Tournament:
+                    frame = gLink.readTournament(handle);
                     break;
                 default:
                     return;
@@ -163,6 +166,9 @@ namespace {
                 case Chr::Results:
                     gLink.writeResults(handle, value.data(), value.size());
                     break;
+                case Chr::Tournament:
+                    gLink.writeTournament(handle, value.data(), value.size());
+                    break;
                 default:
                     break;
             }
@@ -191,6 +197,7 @@ namespace {
     CharCallbacks pairingCallbacks(Chr::Pairing);
     CharCallbacks heartCallbacks(Chr::Heart);
     CharCallbacks resultsCallbacks(Chr::Results);
+    CharCallbacks tournamentCallbacks(Chr::Tournament);
 
     NimBLECharacteristic *addCharacteristic(NimBLEService *service, const char *uuid, const uint32_t properties,
                                             NimBLECharacteristicCallbacks *callbacks) {
@@ -244,6 +251,8 @@ namespace {
                                                         &heartCallbacks);
         addCharacteristic(service, Garmin::RESULTS_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE,
                           &resultsCallbacks);
+        addCharacteristic(service, Garmin::TOURNAMENT_UUID, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE,
+                          &tournamentCallbacks);
         service->start();
         // Attribute handles exist once the GATT server has started.
         server->start();
@@ -310,6 +319,33 @@ void GarminService::setRoster(const Garmin::RosterKind kind, const std::vector<U
 
 void GarminService::useRoster(const Garmin::RosterKind kind) {
     gLink.useRoster(kind);
+}
+
+uint32_t GarminService::setTabletRoster(const uint8_t *entries, const uint8_t count) {
+    return gLink.setTabletRoster(count, entries);
+}
+
+void GarminService::useTabletRoster() {
+    gLink.useTabletRoster();
+}
+
+void GarminService::takeRosterStage(const uint8_t count, uint8_t *out) {
+    gLink.takeRosterStage(count, out);
+}
+
+void GarminService::takeMirrorStage(const uint8_t count, uint8_t *out) {
+    gLink.takeMirrorStage(count, out);
+}
+
+void GarminService::endTablet() {
+    gLink.endTablet();
+}
+
+void GarminService::publishTablet(const Garmin::TabletStatus &status, const uint16_t outboxCount, const OutboxAt at,
+                                  const void *context) {
+    gLink.syncTablet(status, outboxCount, [at, context](const uint16_t i, uint16_t &seq, uint8_t *out) {
+        at(context, i, seq, out);
+    });
 }
 
 bool GarminService::isEnabled() const {

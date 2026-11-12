@@ -55,6 +55,15 @@ namespace Garmin {
     constexpr uint8_t TURN_OFFLINE = 0x80;
     constexpr uint8_t TURN_MASK = 0x7F;
 
+    // TOURNAMENT (spec 20).
+    constexpr uint8_t TABLET_ROSTER_MAX = 16;
+    // id u32, uidA, uidB, scoreA, scoreB, flags.
+    constexpr uint8_t GAME_ENTRY_SIZE = 15;
+    constexpr uint8_t TOURNAMENT_STATUS_FRAME = 20;
+    constexpr uint8_t OUTBOX_FRAME = 4 + GAME_ENTRY_SIZE;
+    constexpr uint8_t OUTBOX_END_FRAME = 4;
+    static_assert(OUTBOX_FRAME <= MAX_FRAME, "an OUTBOX read must fit one frame");
+
     constexpr uint8_t ADV_FLAG_PAIRING = 0x01;
 
     constexpr const char *SERVICE_UUID = "0d780001-2f44-4f31-93b7-b78dc9e29735";
@@ -66,6 +75,7 @@ namespace Garmin {
     constexpr const char *PAIRING_UUID = "0d780007-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *HEART_UUID = "0d780008-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *RESULTS_UUID = "0d780009-2f44-4f31-93b7-b78dc9e29735";
+    constexpr const char *TOURNAMENT_UUID = "0d78000a-2f44-4f31-93b7-b78dc9e29735";
 
     enum class AckStatus : uint8_t {
         Applied = 0,
@@ -81,6 +91,7 @@ namespace Garmin {
         Menu = 0x01,
         Config = 0x02,
         Profile = 0x03,
+        TournamentWait = 0x04,
         ChoosePlayers = 0x10,
         MatchStart = 0x11,
         Intro = 0x12,
@@ -117,6 +128,10 @@ namespace Garmin {
         Focus = 0x0E,
         AddOfflineGame = 0x0F,
         RemoveOfflineGame = 0x10,
+        BeginTournament = 0x11,
+        CommitMirror = 0x12,
+        AckOutbox = 0x13,
+        SetSide = 0x14,
     };
 
     enum class AuthType : uint8_t { Challenge = 0x00, Proof = 0x01, Result = 0x02 };
@@ -126,6 +141,13 @@ namespace Garmin {
     enum class PairingType : uint8_t { None = 0x00, Request = 0x01, Result = 0x02 };
 
     enum class PairingStatus : uint8_t { Ok = 0, WindowClosed = 1, BadCode = 2, FullRetry = 3 };
+
+    enum class TournamentWrite : uint8_t { RosterEntry = 0x01, MirrorEntry = 0x02, Cursor = 0x03 };
+
+    // Also the CURSOR write's `which` (OutboxEnd there is discarded).
+    enum class TournamentRead : uint8_t { Status = 0x00, Outbox = 0x01, OutboxEnd = 0x02 };
+
+    enum class GameFlags : uint8_t { Pending = 0x01, Offline = 0x02 };
 
     template<uint8_t N>
     struct ByteBuf {
@@ -420,6 +442,121 @@ namespace Garmin {
         memcpy(f.data + RESULTS_HEADER, entries + static_cast<size_t>(index) * RESULT_ENTRY_SIZE,
                RESULT_ENTRY_SIZE);
         f.len = RESULTS_HEADER + RESULT_ENTRY_SIZE;
+        return f;
+    }
+
+    // --- TOURNAMENT (20) ---
+
+    struct GameEntry {
+        uint32_t id;
+        uint32_t uidA;
+        uint32_t uidB;
+        uint8_t scoreA;
+        uint8_t scoreB;
+        uint8_t flags;
+    };
+
+    inline void buildGameEntry(const GameEntry &g, uint8_t out[GAME_ENTRY_SIZE]) {
+        putU32(out, g.id);
+        putU32(out + 4, g.uidA);
+        putU32(out + 8, g.uidB);
+        out[12] = g.scoreA;
+        out[13] = g.scoreB;
+        out[14] = g.flags;
+    }
+
+    inline GameEntry parseGameEntry(const uint8_t in[GAME_ENTRY_SIZE]) {
+        GameEntry g;
+        g.id = getU32(in);
+        g.uidA = getU32(in + 4);
+        g.uidB = getU32(in + 8);
+        g.scoreA = in[12];
+        g.scoreB = in[13];
+        g.flags = in[14];
+        return g;
+    }
+
+    // `entries` = count * 15 wire bytes in index order; the same formula as rosterVersion.
+    inline uint32_t mirrorCrc(const uint8_t count, const uint8_t *entries) {
+        const uint32_t c = crc32(&count, 1);
+        return crc32(entries, static_cast<size_t>(count) * GAME_ENTRY_SIZE, c);
+    }
+
+    struct TournamentWriteFrame {
+        TournamentWrite type;
+        uint8_t index;          // ROSTER_ENTRY, MIRROR_ENTRY
+        const uint8_t *entry;   // into the input: 16 B roster entry or 15 B game
+        TournamentRead which;   // CURSOR: Status or Outbox
+        uint16_t seq;           // CURSOR
+    };
+
+    // False = discard: foreign PROTO, unknown type, too short, index past its stage, or a
+    // cursor `which` other than STATUS / OUTBOX.
+    inline bool parseTournamentWrite(const uint8_t *in, const size_t len, TournamentWriteFrame &out) {
+        if (len < 2 || in[0] != PROTO) return false;
+        out = TournamentWriteFrame{};
+        out.type = static_cast<TournamentWrite>(in[1]);
+        switch (out.type) {
+            case TournamentWrite::RosterEntry:
+                if (len < 3 + ROSTER_ENTRY_SIZE || in[2] >= TABLET_ROSTER_MAX) return false;
+                out.index = in[2];
+                out.entry = in + 3;
+                return true;
+            case TournamentWrite::MirrorEntry:
+                if (len < 3 + GAME_ENTRY_SIZE || in[2] >= RESULTS_MAX) return false;
+                out.index = in[2];
+                out.entry = in + 3;
+                return true;
+            case TournamentWrite::Cursor:
+                if (len < 5 || in[2] > static_cast<uint8_t>(TournamentRead::Outbox)) return false;
+                out.which = static_cast<TournamentRead>(in[2]);
+                out.seq = getU16(in + 3);
+                return true;
+        }
+        return false;
+    }
+
+    struct TabletStatus {
+        uint32_t tournamentId;  // 0 = none; then every field is 0
+        uint8_t sport;
+        uint8_t rosterCount;
+        uint32_t rosterCrc;
+        uint16_t outboxFrom;
+        uint16_t outboxTo;
+        uint32_t mirrorCrc;
+    };
+
+    inline Frame buildTournamentStatus(const TabletStatus &s) {
+        Frame f{};
+        f.data[0] = PROTO;
+        f.data[1] = static_cast<uint8_t>(TournamentRead::Status);
+        putU32(f.data + 2, s.tournamentId);
+        f.data[6] = s.sport;
+        f.data[7] = s.rosterCount;
+        putU32(f.data + 8, s.rosterCrc);
+        putU16(f.data + 12, s.outboxFrom);
+        putU16(f.data + 14, s.outboxTo);
+        putU32(f.data + 16, s.mirrorCrc);
+        f.len = TOURNAMENT_STATUS_FRAME;
+        return f;
+    }
+
+    inline Frame buildOutboxRead(const uint16_t seq, const uint8_t entry[GAME_ENTRY_SIZE]) {
+        Frame f{};
+        f.data[0] = PROTO;
+        f.data[1] = static_cast<uint8_t>(TournamentRead::Outbox);
+        putU16(f.data + 2, seq);
+        memcpy(f.data + 4, entry, GAME_ENTRY_SIZE);
+        f.len = OUTBOX_FRAME;
+        return f;
+    }
+
+    inline Frame buildOutboxEnd(const uint16_t cursor) {
+        Frame f{};
+        f.data[0] = PROTO;
+        f.data[1] = static_cast<uint8_t>(TournamentRead::OutboxEnd);
+        putU16(f.data + 2, cursor);
+        f.len = OUTBOX_END_FRAME;
         return f;
     }
 

@@ -13,9 +13,9 @@
 struct WatchCommand {
     Garmin::CommandId id;
     uint8_t seq;
-    uint8_t sport;      // SELECT_SPORT
-    uint8_t side;       // SCORE, UNDO
-    uint32_t uid;       // TOGGLE_PLAYER
+    uint8_t sport;      // SELECT_SPORT, BEGIN_TOURNAMENT
+    uint8_t side;       // SCORE, UNDO, SET_SIDE
+    uint32_t uid;       // TOGGLE_PLAYER, SET_SIDE
     uint32_t leftUid;   // SET_PAIR
     uint32_t rightUid;  // SET_PAIR
     uint32_t target;    // FOCUS: a sport id on MENU, a uid (0 = START) on CHOOSE_PLAYERS
@@ -23,9 +23,12 @@ struct WatchCommand {
     uint32_t uidB;      // ADD_OFFLINE_GAME
     uint8_t scoreA;     // ADD_OFFLINE_GAME
     uint8_t scoreB;     // ADD_OFFLINE_GAME
-    uint32_t tournamentId; // REMOVE_OFFLINE_GAME
+    uint32_t tournamentId; // REMOVE_OFFLINE_GAME, BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX
     uint16_t rev;          // REMOVE_OFFLINE_GAME
     uint16_t index;        // REMOVE_OFFLINE_GAME: a listed RESULTS index
+    uint8_t count;         // BEGIN_TOURNAMENT, COMMIT_MIRROR: staged entries to take
+    uint32_t crc;          // BEGIN_TOURNAMENT (roster), COMMIT_MIRROR (mirror)
+    uint16_t upTo;         // ACK_OUTBOX
 
     bool hasValidSide() const {
         return side <= 1;
@@ -54,7 +57,14 @@ namespace Garmin {
             case CommandId::RemoveOfflineGame:
                 return 11;
             case CommandId::AddOfflineGame:
+            case CommandId::BeginTournament:
                 return 13;
+            case CommandId::CommitMirror:
+                return 12;
+            case CommandId::AckOutbox:
+                return 9;
+            case CommandId::SetSide:
+                return 8;
             case CommandId::Back:
             case CommandId::StartTournament:
             case CommandId::SwapSides:
@@ -106,6 +116,25 @@ namespace Garmin {
                 out.tournamentId = getU32(in + 3);
                 out.rev = getU16(in + 7);
                 out.index = getU16(in + 9);
+                break;
+            case CommandId::BeginTournament:
+                out.tournamentId = getU32(in + 3);
+                out.sport = in[7];
+                out.count = in[8];
+                out.crc = getU32(in + 9);
+                break;
+            case CommandId::CommitMirror:
+                out.tournamentId = getU32(in + 3);
+                out.count = in[7];
+                out.crc = getU32(in + 8);
+                break;
+            case CommandId::AckOutbox:
+                out.tournamentId = getU32(in + 3);
+                out.upTo = getU16(in + 7);
+                break;
+            case CommandId::SetSide:
+                out.side = in[3];
+                out.uid = getU32(in + 4);
                 break;
             default:
                 break;

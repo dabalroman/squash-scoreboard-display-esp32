@@ -13,9 +13,9 @@
 #include "WatchState.h"
 
 /**
- * The board's protocol state (spec 6-12, 18, 19) without NimBLE: connection slots, auth, pairing,
- * dedupe, the command queue, acks, state pushes, timeouts, the HEART relay, the RESULTS mirror and
- * the in-RAM GarminData.
+ * The board's protocol state (spec 6-12, 18-20) without NimBLE: connection slots, auth, pairing,
+ * dedupe, the command queue, acks, state pushes, timeouts, the HEART relay, the RESULTS mirror,
+ * the TOURNAMENT stages and snapshot, and the in-RAM GarminData.
  * GarminService feeds it the host task's events and sends what it hands back, so the host
  * suites test the logic the board runs.
  *
@@ -163,6 +163,92 @@ public:
     uint32_t rosterVersion() const {
         Guard g;
         return rosterVers[activeRoster];
+    }
+
+    // --- Tablet tournament (loop; spec 20) ---
+
+    // The pushed roster, in a slot of its own: the stored tables stay as they are. Returns its CRC.
+    uint32_t setTabletRoster(uint8_t count, const uint8_t *entries) {
+        if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
+        const uint32_t version = Garmin::rosterVersion(count, entries);
+        Guard g;
+        rosterCount[TABLET_SLOT] = count;
+        memcpy(roster[TABLET_SLOT], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        rosterVers[TABLET_SLOT] = version;
+        return version;
+    }
+
+    // Like useRoster(): effective with the next published state.
+    void useTabletRoster() {
+        Guard g;
+        pendingRoster = TABLET_SLOT;
+    }
+
+    // BEGIN_TOURNAMENT answering APPLIED or INVALID: entries 0..count-1 into `out`
+    // (count * 16 B), then the stage is cleared. A never-written entry reads as zeros.
+    void takeRosterStage(uint8_t count, uint8_t *out) {
+        if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
+        Guard g;
+        memcpy(out, rosterStage, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        memset(rosterStage, 0, sizeof(rosterStage));
+    }
+
+    // COMMIT_MIRROR answering APPLIED or INVALID: games 0..count-1 into `out` (count * 15 B).
+    void takeMirrorStage(uint8_t count, uint8_t *out) {
+        if (count > Garmin::RESULTS_MAX) count = Garmin::RESULTS_MAX;
+        Guard g;
+        memcpy(out, mirrorStage, static_cast<size_t>(count) * Garmin::GAME_ENTRY_SIZE);
+        memset(mirrorStage, 0, sizeof(mirrorStage));
+    }
+
+    // Tablet mode ended: both stages, the pushed roster and the snapshot are gone.
+    void endTablet() {
+        Guard g;
+        memset(rosterStage, 0, sizeof(rosterStage));
+        memset(mirrorStage, 0, sizeof(mirrorStage));
+        memset(roster[TABLET_SLOT], 0, sizeof(roster[TABLET_SLOT]));
+        rosterCount[TABLET_SLOT] = 0;
+        rosterVers[TABLET_SLOT] = Garmin::rosterVersion(0, nullptr);
+        tabletStatus = Garmin::TabletStatus{};
+        outboxCount = 0;
+        outboxTotal = 0;
+    }
+
+    /**
+     * The STATUS / OUTBOX snapshot, like syncResults: `entryAt(i, seq, out)` writes the i-th
+     * un-ACKed board game (seq order) and its seq. An outbox only loses games (ACK, mirror) or
+     * gains the next seqs, so with the same tid and outboxFrom, `count` growing by exactly as
+     * much as outboxTo is a pure append; anything else (a game acked out of the middle) starts
+     * over. Games are copied in seq order, each under its own lock, so a read mid-copy sees a
+     * prefix: the tablet ACKs only what it read and the rest stays for its next pull. The
+     * status lands last. Past RESULTS_MAX un-ACKed games the newer ones wait until older ones
+     * are ACKed. All zero outside tablet mode.
+     */
+    template<class EntryAt>
+    void syncTablet(const Garmin::TabletStatus &status, const uint16_t count, EntryAt entryAt) {
+        uint16_t have;
+        {
+            Guard g;
+            const bool append = status.tournamentId == tabletStatus.tournamentId
+                                && status.outboxFrom == tabletStatus.outboxFrom
+                                && status.outboxTo >= tabletStatus.outboxTo && count >= outboxTotal
+                                && count - outboxTotal == status.outboxTo - tabletStatus.outboxTo;
+            if (!append) outboxCount = 0;
+            outboxTotal = count;
+            have = outboxCount;
+        }
+        const uint16_t served = count > Garmin::RESULTS_MAX ? Garmin::RESULTS_MAX : count;
+        for (uint16_t i = have; i < served; i++) {
+            uint16_t seq = 0;
+            uint8_t entry[Garmin::GAME_ENTRY_SIZE];
+            entryAt(i, seq, entry);
+            Guard g;
+            outboxSeqs[i] = seq;
+            memcpy(outbox + static_cast<size_t>(i) * Garmin::GAME_ENTRY_SIZE, entry, sizeof(entry));
+            outboxCount = static_cast<uint16_t>(i + 1);
+        }
+        Guard g;
+        tabletStatus = status;
     }
 
     // --- Tournament results (loop; spec 19) ---
@@ -470,6 +556,42 @@ public:
         return f;
     }
 
+    // Spec 20: the stages are shared by every connection; CURSOR is this connection's.
+    void writeTournament(const uint16_t handle, const uint8_t *in, const size_t len) {
+        Garmin::TournamentWriteFrame w;
+        if (!Garmin::parseTournamentWrite(in, len, w)) return;
+        Guard g;
+        Conn *c = find(handle);
+        if (c == nullptr || !c->authed) return;
+        switch (w.type) {
+            case Garmin::TournamentWrite::RosterEntry:
+                memcpy(rosterStage + static_cast<size_t>(w.index) * Garmin::ROSTER_ENTRY_SIZE, w.entry,
+                       Garmin::ROSTER_ENTRY_SIZE);
+                break;
+            case Garmin::TournamentWrite::MirrorEntry:
+                memcpy(mirrorStage + static_cast<size_t>(w.index) * Garmin::GAME_ENTRY_SIZE, w.entry,
+                       Garmin::GAME_ENTRY_SIZE);
+                break;
+            case Garmin::TournamentWrite::Cursor:
+                c->tabletRead = w.which;
+                c->tabletCursor = w.seq;
+                break;
+        }
+    }
+
+    Garmin::Frame readTournament(const uint16_t handle) {
+        Guard g;
+        Conn *c = find(handle);
+        if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
+        if (c->tabletRead == Garmin::TournamentRead::Status) return Garmin::buildTournamentStatus(tabletStatus);
+        for (uint16_t i = 0; i < outboxCount; i++) {
+            if (outboxSeqs[i] < c->tabletCursor) continue;
+            c->tabletCursor = static_cast<uint16_t>(outboxSeqs[i] + 1);
+            return Garmin::buildOutboxRead(outboxSeqs[i], outbox + static_cast<size_t>(i) * Garmin::GAME_ENTRY_SIZE);
+        }
+        return Garmin::buildOutboxEnd(c->tabletCursor);
+    }
+
     // Chunk 0 of the last published state, with this connection's ack (spec 11.1).
     Garmin::Frame readState(const uint16_t handle) {
         Guard g;
@@ -691,6 +813,8 @@ private:
         uint8_t lastSeq = 0;
         uint8_t rosterCursor = 0;
         uint16_t resultsCursor = 0;
+        Garmin::TournamentRead tabletRead = Garmin::TournamentRead::Status;
+        uint16_t tabletCursor = 0;
         uint8_t ackSeq = 0;
         Garmin::AckStatus ackStatus = Garmin::AckStatus::Applied;
         uint8_t stateSeq = 0;
@@ -730,16 +854,18 @@ private:
     uint8_t queueHead = 0;
     uint8_t queueCount = 0;
 
-    enum : uint8_t { ROSTER_KINDS = 2 };
+    // Players, Teams, then the tablet's pushed roster (spec 20).
+    enum : uint8_t { ROSTER_SLOTS = 3, TABLET_SLOT = 2 };
 
     static uint8_t slotOf(const Garmin::RosterKind kind) {
         return kind == Garmin::RosterKind::Teams ? 1 : 0;
     }
 
-    // Indexed by slotOf(); `activeRoster` is what rosterVersion and ROSTER reads describe.
-    uint8_t roster[ROSTER_KINDS][ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
-    uint8_t rosterCount[ROSTER_KINDS] = {};
-    uint32_t rosterVers[ROSTER_KINDS] = {Garmin::rosterVersion(0, nullptr), Garmin::rosterVersion(0, nullptr)};
+    // Indexed by slot; `activeRoster` is what rosterVersion and ROSTER reads describe.
+    uint8_t roster[ROSTER_SLOTS][ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
+    uint8_t rosterCount[ROSTER_SLOTS] = {};
+    uint32_t rosterVers[ROSTER_SLOTS] = {Garmin::rosterVersion(0, nullptr), Garmin::rosterVersion(0, nullptr),
+                                         Garmin::rosterVersion(0, nullptr)};
     uint8_t activeRoster = 0;
     uint8_t pendingRoster = 0;
 
@@ -747,6 +873,15 @@ private:
     uint16_t resultsCount = 0;
     uint32_t resultsTid = 0;
     uint16_t resultsRev = 0;
+
+    uint8_t rosterStage[Garmin::TABLET_ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
+    uint8_t mirrorStage[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
+    Garmin::TabletStatus tabletStatus = {};
+    uint8_t outbox[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
+    uint16_t outboxSeqs[Garmin::RESULTS_MAX] = {};
+    uint16_t outboxCount = 0;
+    // The caller's un-ACKed count, uncapped: the append check compares it with outboxTo.
+    uint16_t outboxTotal = 0;
 
     bool pairing = false;
     uint32_t pairingOpenedAt = 0;

@@ -18,7 +18,10 @@ _proc = subprocess.run([sys.executable, _check, "--repo", "firmware", "--repo", 
 print(_proc.stdout.strip())
 if _proc.returncode != 0:
     print(_proc.stderr.strip())
-    env.Exit(1)
+    # Spec-first work: the spec lands before the code that implements it. Opt-in, never in CI.
+    if os.environ.get("PROTOCOL_DRIFT") != "warn":
+        env.Exit(1)
+    print("native_toolchain: protocol drift ignored (PROTOCOL_DRIFT=warn)")
 
 PATTERN = "C:/Program Files/JetBrains/CLion */bin/mingw/bin"
 
