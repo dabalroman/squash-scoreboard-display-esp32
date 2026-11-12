@@ -73,7 +73,7 @@ structures:
           PLAYING: playing_body
           CELEBRATION: result_body
           GAME_OVER: result_body
-        description: The per-screen data (11.3); absent on BOOTING, CONFIG, PROFILE.
+        description: The per-screen data (11.3); absent on BOOTING, CONFIG, PROFILE, TOURNAMENT_WAIT.
 
   - name: menu_body
     offset: 8

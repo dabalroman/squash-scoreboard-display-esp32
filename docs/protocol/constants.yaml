@@ -212,8 +212,22 @@ constants:
     type: size
     value: 128
     description: Most finished games listed per tournament.
-    usage: Later games are not listed and count stays at 128.
+    usage: Later games are not listed and count stays at 128. Also the most entries a mirror commit takes (section 20).
     see: "#14-limits"
+
+  - name: TABLET_ROSTER_MAX
+    type: size
+    value: 16
+    description: Most roster entries a tablet pushes for one tournament.
+    usage: BEGIN_TOURNAMENT with a larger count answers INVALID; one round robin of 16 is 120 games, inside RESULTS_MAX.
+    see: "#20-tablet-tournament-tournament"
+
+  - name: GAME_ENTRY_SIZE
+    type: size
+    value: 15
+    description: "Wire size of one game on TOURNAMENT: id (u32), uidA, uidB, scoreA, scoreB, flags."
+    usage: Carried by the MIRROR_ENTRY write and the outbox read; the mirror CRC is over every entry's 15-byte form.
+    see: "#20-tablet-tournament-tournament"
 
 uuids:
   - name: SERVICE_UUID
@@ -268,6 +282,12 @@ uuids:
     value: 0d780009-2f44-4f31-93b7-b78dc9e29735
     description: RESULTS characteristic.
     usage: Write sets the read cursor; each read returns the finished game at the cursor.
+    see: "#6-gatt-layout"
+
+  - name: TOURNAMENT_UUID
+    value: 0d78000a-2f44-4f31-93b7-b78dc9e29735
+    description: TOURNAMENT characteristic.
+    usage: A tablet stages the roster and the mirror here and reads the status and the outbox.
     see: "#6-gatt-layout"
 
 enums:
@@ -393,6 +413,9 @@ enums:
       - name: PROFILE
         value: 0x03
         description: Player setup; the watch shows "edit on phone" + BACK.
+      - name: TOURNAMENT_WAIT
+        value: 0x04
+        description: Tablet tournament mode, waiting for a tablet's BEGIN_TOURNAMENT; the watch shows "board busy".
       - name: CHOOSE_PLAYERS
         value: 0x10
         description: Roster with in/out selection and START.
@@ -422,7 +445,7 @@ enums:
     values:
       - name: none
         value: 0x00
-        description: No sport (BOOTING, MENU, CONFIG, PROFILE).
+        description: No sport (BOOTING, MENU, CONFIG, PROFILE, TOURNAMENT_WAIT).
       - name: squash
         value: 0x01
         description: Squash.
@@ -449,3 +472,55 @@ enums:
       - name: right
         value: 1
         description: Right court side.
+
+  - name: tournament_write
+    type: uint8
+    description: Byte 1 of a TOURNAMENT write - which staged frame this is.
+    usage: >-
+      The board copies ROSTER_ENTRY and MIRROR_ENTRY into their stages and CURSOR into the
+      connection's read cursor; any other value is discarded.
+    see: "#201-tournament-frames"
+    values:
+      - name: ROSTER_ENTRY
+        value: 0x01
+        description: One roster entry for the next BEGIN_TOURNAMENT.
+      - name: MIRROR_ENTRY
+        value: 0x02
+        description: One game for the next COMMIT_MIRROR.
+      - name: CURSOR
+        value: 0x03
+        description: Selects what the next reads return.
+
+  - name: tournament_read
+    type: uint8
+    description: Byte 1 of a TOURNAMENT read; also the CURSOR write's `which`.
+    usage: >-
+      A read answers STATUS until a CURSOR write selects OUTBOX; then OUTBOX entries until
+      OUTBOX_END.
+    see: "#201-tournament-frames"
+    values:
+      - name: STATUS
+        value: 0x00
+        description: The tablet tournament's id, sport, roster, outbox range and mirror CRC.
+      - name: OUTBOX
+        value: 0x01
+        description: One un-ACKed board game.
+      - name: OUTBOX_END
+        value: 0x02
+        description: No un-ACKed game at or after the cursor.
+
+  - name: game_flags
+    type: uint8
+    description: Flags byte of a TOURNAMENT game entry (mirror and outbox).
+    usage: >-
+      The tablet sets PENDING on this board's games it has not accepted yet and OFFLINE on games a
+      client added; the board sets OFFLINE on outbox games a watch added. Other bits are reserved,
+      sent 0, ignored.
+    see: "#20-tablet-tournament-tournament"
+    values:
+      - name: PENDING
+        bit: 0
+        description: Not accepted yet - counted in the court's tally, not listed in RESULTS (mirror only; 0 in the outbox).
+      - name: OFFLINE
+        bit: 1
+        description: Added by a client, not tracked by a board - RESULTS turn bit 7.

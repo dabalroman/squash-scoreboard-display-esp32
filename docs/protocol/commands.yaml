@@ -21,7 +21,8 @@ commands:
     usage: >-
       CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER ->
       MATCH_START; PROFILE -> MENU through its C/D exit. Never on PLAYING (a game must not be
-      discarded).
+      discarded). Tablet mode: MATCH_START -> WRONG_SCREEN (only the board's long C leaves);
+      TOURNAMENT_WAIT -> WRONG_SCREEN.
     see: "#102-command-table"
     valid_on: [CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE]
     args: []
@@ -159,7 +160,9 @@ commands:
       already won one point earlier: 12:10 and padel 7:6 pass, squash 15:3 does not), and fewer than
       128 games may be listed already. Anything else -> INVALID. The game joins the pair's match
       (either order; the board swaps the scores into the match's own A/B order) as its next turn and
-      is tagged offline in RESULTS. No screen change, no sound: APPLIED plus a state push.
+      is tagged offline in RESULTS. No screen change, no sound: APPLIED plus a state push. Tablet
+      mode: every roster entry counts as selected; the game gets a fresh id, is listed at once and
+      enters the outbox (OFFLINE) for the tablet, which accepts it as is.
     see: "#102-command-table"
     valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
     args:
@@ -183,7 +186,7 @@ commands:
       index is the game's RESULTS index. A tournament_id or rev differing from the board's (the
       client's view is stale), an index >= count, or a game the board tracked itself -> INVALID. The
       board bumps rev and renumbers that pair's later turns. No screen change, no sound: APPLIED
-      plus a state push.
+      plus a state push. Tablet mode -> WRONG_SCREEN (the tablet is the only editor).
     see: "#102-command-table"
     valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
     args:
@@ -196,3 +199,90 @@ commands:
       - field: index
         type: uint16
         description: The game's RESULTS index.
+
+  - id: 0x11
+    name: BEGIN_TOURNAMENT
+    description: Start the tablet's tournament from the staged roster, or update its roster.
+    usage: >-
+      TOURNAMENT_WAIT: tournament_id non-zero, sport one the MENU lists, count 2 to
+      TABLET_ROSTER_MAX, staged entries 0 to count - 1 with non-zero unique uids and printable
+      names, and roster_crc = their CRC-32; then the board enters the sport with every entry
+      selected and lands on MATCH_START (rosterVersion = roster_crc). On a tablet sport screen:
+      same tournament_id and sport, and every current entry keeps its uid at its index (name and
+      colour may change, new entries only appended); a different id, a dropped or moved uid ->
+      INVALID. Anything else invalid -> INVALID, nothing changes. APPLIED and INVALID clear the
+      roster stage. Outside tablet mode -> WRONG_SCREEN.
+    see: "#202-begin-and-roster-updates"
+    valid_on: [TOURNAMENT_WAIT, MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: tournament_id
+        type: uint32
+        description: The tablet's tournament id, non-zero.
+      - field: sport
+        type: uint8
+        enum: sport
+        description: The tournament's sport.
+      - field: count
+        type: uint8
+        description: Staged roster entries to take, 2 to TABLET_ROSTER_MAX.
+      - field: roster_crc
+        type: uint32
+        description: CRC-32 over count (1 B) and the count staged 16-byte entries, as rosterVersion.
+
+  - id: 0x12
+    name: COMMIT_MIRROR
+    description: Replace the board's games with the staged mirror, atomically.
+    usage: >-
+      tournament_id = the running one, count <= RESULTS_MAX, staged games 0 to count - 1 with
+      non-zero unique ids, uids in the roster and different, a legal finished score of the sport,
+      and crc = their CRC-32; else INVALID, nothing changes. APPLIED and INVALID clear the mirror
+      stage. Tablet sport screens only, else WRONG_SCREEN.
+    see: "#204-mirror"
+    valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: tournament_id
+        type: uint32
+        description: The running tournament's id.
+      - field: count
+        type: uint8
+        description: Staged games to take, 0 to RESULTS_MAX.
+      - field: crc
+        type: uint32
+        description: CRC-32 over count (1 B) and the count staged 15-byte games.
+
+  - id: 0x13
+    name: ACK_OUTBOX
+    description: The tablet has stored every board game up to that outbox seq.
+    usage: >-
+      Removes every game with seq <= up_to from the outbox; the games stay on the board until a
+      mirror drops them. up_to below outbox_from is a no-op (APPLIED); a different tournament_id or
+      up_to > outbox_to -> INVALID. Tablet sport screens only, else WRONG_SCREEN.
+    see: "#203-outbox"
+    valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: tournament_id
+        type: uint32
+        description: The running tournament's id.
+      - field: up_to
+        type: uint16
+        description: The last outbox seq the tablet stored.
+
+  - id: 0x14
+    name: SET_SIDE
+    description: Put that roster entry on that court side (hot-swap).
+    usage: >-
+      MATCH_START / INTRO / PLAYING: the current game belongs to the new pair, the score is kept,
+      the colour follows the entry. CELEBRATION / GAME_OVER: sets the next game's pair only, the
+      finished game stays as recorded. side other than 0/1, a uid not in the roster or the other
+      side's uid -> INVALID; the side's current uid is a no-op (APPLIED). Tablet mode only, else
+      WRONG_SCREEN.
+    see: "#205-set_side"
+    valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: side
+        type: uint8
+        enum: side
+        description: The court side to change.
+      - field: uid
+        type: uint32
+        description: The roster entry to put there.

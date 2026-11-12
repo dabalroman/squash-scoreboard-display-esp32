@@ -1,0 +1,225 @@
+characteristic:
+  identifier: scbd.characteristic.tournament
+  name: TOURNAMENT
+  uuid: TOURNAMENT_UUID
+  properties: [write, read]
+  auth_required: true
+  description: >-
+    A tablet's tournament on a board in tablet mode: staged roster and mirror writes, a status
+    read and the outbox of the board's own games.
+  usage: >-
+    Writes are staged byte copies, never acked; BEGIN_TOURNAMENT / COMMIT_MIRROR commit a stage
+    after checking its count and CRC. Reads answer per the connection's cursor: STATUS (at connect)
+    or OUTBOX. Before authentication a read answers the 1-byte [PROTO] and writes are discarded.
+    Optional for a watch (a board before #583 lacks it).
+  see: "#20-tablet-tournament-tournament"
+
+  frames:
+    - frame: roster_entry
+      name: Write ROSTER_ENTRY
+      access: write
+      sender: watch
+      size: 19
+      description: Stages one roster entry for the next BEGIN_TOURNAMENT.
+      usage: >-
+        The tablet writes entries 0 to count - 1, then sends BEGIN_TOURNAMENT. A rewritten index
+        overwrites; index >= TABLET_ROSTER_MAX is discarded.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_write.ROSTER_ENTRY
+          description: Frame type.
+        - field: index
+          type: uint8
+          description: Roster index, 0 to TABLET_ROSTER_MAX - 1.
+        - field: uid
+          type: uint32
+          description: The entry's uid, non-zero, unique in the roster.
+        - field: r
+          type: uint8
+          description: Red component.
+        - field: g
+          type: uint8
+          description: Green component.
+        - field: b
+          type: uint8
+          description: Blue component.
+        - field: name
+          type: utf8s
+          size: ROSTER_NAME_SIZE
+          padding: nul
+          description: Printable ASCII, NUL-padded (a 9-character name has no NUL).
+
+    - frame: mirror_entry
+      name: Write MIRROR_ENTRY
+      access: write
+      sender: watch
+      size: 18
+      description: Stages one game of the tablet's tournament for the next COMMIT_MIRROR.
+      usage: >-
+        The tablet writes games 0 to count - 1 in its list order, then sends COMMIT_MIRROR. A
+        rewritten index overwrites; index >= RESULTS_MAX is discarded.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_write.MIRROR_ENTRY
+          description: Frame type.
+        - field: index
+          type: uint8
+          description: Position in the mirror, 0 to RESULTS_MAX - 1.
+        - field: id
+          type: uint32
+          description: The game's id, non-zero, unique in the mirror.
+        - field: uid_a
+          type: uint32
+          description: One side's roster uid.
+        - field: uid_b
+          type: uint32
+          description: The other side's roster uid.
+        - field: score_a
+          type: uint8
+          description: uid_a's score.
+        - field: score_b
+          type: uint8
+          description: uid_b's score.
+        - field: flags
+          type: uint8
+          enum: game_flags
+          description: Game flags.
+
+    - frame: cursor
+      name: Write CURSOR
+      access: write
+      sender: watch
+      size: 5
+      description: Selects what this connection's next reads return.
+      usage: >-
+        STATUS: every read answers the status frame (seq ignored, send 0). OUTBOX: reads walk the
+        un-ACKed board games from seq on. At connect the cursor is STATUS.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_write.CURSOR
+          description: Frame type.
+        - field: which
+          type: uint8
+          enum: tournament_read
+          description: STATUS or OUTBOX; any other value is discarded.
+        - field: seq
+          type: uint16
+          description: First outbox seq to read (OUTBOX only).
+
+    - frame: status
+      name: Read STATUS
+      access: read
+      sender: board
+      size: 20
+      description: The board's tablet tournament, read first after every (re)connect.
+      usage: >-
+        tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every
+        field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. A different id or 0
+        on TOURNAMENT_WAIT: push the roster and BEGIN.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_read.STATUS
+          description: Frame type.
+        - field: tournament_id
+          type: uint32
+          description: The tablet's tournament id; 0 = none.
+        - field: sport
+          type: uint8
+          enum: sport
+          description: The tournament's sport.
+        - field: roster_count
+          type: uint8
+          description: Entries in the pushed roster.
+        - field: roster_crc
+          type: uint32
+          description: CRC-32 of the pushed roster, as BEGIN_TOURNAMENT's roster_crc and the state's rosterVersion.
+        - field: outbox_from
+          type: uint16
+          description: Seq of the oldest un-ACKed board game; outbox_to + 1 when the outbox is empty.
+        - field: outbox_to
+          type: uint16
+          description: Seq of the newest board game; 0 = none yet.
+        - field: mirror_crc
+          type: uint32
+          description: CRC of the last applied COMMIT_MIRROR; 0 = none since BEGIN_TOURNAMENT.
+
+    - frame: outbox
+      name: Read OUTBOX
+      access: read
+      sender: board
+      size: 19
+      description: The first un-ACKed board game at or after the cursor; the cursor moves past it.
+      usage: >-
+        Uids are the match's own A/B order, as in RESULTS. The tablet reads until OUTBOX_END, then
+        sends ACK_OUTBOX with the last seq once the games are stored.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_read.OUTBOX
+          description: Frame type.
+        - field: seq
+          type: uint16
+          description: The game's outbox seq.
+        - field: id
+          type: uint32
+          description: The game's id.
+        - field: uid_a
+          type: uint32
+          description: The pair's own A uid.
+        - field: uid_b
+          type: uint32
+          description: The pair's own B uid.
+        - field: score_a
+          type: uint8
+          description: A's score.
+        - field: score_b
+          type: uint8
+          description: B's score.
+        - field: flags
+          type: uint8
+          enum: game_flags
+          description: OFFLINE for a watch-added game; PENDING is 0 here.
+
+    - frame: outbox_end
+      name: Read OUTBOX_END
+      access: read
+      sender: board
+      size: 4
+      description: No un-ACKed board game at or after the cursor; the cursor stays.
+      usage: The tablet has the whole outbox. Also answered when no tablet tournament runs.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_read.OUTBOX_END
+          description: Frame type.
+        - field: seq
+          type: uint16
+          description: The cursor.
