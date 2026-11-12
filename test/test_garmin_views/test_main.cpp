@@ -12,6 +12,7 @@
 #include "DeviceMode/PadelMode/PadelMode.h"
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
+#include "DeviceMode/TournamentMode/TournamentWaitMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "DeviceMode/WatchSupport.h"
 #include "../common/check.h"
@@ -147,28 +148,39 @@ static void padelRig(Rig &rig) {
 // --- routing ----------------------------------------------------------------------------
 
 static void test_route_pending_is_busy_even_for_back() {
-    int backs = 0, edits = 0, views = 0;
+    int backs = 0, edits = 0, tablets = 0, views = 0;
     auto goBack = [&] { backs++; return true; };
     auto editGames = [&] { edits++; return AckStatus::Invalid; };
+    auto toTablet = [&] { tablets++; return AckStatus::WrongScreen; };
     auto toView = [&] { views++; return AckStatus::Applied; };
 
-    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Back), true, goBack, editGames, toView));
-    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Score), true, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Back), true, goBack, editGames, toTablet, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Score), true, goBack, editGames, toTablet, toView));
     TEST_ASSERT_EQUAL(AckStatus::Busy,
-                      WatchSupport::route(cmd(CommandId::AddOfflineGame), true, goBack, editGames, toView));
+                      WatchSupport::route(cmd(CommandId::AddOfflineGame), true, goBack, editGames, toTablet, toView));
     TEST_ASSERT_EQUAL(0, backs + edits + views);
 
-    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Back), false, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Back), false, goBack, editGames, toTablet, toView));
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen,
-                      WatchSupport::route(cmd(CommandId::Back), false, [] { return false; }, editGames, toView));
-    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Score), false, goBack, editGames, toView));
+                      WatchSupport::route(cmd(CommandId::Back), false, [] { return false; }, editGames, toTablet, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Score), false, goBack, editGames, toTablet, toView));
     // Offline games never reach the view.
     TEST_ASSERT_EQUAL(AckStatus::Invalid,
-                      WatchSupport::route(cmd(CommandId::AddOfflineGame), false, goBack, editGames, toView));
+                      WatchSupport::route(cmd(CommandId::AddOfflineGame), false, goBack, editGames, toTablet, toView));
     TEST_ASSERT_EQUAL(AckStatus::Invalid,
-                      WatchSupport::route(cmd(CommandId::RemoveOfflineGame), false, goBack, editGames, toView));
+                      WatchSupport::route(cmd(CommandId::RemoveOfflineGame), false, goBack, editGames, toTablet, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Busy,
+                      WatchSupport::route(cmd(CommandId::CommitMirror), true, goBack, editGames, toTablet, toView));
+    // Tablet commands never reach the view either.
+    const CommandId tabletIds[] = {CommandId::BeginTournament, CommandId::CommitMirror, CommandId::AckOutbox,
+                                   CommandId::SetSide};
+    for (const CommandId id : tabletIds) {
+        TEST_ASSERT_EQUAL(AckStatus::WrongScreen,
+                          WatchSupport::route(cmd(id), false, goBack, editGames, toTablet, toView));
+    }
     TEST_ASSERT_EQUAL(1, backs);
     TEST_ASSERT_EQUAL(2, edits);
+    TEST_ASSERT_EQUAL(4, tablets);
     TEST_ASSERT_EQUAL(1, views);
 }
 
@@ -1092,6 +1104,299 @@ static void test_focus_wrong_screen_while_playing() {
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(focus(UID_ANNA)));
 }
 
+// --- Tablet tournament (spec 20): TOURNAMENT_WAIT -> BEGIN -> a tablet sport mode ---------
+
+static const uint32_t TID = 0x7AB1E701;
+
+// GarminService's stages as the tablet leaves them; the roster CRC as the link computes it.
+struct FakeTabletLink : TabletLink {
+    uint8_t roster[Garmin::TABLET_ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
+    uint8_t mirror[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
+    uint32_t rosterVersion = 0;
+    int rosterTakes = 0;
+    int mirrorTakes = 0;
+
+    void takeRosterStage(uint8_t count, uint8_t *out) override {
+        if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
+        memcpy(out, roster, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        memset(roster, 0, sizeof(roster));
+        rosterTakes++;
+    }
+
+    void takeMirrorStage(uint8_t count, uint8_t *out) override {
+        if (count > Garmin::RESULTS_MAX) count = Garmin::RESULTS_MAX;
+        memcpy(out, mirror, static_cast<size_t>(count) * Garmin::GAME_ENTRY_SIZE);
+        memset(mirror, 0, sizeof(mirror));
+        mirrorTakes++;
+    }
+
+    void setTabletRoster(const uint8_t *entries, const uint8_t count) override {
+        rosterVersion = Garmin::rosterVersion(count, entries);
+    }
+
+    void stageEntry(const uint8_t index, const uint32_t uid, const char *name) {
+        uint8_t *e = roster + static_cast<size_t>(index) * Garmin::ROSTER_ENTRY_SIZE;
+        Garmin::putU32(e, uid);
+        e[4] = 0x10;
+        e[5] = static_cast<uint8_t>(0x20 + index);
+        e[6] = 0x30;
+        memset(e + 7, 0, Garmin::ROSTER_NAME_SIZE);
+        memcpy(e + 7, name, strlen(name));
+    }
+
+    void stageGame(const uint8_t index, const Garmin::GameEntry &g) {
+        Garmin::buildGameEntry(g, mirror + static_cast<size_t>(index) * Garmin::GAME_ENTRY_SIZE);
+    }
+};
+
+static const uint32_t UID_T[] = {0x0000A001, 0x0000B002, 0x0000C003, 0x0000D004};
+static const char *const NAME_T[] = {"ALA", "OLA", "EWA", "IGA"};
+
+// Stages entries 0..count-1 and returns their CRC.
+static uint32_t stageRoster(FakeTabletLink &link, const uint8_t count) {
+    for (uint8_t i = 0; i < count; i++) link.stageEntry(i, UID_T[i], NAME_T[i]);
+    return Garmin::rosterVersion(count, link.roster);
+}
+
+static WatchCommand begin(const uint32_t tid, const uint8_t sportId, const uint8_t count, const uint32_t crc) {
+    WatchCommand c = cmd(CommandId::BeginTournament);
+    c.tournamentId = tid;
+    c.sport = sportId;
+    c.count = count;
+    c.crc = crc;
+    return c;
+}
+
+static WatchCommand commitMirror(const uint32_t tid, const uint8_t count, const uint32_t crc) {
+    WatchCommand c = cmd(CommandId::CommitMirror);
+    c.tournamentId = tid;
+    c.count = count;
+    c.crc = crc;
+    return c;
+}
+
+static WatchCommand ackOutbox(const uint32_t tid, const uint16_t upTo) {
+    WatchCommand c = cmd(CommandId::AckOutbox);
+    c.tournamentId = tid;
+    c.upTo = upTo;
+    return c;
+}
+
+static WatchCommand setSide(const uint8_t side, const uint32_t uid) {
+    WatchCommand c = cmd(CommandId::SetSide, side);
+    c.uid = uid;
+    return c;
+}
+
+// The active pair's games for roster index `id`, as the views draw them.
+static uint8_t tally(const Tournament &tournament, const uint8_t id) {
+    return tournament.getActiveMatch()->getMatchResult().scoreOf(id);
+}
+
+/** What main.cpp does: TOURNAMENT_WAIT, then on BEGIN the sport's mode on the session. */
+struct TabletRig : Rig {
+    TabletSession session;
+    FakeTabletLink link;
+    TabletContext context{session, link};
+    std::vector<DeviceModeState> begun;
+
+    void toWait() {
+        g_fakeMillis = 100000;
+        mode.reset(new TournamentWaitMode(led, back, eink, remote, onModeChange(), session, link,
+                                          [this](const DeviceModeState state) { begun.push_back(state); }));
+        tick();
+    }
+
+    // main.cpp's buildDeviceMode for a tablet target.
+    void buildSport() {
+        TEST_ASSERT_EQUAL(1, begun.size());
+        TEST_ASSERT_EQUAL(DeviceModeState::SquashMode, begun[0]);
+        mode.reset();
+        mode.reset(new SquashMode(led, back, eink, remote, onModeChange(), session.profiles(),
+                                  std::function<void(CelebrationVariant)>(), &context));
+        tick();
+    }
+};
+
+static void test_tablet_wait_screen_and_begin_refusals() {
+    TabletRig rig;
+    rig.toWait();
+    TEST_ASSERT_EQUAL_HEX8(0x04, rig.describe().screen());
+    TEST_ASSERT_NULL(rig.mode->getTournament());
+    TEST_ASSERT_FALSE(rig.mode->isInMatch());
+
+    // The other tablet commands: this is not a tablet sport screen.
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(commitMirror(TID, 0, Garmin::mirrorCrc(0, nullptr))));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(ackOutbox(TID, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_T[0])));
+    TEST_ASSERT_EQUAL(0, rig.link.rosterTakes + rig.link.mirrorTakes);
+
+    // INVALID clears the stage: each refusal re-stages.
+    const uint32_t crc = stageRoster(rig.link, 2);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 2, crc ^ 1)));   // CRC
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 2, crc)));       // stage cleared
+    stageRoster(rig.link, 2);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(0, 0x01, 2, crc)));         // tid 0
+    stageRoster(rig.link, 2);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x09, 2, crc)));       // no such sport
+    stageRoster(rig.link, 2);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x00, 2, crc)));       // sport none
+    // 17 entries: the stage holds 16, so the count alone is refused.
+    for (uint8_t i = 0; i < Garmin::TABLET_ROSTER_MAX; i++) {
+        rig.link.stageEntry(i, 0x00010000u + i, "P");
+    }
+    const uint32_t crc16 = Garmin::rosterVersion(16, rig.link.roster);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 17, crc16)));
+    TEST_ASSERT_FALSE(rig.session.active());
+    TEST_ASSERT_EQUAL(0, rig.begun.size());
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+
+    // C leaves to the menu, short or long.
+    TEST_ASSERT_TRUE(rig.mode->goBack());
+    TEST_ASSERT_EQUAL(1, rig.requested.size());
+    TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+}
+
+static void test_tablet_commands_wrong_screen_outside_tablet_mode() {
+    Rig rig;
+    squashRig(rig);
+    rig.toMatchStart();
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(begin(TID, 0x01, 2, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(commitMirror(TID, 0, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(ackOutbox(TID, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_ANNA)));
+    TEST_ASSERT_FALSE(rig.mode->getTournament()->isTablet());
+
+    BatterySensor sensor;
+    BatteryMonitor battery(sensor);
+    menuRig(rig, battery);
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(begin(TID, 0x01, 2, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(ackOutbox(TID, 0)));
+}
+
+// BEGIN -> MATCH_START -> a played game -> outbox -> ACK -> mirror -> RESULTS, then a re-push.
+static void test_tablet_begin_game_ack_mirror() {
+    TabletRig rig;
+    rig.toWait();
+    const uint32_t crc = stageRoster(rig.link, 3);
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(begin(TID, 0x01, 3, crc)));
+    TEST_ASSERT_TRUE(rig.session.active());
+    TEST_ASSERT_EQUAL_HEX32(crc, rig.link.rosterVersion);
+    // A second BEGIN before the swap: one tournament runs.
+    stageRoster(rig.link, 3);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 3, crc)));
+
+    rig.buildSport();
+    const Tournament *tournament = rig.mode->getTournament();
+    TEST_ASSERT_TRUE(tournament->isTablet());
+    TEST_ASSERT_EQUAL_HEX32(TID, tournament->getId());
+    // Every entry in, no CHOOSE_PLAYERS: MATCH_START with the first two.
+    TEST_ASSERT_EQUAL(3, rig.session.profiles().size());
+    Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x11, body.screen());
+    TEST_ASSERT_EQUAL_HEX32(0x07, u32(body.data()));   // every entry selected
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], u32(body.data() + 4));
+    TEST_ASSERT_EQUAL_HEX32(UID_T[1], u32(body.data() + 8));
+    TEST_ASSERT_TRUE(rig.mode->isInMatch());
+
+    // A tracked game: pending (tally, not RESULTS) and in the outbox as seq 1.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartMatch)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    for (int i = 0; i < 20 && rig.describe().screen() == 0x13; i++) {
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+        rig.commit();
+        if (rig.mode->viewChangePending()) rig.tick();
+    }
+    TEST_ASSERT_EQUAL_HEX8(0x14, rig.describe().screen());
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::NextGame)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
+    TEST_ASSERT_EQUAL(0, tournament->listedCount());
+    TEST_ASSERT_EQUAL(1, tournament->outboxCount());
+    TEST_ASSERT_EQUAL(1, tally(*tournament, 0));   // the court's tally counts it
+    uint16_t seq = 0;
+    uint8_t entry[Garmin::GAME_ENTRY_SIZE];
+    TEST_ASSERT_TRUE(tournament->outboxEntry(0, seq, entry));
+    TEST_ASSERT_EQUAL(1, seq);
+    const Garmin::GameEntry played = Garmin::parseGameEntry(entry);
+    TEST_ASSERT_NOT_EQUAL(0, played.id);
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], played.uidA);
+    TEST_ASSERT_EQUAL_HEX32(UID_T[1], played.uidB);
+    TEST_ASSERT_EQUAL(11, played.scoreA);
+    TEST_ASSERT_EQUAL(0, played.scoreB);
+
+    const Garmin::TabletStatus status = tournament->tabletStatus(rig.session.sport(), rig.session.count(),
+                                                                 rig.session.rosterCrc());
+    TEST_ASSERT_EQUAL_HEX32(TID, status.tournamentId);
+    TEST_ASSERT_EQUAL(1, status.outboxFrom);
+    TEST_ASSERT_EQUAL(1, status.outboxTo);
+
+    // ACK: another tid or past outbox_to is INVALID; then the outbox empties, games stay.
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackOutbox(TID ^ 1, 1)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackOutbox(TID, 2)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackOutbox(TID, 1)));
+    TEST_ASSERT_EQUAL(0, tournament->outboxCount());
+    TEST_ASSERT_EQUAL(1, tally(*tournament, 0));
+
+    // Mirror: the tablet accepted it (no PENDING flag) and adds a (+) game of another pair.
+    Garmin::GameEntry accepted = played;
+    accepted.flags = 0;
+    const Garmin::GameEntry plus = {0x5EED0001, UID_T[2], UID_T[1], 11, 9, 0};
+    rig.link.stageGame(0, accepted);
+    rig.link.stageGame(1, plus);
+    const uint32_t mirrorCrc = Garmin::mirrorCrc(2, rig.link.mirror);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(commitMirror(TID ^ 1, 2, mirrorCrc)));   // other tid
+    rig.link.stageGame(0, accepted);
+    rig.link.stageGame(1, plus);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(commitMirror(TID, 200, mirrorCrc)));      // > 128
+    TEST_ASSERT_EQUAL(0, tournament->listedCount());
+    rig.link.stageGame(0, accepted);
+    rig.link.stageGame(1, plus);
+    const uint16_t rev = tournament->getRev();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(commitMirror(TID, 2, mirrorCrc)));
+    TEST_ASSERT_EQUAL_HEX32(mirrorCrc, tournament->getMirrorCrc());
+    TEST_ASSERT_NOT_EQUAL(rev, tournament->getRev());
+    TEST_ASSERT_EQUAL(2, tournament->listedCount());
+    expectListed(*tournament, 0, UID_T[0], UID_T[1], 11, 0, 1);
+    expectListed(*tournament, 1, UID_T[2], UID_T[1], 11, 9, 1);
+    // MATCH_START still shows its pair, the tally unchanged.
+    TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
+    TEST_ASSERT_EQUAL(1, tally(*tournament, 0));
+
+    // Re-push: same tid, a renamed entry and a late joiner appended; rosterVersion moves.
+    stageRoster(rig.link, 3);
+    rig.link.stageEntry(0, UID_T[0], "ALICJA");
+    rig.link.stageEntry(3, UID_T[3], NAME_T[3]);
+    const uint32_t crc4 = Garmin::rosterVersion(4, rig.link.roster);
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(begin(TID, 0x01, 4, crc4)));
+    TEST_ASSERT_EQUAL_HEX32(crc4, rig.link.rosterVersion);
+    TEST_ASSERT_EQUAL(4, rig.session.count());
+    TEST_ASSERT_EQUAL_STRING("ALICJA", rig.session.profiles()[0]->getName());
+    TEST_ASSERT_EQUAL(2, tournament->listedCount());   // games untouched
+    // The joiner is selected: a watch's offline game with them is accepted and enters the outbox.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_T[3], UID_T[0], 11, 5)));
+    TEST_ASSERT_EQUAL(1, tournament->outboxCount());
+    TEST_ASSERT_EQUAL(3, tournament->listedCount());
+    // A different tid, a dropped entry: INVALID, nothing changes.
+    stageRoster(rig.link, 4);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID ^ 1, 0x01, 4, Garmin::rosterVersion(4, rig.link.roster))));
+    stageRoster(rig.link, 2);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 2, Garmin::rosterVersion(2, rig.link.roster))));
+    TEST_ASSERT_EQUAL(4, rig.session.count());
+    TEST_ASSERT_EQUAL_HEX32(crc4, rig.link.rosterVersion);
+    // SET_SIDE is not wired yet.
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_T[2])));
+
+    // Long C on a tablet MATCH_START leaves the tournament for the menu.
+    TEST_ASSERT_TRUE(rig.mode->goBack());
+    TEST_ASSERT_EQUAL(1, rig.requested.size());
+    TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_route_pending_is_busy_even_for_back);
@@ -1123,5 +1428,8 @@ int main(int, char **) {
     RUN_TEST(test_choose_players_focus);
     RUN_TEST(test_choose_players_focus_padel_and_volleyball);
     RUN_TEST(test_focus_wrong_screen_while_playing);
+    RUN_TEST(test_tablet_wait_screen_and_begin_refusals);
+    RUN_TEST(test_tablet_commands_wrong_screen_outside_tablet_mode);
+    RUN_TEST(test_tablet_begin_game_ack_mirror);
     return UNITY_END();
 }

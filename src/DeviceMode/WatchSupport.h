@@ -17,13 +17,19 @@
  * View, no display, so the routing and the screen data are tested without the views.
  */
 namespace WatchSupport {
+    // BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX, SET_SIDE (spec 20): the mode's, never the view's.
+    inline bool isTabletCommand(const Garmin::CommandId id) {
+        return id == Garmin::CommandId::BeginTournament || id == Garmin::CommandId::CommitMirror
+               || id == Garmin::CommandId::AckOutbox || id == Garmin::CommandId::SetSide;
+    }
+
     /**
      * Mode-level routing. A setState() lands at the mode's next loop(), so while one is
      * pending the view on screen is the outgoing one and must not take the command.
      */
-    template <typename GoBack, typename EditGames, typename ToView>
+    template <typename GoBack, typename EditGames, typename ToTablet, typename ToView>
     Garmin::AckStatus route(const WatchCommand &command, const bool viewChangePending, GoBack goBack,
-                            EditGames editGames, ToView toView) {
+                            EditGames editGames, ToTablet toTablet, ToView toView) {
         if (viewChangePending) {
             return Garmin::AckStatus::Busy;
         }
@@ -32,6 +38,9 @@ namespace WatchSupport {
         }
         if (command.id == Garmin::CommandId::AddOfflineGame || command.id == Garmin::CommandId::RemoveOfflineGame) {
             return editGames();
+        }
+        if (isTabletCommand(command.id)) {
+            return toTablet();
         }
         return toView();
     }

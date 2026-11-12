@@ -79,6 +79,15 @@ public:
                 if (status == Garmin::AckStatus::Applied) activeView->onTournamentEdited();
                 return status;
             },
+            [this, &command] {
+                const Garmin::AckStatus status = handleTabletCommand(command);
+                // A re-push renames or adds entries, a mirror changes the standings.
+                if (status == Garmin::AckStatus::Applied && command.id != Garmin::CommandId::AckOutbox) {
+                    activeView->onTournamentEdited();
+                    activeView->queueRender();
+                }
+                return status;
+            },
             [this, &command] { return activeView->handleWatchCommand(command); }
         );
     }
@@ -86,6 +95,12 @@ public:
     // ADD / REMOVE_OFFLINE_GAME: a sport mode on a tournament screen applies them to its
     // tournament (WatchSupport::editOfflineGames); everywhere else WRONG_SCREEN.
     virtual Garmin::AckStatus editOfflineGames(const WatchCommand &) {
+        return Garmin::AckStatus::WrongScreen;
+    }
+
+    // BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX, SET_SIDE (spec 20): TOURNAMENT_WAIT and the
+    // sport modes in tablet mode take them (TabletSupport); everywhere else WRONG_SCREEN.
+    virtual Garmin::AckStatus handleTabletCommand(const WatchCommand &) {
         return Garmin::AckStatus::WrongScreen;
     }
 

@@ -279,9 +279,8 @@ public:
      * own); it follows the selection and resets when the title changes.
      *
      * Each extra footer line makes the footer taller, but all three heights leave
-     * 6 rows visible, so the 6-entry MODE menu and the 6-row CONFIG menu fit
-     * without scrolling whatever their footer holds. A 7th MODE entry would start
-     * scrolling it.
+     * 6 rows visible, so the 6-row CONFIG menu fits without scrolling whatever its
+     * footer holds; the 7-entry MODE menu (TOURNAMENT) scrolls by one row.
      */
     void showMenu(const char *title, const EInkMenuRow *rows, const uint8_t rowCount,
                   const uint8_t selected, const EInkFooter &footer = EInkFooter()) {

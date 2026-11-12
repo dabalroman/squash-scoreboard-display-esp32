@@ -5,6 +5,7 @@
 #include "PadelModeState.h"
 #include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
+#include "DeviceMode/TabletSupport.h"
 #include "DeviceMode/View.h"
 #include "Tournament/Tournament.h"
 #include "Tournament/SelectionStore.h"
@@ -23,6 +24,14 @@ class PadelMode final : public DeviceMode {
     Tournament tournament;
     std::vector<UserProfile *> &users;
     std::function<void(CelebrationVariant)> onMatchOver;
+    // Non-null: a tablet tournament (spec 20) - the pushed roster, no picker, no SelectionStore.
+    TabletContext *tablet;
+
+    bool onTournamentScreen() const {
+        return state == PadelModeState::MatchStartGame || state == PadelModeState::MatchIntro
+               || state == PadelModeState::GamePlaying
+               || state == PadelModeState::GameCelebration || state == PadelModeState::GameOver;
+    }
 
     void setState(const PadelModeState newState) {
         state = newState;
@@ -108,14 +117,21 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        std::function<void(CelebrationVariant)> onMatchOver
+        std::function<void(CelebrationVariant)> onMatchOver,
+        TabletContext *tablet = nullptr
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
-          tournament(std::make_unique<PadelRules>()),
-          users(users), onMatchOver(std::move(onMatchOver)) {
+          tournament(std::make_unique<PadelRules>(), tablet != nullptr ? tablet->session.tournamentId() : 0),
+          users(users), onMatchOver(std::move(onMatchOver)), tablet(tablet) {
 
         ledDisplay.setSameSideMode(true);
         backDisplay.setSameSideMode(true);
+        if (tablet != nullptr) {
+            // The tablet picked the players: every entry in, straight to MATCH_START.
+            for (UserProfile *user: users) tournament.addPlayer(*user);
+            setState(PadelModeState::MatchStartGame);
+            return;
+        }
         SelectionStore::restore(SelectionStore::Sport::Padel, tournament, users);
         setState(PadelModeState::TournamentChoosePlayers);
     }
@@ -126,10 +142,11 @@ public:
 
     // Not on CHOOSE_PLAYERS: the selection, and so the players an ADD may name, is still open.
     Garmin::AckStatus editOfflineGames(const WatchCommand &command) override {
-        const bool onTournamentScreen = state == PadelModeState::MatchStartGame || state == PadelModeState::MatchIntro
-                                        || state == PadelModeState::GamePlaying
-                                        || state == PadelModeState::GameCelebration || state == PadelModeState::GameOver;
-        return WatchSupport::editOfflineGames(onTournamentScreen ? &tournament : nullptr, command);
+        return WatchSupport::editOfflineGames(onTournamentScreen() ? &tournament : nullptr, command);
+    }
+
+    Garmin::AckStatus handleTabletCommand(const WatchCommand &command) override {
+        return TabletSupport::handle(tablet, tournament, command, onTournamentScreen());
     }
 
     bool isInMatch() const override {
@@ -147,7 +164,12 @@ public:
                 onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
                 return true;
             case PadelModeState::MatchStartGame:
-                setState(PadelModeState::TournamentChoosePlayers);
+                // Tablet mode has no picker: the tournament ends here.
+                if (tablet != nullptr) {
+                    onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                } else {
+                    setState(PadelModeState::TournamentChoosePlayers);
+                }
                 return true;
             case PadelModeState::MatchIntro:
                 // No game exists yet (GamePlaying creates it), so nothing is lost.

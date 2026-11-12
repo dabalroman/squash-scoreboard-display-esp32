@@ -197,6 +197,8 @@ private:
              DeviceModeState::VolleyballMode, Colors::Yellow, true},
             {Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED, Str::MODE_OPTION_SHORT_VOLLEYBALL,
              Str::LED_MODE_SHORT_VOLLEYBALL, DeviceModeState::ShortVolleyballMode, Colors::Orange, true},
+            {Str::MODE_OPTION_TOURNAMENT_OLED, Str::MODE_OPTION_TOURNAMENT, Str::LED_MODE_TOURNAMENT,
+             DeviceModeState::TournamentMode, Colors::Pink, true},
             {Str::MODE_OPTION_PLAYERS_OLED, Str::MODE_OPTION_PLAYERS, Str::LED_MODE_PLAYERS,
              DeviceModeState::PlayerSetupMode, Colors::Aqua, Board::HAS_PLAYER_SETUP},
             {Str::MODE_OPTION_CONFIG_OLED, Str::MODE_OPTION_CONFIG, Str::LED_MODE_CONFIG,

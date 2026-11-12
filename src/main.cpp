@@ -19,6 +19,8 @@
 #include "DeviceMode/PadelMode/PadelMode.h"
 #include "DeviceMode/Celebration/CelebrationVariant.h"
 #include "DeviceMode/PlayerSetupMode/PlayerSetupMode.h"
+#include "DeviceMode/TabletSupport.h"
+#include "DeviceMode/TournamentMode/TournamentWaitMode.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "Tournament/Rules/VolleyballRules.h"
 #include "RemoteInput/RemoteInputManager.h"
@@ -88,12 +90,29 @@ DeviceModeState deviceState = DeviceModeState::Booting;
 // swap itself is deferred to one safe point in loop() - see requestDeviceMode().
 DeviceModeState pendingMode = DeviceModeState::ModeSwitchingMode;
 bool modeChangePending = false;
+// The pending sport mode is built for the tablet tournament (spec 20).
+bool pendingTablet = false;
 
 PlayerRoster playerRoster(FactoryRosters::PLAYERS_KEY);
 PlayerRoster teamRoster(FactoryRosters::TEAMS_KEY);
 
 // Garmin App Remote. Off by default; while off every hook below is a cheap no-op.
 GarminService garminService;
+// A tablet's tournament (spec 20): RAM only, from BEGIN until a non-tablet mode is built.
+TabletSession tabletSession;
+
+class GarminTabletLink final : public TabletLink {
+public:
+    void takeRosterStage(const uint8_t count, uint8_t *out) override { garminService.takeRosterStage(count, out); }
+    void takeMirrorStage(const uint8_t count, uint8_t *out) override { garminService.takeMirrorStage(count, out); }
+    void setTabletRoster(const uint8_t *entries, const uint8_t count) override {
+        garminService.setTabletRoster(entries, count);
+    }
+};
+
+GarminTabletLink tabletLink;
+TabletContext tabletContext = {tabletSession, tabletLink};
+
 PlayerSetupWebUi playerSetupWebUi(playerRoster, teamRoster, preferencesManager, [](const uint8_t brightness) {
     ledDisplay.setBrightness(brightness);
 });
@@ -156,7 +175,14 @@ void logRosterLoad(const PlayerRoster &roster) {
  */
 void requestDeviceMode(const DeviceModeState deviceModeState) {
     pendingMode = deviceModeState;
+    pendingTablet = false;
     modeChangePending = true;
+}
+
+// TOURNAMENT_WAIT's BEGIN: the sport's mode on the session's roster.
+void requestTabletMode(const DeviceModeState deviceModeState) {
+    requestDeviceMode(deviceModeState);
+    pendingTablet = true;
 }
 
 // Fired once per game from each sport's GameCelebration state.
@@ -168,11 +194,25 @@ void playMatchOver(const CelebrationVariant variant) {
     }
 }
 
-void buildDeviceMode(const DeviceModeState deviceModeState) {
+void buildDeviceMode(const DeviceModeState deviceModeState, const bool tablet = false) {
     deviceState = deviceModeState;
+    TabletContext *tabletMode = tablet && tabletSession.active() ? &tabletContext : nullptr;
+    if (tabletMode == nullptr) {
+        // The outgoing mode, which held pointers to the session's profiles, is already gone.
+        if (tabletSession.active()) {
+            tabletSession.end();
+            printLn("Tablet: tournament ended");
+        }
+        // Also drops what a tablet staged on a TOURNAMENT_WAIT left without BEGIN (spec 20).
+        garminService.endTablet();
+    }
     // The link switches with the new mode's first published state (spec 12), so a state's uids
     // and its rosterVersion always name the same roster.
-    garminService.useRoster(WatchSport::fromModeState(deviceModeState).roster);
+    if (tabletMode != nullptr) {
+        garminService.useTabletRoster();
+    } else {
+        garminService.useRoster(WatchSport::fromModeState(deviceModeState).roster);
+    }
 
     switch (deviceModeState) {
         default:
@@ -208,8 +248,9 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                playerRoster.profiles(),
-                playMatchOver
+                tabletMode != nullptr ? tabletSession.profiles() : playerRoster.profiles(),
+                playMatchOver,
+                tabletMode
             );
             break;
 
@@ -220,9 +261,10 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                teamRoster.profiles(),
+                tabletMode != nullptr ? tabletSession.profiles() : teamRoster.profiles(),
                 std::make_unique<VolleyballRules>(),
-                playMatchOver
+                playMatchOver,
+                tabletMode
             );
             break;
 
@@ -233,9 +275,10 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                teamRoster.profiles(),
+                tabletMode != nullptr ? tabletSession.profiles() : teamRoster.profiles(),
                 std::make_unique<ShortVolleyballRules>(),
-                playMatchOver
+                playMatchOver,
+                tabletMode
             );
             break;
 
@@ -258,8 +301,22 @@ void buildDeviceMode(const DeviceModeState deviceModeState) {
                 einkDisplay,
                 remoteInputManager,
                 [](const DeviceModeState state) { requestDeviceMode(state); },
-                teamRoster.profiles(),
-                playMatchOver
+                tabletMode != nullptr ? tabletSession.profiles() : teamRoster.profiles(),
+                playMatchOver,
+                tabletMode
+            );
+            break;
+
+        case DeviceModeState::TournamentMode:
+            deviceMode = std::make_unique<TournamentWaitMode>(
+                ledDisplay,
+                *backDisplay,
+                einkDisplay,
+                remoteInputManager,
+                [](const DeviceModeState state) { requestDeviceMode(state); },
+                tabletSession,
+                tabletLink,
+                [](const DeviceModeState state) { requestTabletMode(state); }
             );
             break;
     }
@@ -421,10 +478,12 @@ void applyWatchCommand() {
     }
 
     // Busy screens take nothing (spec 10.2): ConfigMode::goBack() saves and leaves, which a
-    // watch must not trigger. PROFILE takes BACK only.
+    // watch must not trigger. PROFILE takes BACK only, TOURNAMENT_WAIT BEGIN_TOURNAMENT only (spec 20.6).
     const WatchModeInfo info = WatchSport::fromModeState(deviceState);
-    const bool screenTakesIt = info.viewDescribes
-                               || (info.screen == Garmin::ScreenId::Profile && command.id == Garmin::CommandId::Back);
+    const bool screenTakesIt =
+        info.viewDescribes
+        || (info.screen == Garmin::ScreenId::Profile && command.id == Garmin::CommandId::Back)
+        || (info.screen == Garmin::ScreenId::TournamentWait && command.id == Garmin::CommandId::BeginTournament);
     const Garmin::AckStatus status = screenTakesIt
                                          ? deviceMode->handleWatchCommand(command)
                                          : Garmin::AckStatus::WrongScreen;
@@ -440,8 +499,10 @@ void applyWatchCommand() {
         return;
     }
 
-    // A client's record keeping: no screen change, no sound; the ack pushes the state.
-    if (command.id == Garmin::CommandId::AddOfflineGame || command.id == Garmin::CommandId::RemoveOfflineGame) {
+    // A client's record keeping: no sound; the ack pushes the state. A tablet's BEGIN on
+    // TOURNAMENT_WAIT changes the screen, but nobody at the board pressed anything.
+    if (command.id == Garmin::CommandId::AddOfflineGame || command.id == Garmin::CommandId::RemoveOfflineGame
+        || WatchSupport::isTabletCommand(command.id)) {
         return;
     }
 
@@ -450,6 +511,22 @@ void applyWatchCommand() {
         gBuzzer.trigger();
     }
     einkDisplay.dismissSplash();
+}
+
+// The i-th un-ACKed board game for the OUTBOX snapshot; `context` is the Tournament.
+void outboxAt(const void *context, const uint16_t i, uint16_t &seq, uint8_t *out) {
+    static_cast<const Tournament *>(context)->outboxEntry(i, seq, out);
+}
+
+// STATUS / OUTBOX (spec 20): the tablet tournament's, all zero elsewhere (TOURNAMENT_WAIT reads tid 0).
+void publishTabletSnapshot(const Tournament *tournament) {
+    if (tournament != nullptr && tournament->isTablet() && tabletSession.active()) {
+        garminService.publishTablet(
+            tournament->tabletStatus(tabletSession.sport(), tabletSession.count(), tabletSession.rosterCrc()),
+            tournament->outboxCount(), outboxAt, tournament);
+    } else {
+        garminService.publishTablet(Garmin::TabletStatus{}, 0, outboxAt, nullptr);
+    }
 }
 
 void publishWatchState() {
@@ -467,7 +544,9 @@ void publishWatchState() {
         state.setBusy(info.screen);
     }
     state.setSport(info.sport);
-    garminService.publishResults(deviceMode->getTournament());
+    const Tournament *tournament = deviceMode->getTournament();
+    garminService.publishResults(tournament);
+    publishTabletSnapshot(tournament);
     garminService.publish(state, lastUpdate);
 }
 
@@ -558,7 +637,7 @@ void loop() {
         // reset() before the build: the outgoing teardown (PlayerSetupMode drops its AP)
         // runs before the incoming constructor, and peak heap stays lower.
         deviceMode.reset();
-        buildDeviceMode(pendingMode);
+        buildDeviceMode(pendingMode, pendingTablet);
     }
 
     if (overlay.takeFinished()) {

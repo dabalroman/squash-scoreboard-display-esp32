@@ -5,6 +5,7 @@
 #include "SquashModeState.h"
 #include "Utils.h"
 #include "DeviceMode/DeviceMode.h"
+#include "DeviceMode/TabletSupport.h"
 #include "DeviceMode/View.h"
 #include "Tournament/Tournament.h"
 #include "Tournament/SelectionStore.h"
@@ -23,6 +24,14 @@ class SquashMode final : public DeviceMode {
     Tournament tournament;
     std::vector<UserProfile *> &users;
     std::function<void(CelebrationVariant)> onMatchOver;
+    // Non-null: a tablet tournament (spec 20) - the pushed roster, no picker, no SelectionStore.
+    TabletContext *tablet;
+
+    bool onTournamentScreen() const {
+        return state == SquashModeState::MatchStartGame || state == SquashModeState::MatchIntro
+               || state == SquashModeState::GamePlaying
+               || state == SquashModeState::GameCelebration || state == SquashModeState::GameOver;
+    }
 
     void setState(const SquashModeState newState) {
         state = newState;
@@ -108,14 +117,21 @@ public:
         RemoteInputManager &remoteInputManager,
         const std::function<void(DeviceModeState)> &onDeviceModeChange,
         std::vector<UserProfile *> &users,
-        std::function<void(CelebrationVariant)> onMatchOver
+        std::function<void(CelebrationVariant)> onMatchOver,
+        TabletContext *tablet = nullptr
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
-          tournament(std::make_unique<SquashRules>()),
-          users(users), onMatchOver(std::move(onMatchOver)) {
+          tournament(std::make_unique<SquashRules>(), tablet != nullptr ? tablet->session.tournamentId() : 0),
+          users(users), onMatchOver(std::move(onMatchOver)), tablet(tablet) {
 
         ledDisplay.setSameSideMode(false);
         backDisplay.setSameSideMode(false);
+        if (tablet != nullptr) {
+            // The tablet picked the players: every entry in, straight to MATCH_START.
+            for (UserProfile *user: users) tournament.addPlayer(*user);
+            setState(SquashModeState::MatchStartGame);
+            return;
+        }
         SelectionStore::restore(SelectionStore::Sport::Squash, tournament, users);
         setState(SquashModeState::TournamentChoosePlayers);
     }
@@ -126,10 +142,11 @@ public:
 
     // Not on CHOOSE_PLAYERS: the selection, and so the players an ADD may name, is still open.
     Garmin::AckStatus editOfflineGames(const WatchCommand &command) override {
-        const bool onTournamentScreen = state == SquashModeState::MatchStartGame || state == SquashModeState::MatchIntro
-                                        || state == SquashModeState::GamePlaying
-                                        || state == SquashModeState::GameCelebration || state == SquashModeState::GameOver;
-        return WatchSupport::editOfflineGames(onTournamentScreen ? &tournament : nullptr, command);
+        return WatchSupport::editOfflineGames(onTournamentScreen() ? &tournament : nullptr, command);
+    }
+
+    Garmin::AckStatus handleTabletCommand(const WatchCommand &command) override {
+        return TabletSupport::handle(tablet, tournament, command, onTournamentScreen());
     }
 
     bool isInMatch() const override {
@@ -147,7 +164,12 @@ public:
                 onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
                 return true;
             case SquashModeState::MatchStartGame:
-                setState(SquashModeState::TournamentChoosePlayers);
+                // Tablet mode has no picker: the tournament ends here.
+                if (tablet != nullptr) {
+                    onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                } else {
+                    setState(SquashModeState::TournamentChoosePlayers);
+                }
                 return true;
             case SquashModeState::MatchIntro:
                 // No game exists yet (GamePlaying creates it), so nothing is lost.

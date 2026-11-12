@@ -132,11 +132,11 @@ public:
                                                     matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
     }
 
-    // Tablet mode (spec 20): the tablet's non-zero tournament id.
+    // Tablet mode (spec 20) under the tablet's tournament id; 0 = board mode, as the one-argument form.
     Tournament(std::unique_ptr<Rules> r, const uint32_t tabletTid)
         : rules(std::move(r)), id(tabletTid != 0 ? tabletTid : newId()),
           matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
-        log.tablet = true;
+        log.tablet = tabletTid != 0;
     }
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
