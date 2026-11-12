@@ -531,13 +531,13 @@ void GarminService::publish(const WatchState &state, const uint32_t now) {
 
 void GarminService::publishResults(const Tournament *tournament) {
     if (tournament == nullptr) {
-        gLink.syncResults(0, 0, [](uint16_t, uint8_t *) {});
+        gLink.syncResults(0, 0, 0, [](uint16_t, uint8_t *) {});
         return;
     }
-    const size_t count = tournament->getFinishedGameCount();
+    const size_t count = tournament->listedCount();
     const uint16_t listed = static_cast<uint16_t>(count > Garmin::RESULTS_MAX ? Garmin::RESULTS_MAX : count);
-    gLink.syncResults(tournament->getId(), listed, [tournament](const uint16_t i, uint8_t *out) {
-        WatchSupport::resultEntry(tournament->getFinishedGame(i), out);
+    gLink.syncResults(tournament->getId(), tournament->getRev(), listed, [tournament](const uint16_t i, uint8_t *out) {
+        WatchSupport::resultEntry(*tournament, i, out);
     });
 }
 

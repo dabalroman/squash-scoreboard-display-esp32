@@ -438,6 +438,11 @@ void applyWatchCommand() {
         return;
     }
 
+    // A client's record keeping: no screen change, no sound; the ack pushes the state.
+    if (command.id == Garmin::CommandId::AddOfflineGame || command.id == Garmin::CommandId::RemoveOfflineGame) {
+        return;
+    }
+
     // What setOnActionTaken does for an accepted fob press.
     if (command.id != Garmin::CommandId::Focus) {
         gBuzzer.trigger();

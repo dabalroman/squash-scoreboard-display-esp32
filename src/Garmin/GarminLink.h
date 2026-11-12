@@ -168,19 +168,21 @@ public:
     // --- Tournament results (loop; spec 19) ---
 
     /**
-     * Mirrors the tournament's finished games: `entryAt(i, out)` writes entry i's wire bytes.
-     * Finished games are append-only, so only new ones are copied; a new tournament id (or a
-     * shorter list) starts over. tid 0 / count 0 outside the sport modes. Past RESULTS_MAX
-     * games are not listed. Entries are built outside the lock, each lands under its own.
+     * Mirrors the tournament's listed games: `entryAt(i, out)` writes entry i's wire bytes.
+     * Under one rev the list only grows, so only new games are copied; a new tournament id,
+     * a new rev (a remove + add keeps the count) or a shorter list starts over. tid 0 /
+     * count 0 outside the sport modes. Past RESULTS_MAX games are not listed. Entries are
+     * built outside the lock, each lands under its own.
      */
     template<class EntryAt>
-    void syncResults(const uint32_t tid, uint16_t count, EntryAt entryAt) {
+    void syncResults(const uint32_t tid, const uint16_t rev, uint16_t count, EntryAt entryAt) {
         if (count > Garmin::RESULTS_MAX) count = Garmin::RESULTS_MAX;
         uint16_t have;
         {
             Guard g;
-            if (tid != resultsTid || count < resultsCount) {
+            if (tid != resultsTid || rev != resultsRev || count < resultsCount) {
                 resultsTid = tid;
+                resultsRev = rev;
                 resultsCount = 0;
             }
             have = resultsCount;
@@ -463,7 +465,7 @@ public:
         Guard g;
         Conn *c = find(handle);
         if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
-        const Garmin::Frame f = Garmin::buildResultsRead(c->resultsCursor, resultsCount, resultsTid, results);
+        const Garmin::Frame f = Garmin::buildResultsRead(c->resultsCursor, resultsCount, resultsTid, resultsRev, results);
         if (c->resultsCursor < resultsCount) c->resultsCursor++;
         return f;
     }
@@ -744,6 +746,7 @@ private:
     uint8_t results[Garmin::RESULTS_MAX * Garmin::RESULT_ENTRY_SIZE] = {};
     uint16_t resultsCount = 0;
     uint32_t resultsTid = 0;
+    uint16_t resultsRev = 0;
 
     bool pairing = false;
     uint32_t pairingOpenedAt = 0;

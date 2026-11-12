@@ -21,16 +21,32 @@ namespace WatchSupport {
      * Mode-level routing. A setState() lands at the mode's next loop(), so while one is
      * pending the view on screen is the outgoing one and must not take the command.
      */
-    template <typename GoBack, typename ToView>
+    template <typename GoBack, typename EditGames, typename ToView>
     Garmin::AckStatus route(const WatchCommand &command, const bool viewChangePending, GoBack goBack,
-                            ToView toView) {
+                            EditGames editGames, ToView toView) {
         if (viewChangePending) {
             return Garmin::AckStatus::Busy;
         }
         if (command.id == Garmin::CommandId::Back) {
             return goBack() ? Garmin::AckStatus::Applied : Garmin::AckStatus::WrongScreen;
         }
+        if (command.id == Garmin::CommandId::AddOfflineGame || command.id == Garmin::CommandId::RemoveOfflineGame) {
+            return editGames();
+        }
         return toView();
+    }
+
+    // ADD / REMOVE_OFFLINE_GAME (spec 10.2 0x0F / 0x10); null = not on a tournament screen.
+    // A template so this header needs no Tournament.h (its printLn is the includer's).
+    template <typename TournamentT>
+    Garmin::AckStatus editOfflineGames(TournamentT *tournament, const WatchCommand &command) {
+        if (tournament == nullptr) {
+            return Garmin::AckStatus::WrongScreen;
+        }
+        if (command.id == Garmin::CommandId::AddOfflineGame) {
+            return tournament->addOfflineGame(command.uidA, command.uidB, command.scoreA, command.scoreB);
+        }
+        return tournament->removeOfflineGame(command.tournamentId, command.rev, command.index);
     }
 
     inline GameSide sideOf(const WatchCommand &command) {
@@ -99,13 +115,20 @@ namespace WatchSupport {
         return r;
     }
 
-    // A RESULTS entry (spec 19): the match's player A/B, not court sides.
-    inline void resultEntry(const FinishedGame &finished, uint8_t out[Garmin::RESULT_ENTRY_SIZE]) {
+    // A RESULTS entry (spec 19) for listed game `index` (< listedCount()): the match's player
+    // A/B, not court sides. A template for the same reason as editOfflineGames().
+    template <typename TournamentT>
+    void resultEntry(const TournamentT &tournament, const size_t index, uint8_t out[Garmin::RESULT_ENTRY_SIZE]) {
+        const FinishedGame &finished = tournament.listedGame(index);
         const Match &match = *finished.match;
         const GameResult &result = match.getGameResult(finished.game);
-        const uint16_t turn = finished.game + 1;
+        const uint16_t turn = tournament.turnOf(index);
+        uint8_t wireTurn = static_cast<uint8_t>(turn > Garmin::TURN_MASK ? Garmin::TURN_MASK : turn);
+        if (result.offline) {
+            wireTurn |= Garmin::TURN_OFFLINE;
+        }
         Garmin::buildResultEntry(match.getPlayerA().getUid(), match.getPlayerB().getUid(), result.playerAScore,
-                                 result.playerBScore, static_cast<uint8_t>(turn > 255 ? 255 : turn), out);
+                                 result.playerBScore, wireTurn, out);
     }
 }
 

@@ -147,19 +147,28 @@ static void padelRig(Rig &rig) {
 // --- routing ----------------------------------------------------------------------------
 
 static void test_route_pending_is_busy_even_for_back() {
-    int backs = 0, views = 0;
+    int backs = 0, edits = 0, views = 0;
     auto goBack = [&] { backs++; return true; };
+    auto editGames = [&] { edits++; return AckStatus::Invalid; };
     auto toView = [&] { views++; return AckStatus::Applied; };
 
-    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Back), true, goBack, toView));
-    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Score), true, goBack, toView));
-    TEST_ASSERT_EQUAL(0, backs + views);
+    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Back), true, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Busy, WatchSupport::route(cmd(CommandId::Score), true, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Busy,
+                      WatchSupport::route(cmd(CommandId::AddOfflineGame), true, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(0, backs + edits + views);
 
-    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Back), false, goBack, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Back), false, goBack, editGames, toView));
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen,
-                      WatchSupport::route(cmd(CommandId::Back), false, [] { return false; }, toView));
-    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Score), false, goBack, toView));
+                      WatchSupport::route(cmd(CommandId::Back), false, [] { return false; }, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, WatchSupport::route(cmd(CommandId::Score), false, goBack, editGames, toView));
+    // Offline games never reach the view.
+    TEST_ASSERT_EQUAL(AckStatus::Invalid,
+                      WatchSupport::route(cmd(CommandId::AddOfflineGame), false, goBack, editGames, toView));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid,
+                      WatchSupport::route(cmd(CommandId::RemoveOfflineGame), false, goBack, editGames, toView));
     TEST_ASSERT_EQUAL(1, backs);
+    TEST_ASSERT_EQUAL(2, edits);
     TEST_ASSERT_EQUAL(1, views);
 }
 
@@ -810,7 +819,7 @@ static void test_results_through_the_views() {
     winToMatchStart(rig, 1, 0);
     TEST_ASSERT_EQUAL(1, tournament->getFinishedGameCount());
     uint8_t entry[Garmin::RESULT_ENTRY_SIZE];
-    WatchSupport::resultEntry(tournament->getFinishedGame(0), entry);
+    WatchSupport::resultEntry(*tournament, 0, entry);
     const uint8_t want[Garmin::RESULT_ENTRY_SIZE] = {0x01, 0x00, 0x00, 0xA0, 0x02, 0x00, 0x00, 0xB0, 0, 11, 1};
     TEST_ASSERT_EQUAL_HEX8_ARRAY(want, entry, sizeof(want));
 
@@ -818,6 +827,132 @@ static void test_results_through_the_views() {
     BatteryMonitor battery(sensor);
     rig.mode.reset(new ModeSwitchingMode(rig.led, rig.back, rig.eink, rig.remote, rig.onModeChange(), battery));
     TEST_ASSERT_NULL(rig.mode->getTournament());
+}
+
+// --- ADD / REMOVE_OFFLINE_GAME (spec 10.2 0x0F / 0x10, 16.14): the mode, never the view -----
+
+static WatchCommand addGame(const uint32_t uidA, const uint32_t uidB, const uint8_t a, const uint8_t b) {
+    WatchCommand c = cmd(CommandId::AddOfflineGame);
+    c.uidA = uidA;
+    c.uidB = uidB;
+    c.scoreA = a;
+    c.scoreB = b;
+    return c;
+}
+
+static WatchCommand removeGame(const uint32_t tid, const uint16_t rev, const uint16_t index) {
+    WatchCommand c = cmd(CommandId::RemoveOfflineGame);
+    c.tournamentId = tid;
+    c.rev = rev;
+    c.index = index;
+    return c;
+}
+
+// Listed game `index` as RESULTS sends it: A, B, scoreA, scoreB, turn byte.
+static void expectListed(const Tournament &tournament, const size_t index, const uint32_t uidA, const uint32_t uidB,
+                         const uint8_t a, const uint8_t b, const uint8_t turn) {
+    uint8_t entry[Garmin::RESULT_ENTRY_SIZE];
+    WatchSupport::resultEntry(tournament, index, entry);
+    CHECK(u32(entry) == uidA && u32(entry + 4) == uidB && entry[8] == a && entry[9] == b && entry[10] == turn,
+          "listed %u: got %08x-%08x %u:%u turn 0x%02x, expected %08x-%08x %u:%u turn 0x%02x",
+          static_cast<unsigned>(index), static_cast<unsigned>(u32(entry)), static_cast<unsigned>(u32(entry + 4)),
+          entry[8], entry[9], entry[10], static_cast<unsigned>(uidA), static_cast<unsigned>(uidB), a, b, turn);
+}
+
+static void test_offline_games_through_the_modes() {
+    Rig rig;
+    squashRig(rig);
+    const Tournament *tournament = rig.mode->getTournament();
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_ANNA)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(toggle(UID_BOB)));
+
+    // CHOOSE_PLAYERS: the selection is still open.
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(addGame(UID_ANNA, UID_BOB, 11, 7)));
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(removeGame(tournament->getId(), 0, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartTournament)));
+    TEST_ASSERT_EQUAL(AckStatus::Busy, rig.send(addGame(UID_ANNA, UID_BOB, 11, 7)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(0, tournament->listedCount());
+
+    // MATCH_START: stored, the screen untouched (an offline game latches no swap).
+    const Body start = rig.describe();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_ANNA, UID_BOB, 11, 7)));
+    TEST_ASSERT_FALSE(rig.mode->viewChangePending());
+    const Body startAfter = rig.describe();
+    TEST_ASSERT_EQUAL(start.size, startAfter.size);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(start.bytes, startAfter.bytes, start.size);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(addGame(UID_ANNA, UID_BOB, 15, 3)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(addGame(UID_ANNA, UID_CEZ, 11, 7)));   // not selected
+    TEST_ASSERT_EQUAL(1, tournament->listedCount());
+    expectListed(*tournament, 0, UID_ANNA, UID_BOB, 11, 7, 0x81);
+
+    // PLAYING: the live game keeps its score, the standing counts the offline games.
+    startToIntro(rig);
+    skipToPlaying(rig);
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_BOB, UID_ANNA, 5, 11)));
+    Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x13, body.screen());
+    TEST_ASSERT_EQUAL(2, body.data()[9]);    // Anna's games
+    TEST_ASSERT_EQUAL(0, body.data()[10]);
+    TEST_ASSERT_EQUAL(1, body.data()[11]);   // the live 1:0
+    TEST_ASSERT_EQUAL(0, body.data()[12]);
+    expectListed(*tournament, 1, UID_ANNA, UID_BOB, 11, 5, 0x82);   // the match's own A/B order
+
+    // The live game finishes as the pair's next turn; through CELEBRATION to GAME_OVER.
+    for (int i = 0; i < 20 && rig.describe().screen() == 0x13; i++) {
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+        rig.commit();
+        if (rig.mode->viewChangePending()) rig.tick();
+    }
+    TEST_ASSERT_EQUAL_HEX8(0x14, rig.describe().screen());
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    const Body over = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x15, over.screen());
+    expectListed(*tournament, 2, UID_ANNA, UID_BOB, 11, 0, 3);
+
+    // GAME_OVER keeps showing its own game after an ADD.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_ANNA, UID_BOB, 3, 11)));
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x15, body.screen());
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(over.data(), body.data(), 11);   // uids, winner, 11:0
+    TEST_ASSERT_EQUAL(4, tournament->listedCount());
+    expectListed(*tournament, 3, UID_ANNA, UID_BOB, 3, 11, 0x84);
+
+    // REMOVE: only an offline game, under the current tournament id and rev.
+    const uint32_t tid = tournament->getId();
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(removeGame(tid, 1, 0)));        // stale rev
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(removeGame(tid ^ 1, 0, 0)));    // other tournament
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(removeGame(tid, 0, 2)));        // board-tracked
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(removeGame(tid, 0, 4)));        // past the end
+    TEST_ASSERT_EQUAL(0, tournament->getRev());
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(removeGame(tid, 0, 0)));
+    TEST_ASSERT_EQUAL(1, tournament->getRev());
+    TEST_ASSERT_EQUAL(3, tournament->listedCount());
+    expectListed(*tournament, 0, UID_ANNA, UID_BOB, 11, 5, 0x81);   // later turns renumbered
+    expectListed(*tournament, 1, UID_ANNA, UID_BOB, 11, 0, 2);
+    expectListed(*tournament, 2, UID_ANNA, UID_BOB, 3, 11, 0x83);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(removeGame(tid, 0, 0)));        // rev moved on
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x15, body.screen());
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(over.data(), body.data(), 11);
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+}
+
+// The turn byte keeps bit 7 for OFFLINE: a pair's 128th game caps at 127.
+static void test_offline_turn_cap() {
+    Rig rig;
+    squashRig(rig);
+    rig.toMatchStart();
+    const Tournament *tournament = rig.mode->getTournament();
+    for (size_t i = 0; i < Tournament::MAX_LISTED; i++) {
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_ANNA, UID_BOB, 11, 2)));
+    }
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(addGame(UID_ANNA, UID_BOB, 11, 2)));   // 128 listed
+    expectListed(*tournament, 126, UID_ANNA, UID_BOB, 11, 2, 0x80 | 127);
+    expectListed(*tournament, 127, UID_ANNA, UID_BOB, 11, 2, 0x80 | 127);
 }
 
 // --- FOCUS (spec 10.2 0x0E): the fob's A/B cursor move, nothing else ----------------------
@@ -982,6 +1117,8 @@ int main(int, char **) {
     RUN_TEST(test_volleyball_scores_through_the_same_path);
     RUN_TEST(test_menu_select_sport_and_describe);
     RUN_TEST(test_results_through_the_views);
+    RUN_TEST(test_offline_games_through_the_modes);
+    RUN_TEST(test_offline_turn_cap);
     RUN_TEST(test_menu_focus);
     RUN_TEST(test_choose_players_focus);
     RUN_TEST(test_choose_players_focus_padel_and_volleyball);

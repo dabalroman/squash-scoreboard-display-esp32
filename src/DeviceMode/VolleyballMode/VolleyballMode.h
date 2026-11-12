@@ -125,6 +125,14 @@ public:
         return &tournament;
     }
 
+    // Not on CHOOSE_PLAYERS: the selection, and so the players an ADD may name, is still open.
+    Garmin::AckStatus editOfflineGames(const WatchCommand &command) override {
+        const bool onTournamentScreen = state == VolleyballModeState::MatchStartGame || state == VolleyballModeState::MatchIntro
+                                        || state == VolleyballModeState::GamePlaying
+                                        || state == VolleyballModeState::GameCelebration || state == VolleyballModeState::GameOver;
+        return WatchSupport::editOfflineGames(onTournamentScreen ? &tournament : nullptr, command);
+    }
+
     bool isInMatch() const override {
         return state != VolleyballModeState::TournamentChoosePlayers;
     }

@@ -20,7 +20,8 @@
 template <typename StateEnum>
 class GameCelebrationView final : public View {
     const Match *match = nullptr;
-    const GameResult *gameResult = nullptr;
+    GameResult gameResult = {};
+    bool hasResult = false;
     UserProfile *playerLeft = nullptr, *playerRight = nullptr;
     uint8_t leftScore = 0, rightScore = 0;
     std::function<void(StateEnum)> onStateChange;
@@ -39,19 +40,19 @@ public:
         : onStateChange(std::move(onStateChange)), einkLabel(einkLabel), einkShowsGameScore(einkShowsGameScore) {
         match = tournament.getActiveMatch();
         if (match != nullptr) {
-            gameResult = match->getLastGameResult();
+            hasResult = match->lastGameResult(gameResult);
         }
 
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             this->onStateChange(StateEnum::MatchStartGame);
             return;
         }
 
         playerLeft  = &match->getLeftCourtSidePlayer();
         playerRight = &match->getRightCourtSidePlayer();
-        leftScore   = playerLeft->getId()  == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
-        rightScore  = playerRight->getId() == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
-        variant     = selectCelebrationVariant(*match, *gameResult);
+        leftScore   = playerLeft->getId()  == gameResult.playerAId ? gameResult.playerAScore : gameResult.playerBScore;
+        rightScore  = playerRight->getId() == gameResult.playerAId ? gameResult.playerAScore : gameResult.playerBScore;
+        variant     = selectCelebrationVariant(*match, gameResult);
     }
 
     CelebrationVariant getVariant() const {
@@ -71,7 +72,7 @@ public:
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             return Garmin::AckStatus::Busy;
         }
 
@@ -84,10 +85,10 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
-        const bool leftWon  = gameResult->winnerPlayerId == playerLeft->getId();
-        const bool rightWon = gameResult->winnerPlayerId == playerRight->getId();
+        const bool leftWon  = gameResult.winnerPlayerId == playerLeft->getId();
+        const bool rightWon = gameResult.winnerPlayerId == playerRight->getId();
 
         ledDisplay.setColonAppearance();
         ledDisplay.setNumericValue(leftScore, rightScore);
@@ -117,7 +118,7 @@ public:
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         // Also keeps a constructor bail to MatchStartGame from being overwritten.
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
         // Hand over without drawing: the summary's first frame follows directly.
         if (!ledDisplay.celebrationActive()) {
@@ -129,13 +130,13 @@ public:
     }
 
     void initBackDisplay(BackDisplay &backDisplay) override {
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
         backDisplay.initBigFont();
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        if (gameResult == nullptr || !shouldRenderBack) return;
+        if (!hasResult || !shouldRenderBack) return;
 
         backDisplay.clear();
         if (variant == CelebrationVariant::Bajgiel) {
@@ -151,7 +152,7 @@ public:
     void renderEInkDisplay(EInkDisplay &einkDisplay) override {
         if (!einkDisplay.available()) return;
 
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             einkDisplay.showBlank();
             return;
         }
@@ -180,12 +181,12 @@ public:
     }
 
     void describeForWatch(WatchState &state) const override {
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             View::describeForWatch(state);
             return;
         }
 
-        state.setCelebration(WatchSupport::result(*match, *gameResult, *playerLeft, *playerRight, leftScore, rightScore));
+        state.setCelebration(WatchSupport::result(*match, gameResult, *playerLeft, *playerRight, leftScore, rightScore));
     }
 };
 

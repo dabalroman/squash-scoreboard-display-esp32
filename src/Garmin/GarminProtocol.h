@@ -49,6 +49,11 @@ namespace Garmin {
     constexpr uint8_t RESULT_ENTRY_SIZE = 11;
     constexpr uint16_t RESULTS_MAX = 128;
     static_assert(RESULTS_HEADER + RESULT_ENTRY_SIZE <= MAX_FRAME, "a RESULTS read must fit one frame");
+    // Past the end: the header + rev u16. 11 B also tells a client the board takes offline games.
+    constexpr uint8_t RESULTS_END_FRAME = RESULTS_HEADER + 2;
+    // Entry `turn` bit 7: a client-added game; bits 0-6 the turn.
+    constexpr uint8_t TURN_OFFLINE = 0x80;
+    constexpr uint8_t TURN_MASK = 0x7F;
 
     constexpr uint8_t ADV_FLAG_PAIRING = 0x01;
 
@@ -110,6 +115,8 @@ namespace Garmin {
         NextGame = 0x0B,
         Sync = 0x0D,
         Focus = 0x0E,
+        AddOfflineGame = 0x0F,
+        RemoveOfflineGame = 0x10,
     };
 
     enum class AuthType : uint8_t { Challenge = 0x00, Proof = 0x01, Result = 0x02 };
@@ -397,16 +404,17 @@ namespace Garmin {
         return true;
     }
 
-    // 20 B for an entry, the 9 B header past the end. The caller advances the cursor after a read.
+    // 20 B for an entry, the header + rev past the end. The caller advances the cursor after a read.
     inline Frame buildResultsRead(const uint16_t index, const uint16_t count, const uint32_t tournamentId,
-                                  const uint8_t *entries) {
+                                  const uint16_t rev, const uint8_t *entries) {
         Frame f{};
         f.data[0] = PROTO;
         putU16(f.data + 1, index);
         putU16(f.data + 3, count);
         putU32(f.data + 5, tournamentId);
         if (index >= count) {
-            f.len = RESULTS_HEADER;
+            putU16(f.data + RESULTS_HEADER, rev);
+            f.len = RESULTS_END_FRAME;
             return f;
         }
         memcpy(f.data + RESULTS_HEADER, entries + static_cast<size_t>(index) * RESULT_ENTRY_SIZE,

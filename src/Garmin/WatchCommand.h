@@ -19,6 +19,13 @@ struct WatchCommand {
     uint32_t leftUid;   // SET_PAIR
     uint32_t rightUid;  // SET_PAIR
     uint32_t target;    // FOCUS: a sport id on MENU, a uid (0 = START) on CHOOSE_PLAYERS
+    uint32_t uidA;      // ADD_OFFLINE_GAME
+    uint32_t uidB;      // ADD_OFFLINE_GAME
+    uint8_t scoreA;     // ADD_OFFLINE_GAME
+    uint8_t scoreB;     // ADD_OFFLINE_GAME
+    uint32_t tournamentId; // REMOVE_OFFLINE_GAME
+    uint16_t rev;          // REMOVE_OFFLINE_GAME
+    uint16_t index;        // REMOVE_OFFLINE_GAME: a listed RESULTS index
 
     bool hasValidSide() const {
         return side <= 1;
@@ -44,7 +51,10 @@ namespace Garmin {
             case CommandId::Focus:
                 return 7;
             case CommandId::SetPair:
+            case CommandId::RemoveOfflineGame:
                 return 11;
+            case CommandId::AddOfflineGame:
+                return 13;
             case CommandId::Back:
             case CommandId::StartTournament:
             case CommandId::SwapSides:
@@ -85,6 +95,17 @@ namespace Garmin {
             case CommandId::SetPair:
                 out.leftUid = getU32(in + 3);
                 out.rightUid = getU32(in + 7);
+                break;
+            case CommandId::AddOfflineGame:
+                out.uidA = getU32(in + 3);
+                out.uidB = getU32(in + 7);
+                out.scoreA = in[11];
+                out.scoreB = in[12];
+                break;
+            case CommandId::RemoveOfflineGame:
+                out.tournamentId = getU32(in + 3);
+                out.rev = getU16(in + 7);
+                out.index = getU16(in + 9);
                 break;
             default:
                 break;

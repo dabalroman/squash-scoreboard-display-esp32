@@ -65,16 +65,24 @@ public:
     }
 
     /**
-     * BACK is the long-C chain, so it lives here; everything else belongs to the view.
-     * GamePlaying's goBack() is false, which is what keeps a watch from discarding a game.
+     * BACK is the long-C chain and offline games edit the tournament, so both live here;
+     * everything else belongs to the view. GamePlaying's goBack() is false, which is what
+     * keeps a watch from discarding a game.
      */
     virtual Garmin::AckStatus handleWatchCommand(const WatchCommand &command) {
         return WatchSupport::route(
             command,
             viewChangePending() || !activeView,
             [this] { return goBack(); },
+            [this, &command] { return editOfflineGames(command); },
             [this, &command] { return activeView->handleWatchCommand(command); }
         );
+    }
+
+    // ADD / REMOVE_OFFLINE_GAME: a sport mode on a tournament screen applies them to its
+    // tournament (WatchSupport::editOfflineGames); everywhere else WRONG_SCREEN.
+    virtual Garmin::AckStatus editOfflineGames(const WatchCommand &) {
+        return Garmin::AckStatus::WrongScreen;
     }
 
     // The sport modes' tournament, for the watch's RESULTS (spec 19); null elsewhere.

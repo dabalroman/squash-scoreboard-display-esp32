@@ -13,6 +13,21 @@ public:
     virtual GameSide checkWinner(int8_t scoreA, int8_t scoreB) const = 0;
 
     /**
+     * A score a finished game can end on: won, and the winner had not already won
+     * one point earlier (15:3 squash and padel 8:6 are not, 12:10 and 7:6 are).
+     */
+    bool isFinalScore(const uint8_t scoreA, const uint8_t scoreB) const {
+        if (scoreA > 127 || scoreB > 127) return false;
+
+        const GameSide winner = checkWinner(scoreA, scoreB);
+        if (winner == GameSide::none) return false;
+
+        return winner == GameSide::a
+                   ? checkWinner(scoreA - 1, scoreB) == GameSide::none
+                   : checkWinner(scoreA, scoreB - 1) == GameSide::none;
+    }
+
+    /**
      * Game ball: `side` wins on its next point. Per side rather than a returned
      * GameSide, so a rule set that allows both at once never forces a pick.
      * An already won score is nobody's game ball.

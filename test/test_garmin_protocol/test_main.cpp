@@ -551,6 +551,7 @@ void test_command_sizes() {
     const Case cases[] = {
         {0x01, 4}, {0x02, 3}, {0x03, 7}, {0x04, 3}, {0x05, 11}, {0x06, 3},
         {0x07, 3}, {0x08, 4}, {0x09, 4}, {0x0A, 3}, {0x0B, 3}, {0x0D, 3}, {0x0E, 7},
+        {0x0F, 13}, {0x10, 11},
     };
     for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
         uint8_t frame[MAX_FRAME] = {PROTO, cases[k].id, 42};
@@ -573,7 +574,7 @@ void test_command_sizes() {
 
 void test_command_unknown_and_dropped() {
     WatchCommand cmd{};
-    const uint8_t unknownIds[] = {0x00, 0x0C, 0x0F, 0x7F, 0xFF};
+    const uint8_t unknownIds[] = {0x00, 0x0C, 0x11, 0x7F, 0xFF};
     for (size_t k = 0; k < sizeof(unknownIds); k++) {
         const uint8_t frame[] = {PROTO, unknownIds[k], 9, 0, 0, 0, 0, 0, 0, 0, 0};
         const CommandParse r = parseCommand(frame, sizeof(frame), cmd);
@@ -734,15 +735,16 @@ void test_results_frames() {
     buildResultEntry(0x0A0B0C0D, 0x11223344, 9, 11, 2, entries + 2 * RESULT_ENTRY_SIZE);
     const uint32_t tid = 0xC0FFEE01;
     // spec: results/read_1
-    expectBuf("01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", buildResultsRead(0, 3, tid, entries), "game 0");
+    expectBuf("01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", buildResultsRead(0, 3, tid, 0, entries), "game 0");
     // spec: results/read_2
-    expectBuf("01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01", buildResultsRead(1, 3, tid, entries), "game 1");
+    expectBuf("01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01", buildResultsRead(1, 3, tid, 0, entries), "game 1");
     // spec: results/read_3
-    expectBuf("01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02", buildResultsRead(2, 3, tid, entries), "game 2");
+    expectBuf("01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02", buildResultsRead(2, 3, tid, 0, entries), "game 2");
     // spec: results/read_past_end
-    expectBuf("01 03 00 03 00 01 ee ff c0", buildResultsRead(3, 3, tid, entries), "past the end");
+    expectBuf("01 03 00 03 00 01 ee ff c0 00 00", buildResultsRead(3, 3, tid, 0, entries), "past the end");
     // spec: results/read_no_tournament
-    expectBuf("01 03 00 00 00 00 00 00 00", buildResultsRead(3, 0, 0, nullptr), "no tournament");
+    expectBuf("01 03 00 00 00 00 00 00 00 00 00", buildResultsRead(3, 0, 0, 0, nullptr), "no tournament");
+    TEST_ASSERT_EQUAL_UINT8(RESULTS_END_FRAME, buildResultsRead(3, 3, tid, 0, entries).len);
 
     uint16_t index = 0xffff;
     // spec: results/write
@@ -761,6 +763,67 @@ void test_results_frames() {
     const std::vector<uint8_t> foreign = hex("00 00 00");
     TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(foreign.data(), foreign.size(), index), "foreign PROTO");
     TEST_ASSERT_EQUAL_STRING("0d780009-2f44-4f31-93b7-b78dc9e29735", RESULTS_UUID);
+}
+
+// Spec 16.14: ADD / REMOVE_OFFLINE_GAME, the OFFLINE turn bit and rev on the end frame.
+void test_offline_games() {
+    WatchCommand cmd{};
+    WatchState s;
+    s.setSport(SportId::Squash);
+    s.setMatchStart(0x3, ANNA, KRYSTIAN, false);
+
+    // spec: offline_games/add
+    const std::vector<uint8_t> add = hex("01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07");
+    TEST_ASSERT_TRUE(parseCommand(add.data(), add.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.id == CommandId::AddOfflineGame && cmd.seq == 5);
+    TEST_ASSERT_EQUAL_HEX32(ANNA, cmd.uidA);
+    TEST_ASSERT_EQUAL_HEX32(KRYSTIAN, cmd.uidB);
+    TEST_ASSERT_TRUE(cmd.scoreA == 11 && cmd.scoreB == 7);
+    std::vector<Frame> c = chunks(0x50, s, cmd.seq, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    // spec: offline_games/add_ack
+    expectBuf("01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 add ack chunk 0");
+    expectBuf("01 50 12 33 22 11 00", c[1], "16.14 add ack chunk 1");
+
+    // spec: offline_games/add_illegal
+    const std::vector<uint8_t> illegal = hex("01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03");
+    TEST_ASSERT_TRUE(parseCommand(illegal.data(), illegal.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.seq == 6 && cmd.scoreA == 15 && cmd.scoreB == 3);
+    c = chunks(0x51, s, cmd.seq, AckStatus::Invalid);
+    TEST_ASSERT_EQUAL(2, c.size());
+    // spec: offline_games/add_illegal_ack
+    expectBuf("01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 illegal ack chunk 0");
+    expectBuf("01 51 12 33 22 11 00", c[1], "16.14 illegal ack chunk 1");
+
+    uint8_t entry[RESULT_ENTRY_SIZE];
+    buildResultEntry(ANNA, KRYSTIAN, 11, 7, 1 | TURN_OFFLINE, entry);
+    // spec: offline_games/read_offline
+    expectBuf("01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81", buildResultsRead(0, 1, 0xC0FFEE01, 0, entry),
+              "16.14 offline game");
+
+    // spec: offline_games/remove
+    const std::vector<uint8_t> remove = hex("01 10 07 01 ee ff c0 00 00 00 00");
+    TEST_ASSERT_TRUE(parseCommand(remove.data(), remove.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.id == CommandId::RemoveOfflineGame && cmd.seq == 7);
+    TEST_ASSERT_EQUAL_HEX32(0xC0FFEE01, cmd.tournamentId);
+    TEST_ASSERT_TRUE(cmd.rev == 0 && cmd.index == 0);
+    c = chunks(0x52, s, cmd.seq, AckStatus::Applied);
+    TEST_ASSERT_EQUAL(2, c.size());
+    // spec: offline_games/remove_ack
+    expectBuf("01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 remove ack chunk 0");
+    expectBuf("01 52 12 33 22 11 00", c[1], "16.14 remove ack chunk 1");
+
+    // spec: offline_games/read_end_rev
+    expectBuf("01 00 00 00 00 01 ee ff c0 01 00", buildResultsRead(0, 0, 0xC0FFEE01, 1, nullptr), "16.14 end with rev");
+
+    // rev and index are u16 little-endian.
+    const std::vector<uint8_t> wide = hex("01 10 08 01 ee ff c0 34 12 02 01");
+    TEST_ASSERT_TRUE(parseCommand(wide.data(), wide.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.rev == 0x1234 && cmd.index == 0x0102);
+
+    // One byte short of each layout: MALFORMED with the seq.
+    TEST_ASSERT_TRUE(parseCommand(add.data(), add.size() - 1, cmd) == CommandParse::Malformed && cmd.seq == 5);
+    TEST_ASSERT_TRUE(parseCommand(remove.data(), remove.size() - 1, cmd) == CommandParse::Malformed && cmd.seq == 7);
 }
 
 int main() {
@@ -789,5 +852,6 @@ int main() {
     RUN_TEST(test_service_uuid_bytes);
     RUN_TEST(test_heart_frames);
     RUN_TEST(test_results_frames);
+    RUN_TEST(test_offline_games);
     return UNITY_END();
 }

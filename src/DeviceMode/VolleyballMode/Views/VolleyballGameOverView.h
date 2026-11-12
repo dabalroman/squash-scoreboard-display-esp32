@@ -11,7 +11,8 @@
 class VolleyballGameOverView final : public View {
     Tournament &tournament;
     const Match *match = nullptr;
-    const GameResult *gameResult = nullptr;
+    GameResult gameResult = {};
+    bool hasResult = false;
     UserProfile *playerLeft = nullptr, *playerRight = nullptr;
     uint8_t leftScore = 0, rightScore = 0;
     std::function<void(VolleyballModeState)> onStateChange;
@@ -26,16 +27,16 @@ public:
             return;
         }
 
-        gameResult = match->getLastGameResult();
-        if (gameResult == nullptr) {
+        hasResult = match->lastGameResult(gameResult);
+        if (!hasResult) {
             onStateChange(VolleyballModeState::MatchStartGame);
             return;
         }
 
         playerLeft  = &match->getLeftCourtSidePlayer();
         playerRight = &match->getRightCourtSidePlayer();
-        leftScore   = playerLeft->getId()  == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
-        rightScore  = playerRight->getId() == gameResult->playerAId ? gameResult->playerAScore : gameResult->playerBScore;
+        leftScore   = playerLeft->getId()  == gameResult.playerAId ? gameResult.playerAScore : gameResult.playerBScore;
+        rightScore  = playerRight->getId() == gameResult.playerAId ? gameResult.playerAScore : gameResult.playerBScore;
     }
 
     void handleInput(RemoteInputManager &remoteInputManager) override {
@@ -53,7 +54,7 @@ public:
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             return Garmin::AckStatus::Busy;
         }
 
@@ -66,10 +67,10 @@ public:
     }
 
     void initLedDisplay(LedDisplay &ledDisplay) override {
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
-        const bool leftWon  = gameResult->winnerPlayerId == playerLeft->getId();
-        const bool rightWon = gameResult->winnerPlayerId == playerRight->getId();
+        const bool leftWon  = gameResult.winnerPlayerId == playerLeft->getId();
+        const bool rightWon = gameResult.winnerPlayerId == playerRight->getId();
 
         ledDisplay.setColonAppearance();
         ledDisplay.setNumericValue(leftScore, rightScore);
@@ -84,13 +85,13 @@ public:
 
     void renderLedDisplay(LedDisplay &ledDisplay) override {
         // blinking winner - update every tick
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
         ledDisplay.display();
     }
 
     void initBackDisplay(BackDisplay &backDisplay) override {
-        if (gameResult == nullptr) return;
+        if (!hasResult) return;
 
         backDisplay.initBigFont();
     }
@@ -114,7 +115,7 @@ public:
     }
 
     void renderBackDisplay(BackDisplay &backDisplay) override {
-        if (gameResult == nullptr || !shouldRenderBack) return;
+        if (!hasResult || !shouldRenderBack) return;
 
         backDisplay.clear();
         backDisplay.renderScoreWidget(leftScore, rightScore);
@@ -124,12 +125,12 @@ public:
     }
 
     void describeForWatch(WatchState &state) const override {
-        if (gameResult == nullptr) {
+        if (!hasResult) {
             View::describeForWatch(state);
             return;
         }
 
-        state.setGameOver(WatchSupport::result(*match, *gameResult, *playerLeft, *playerRight, leftScore, rightScore));
+        state.setGameOver(WatchSupport::result(*match, gameResult, *playerLeft, *playerRight, leftScore, rightScore));
     }
 };
 

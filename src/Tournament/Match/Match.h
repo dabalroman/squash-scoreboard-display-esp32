@@ -7,6 +7,7 @@
 #include "Tournament/Rules/Rules.h"
 #include "Tournament/Game/GameResult.h"
 #include "Utils.h"
+#include <esp_random.h>
 
 class Match;
 
@@ -14,6 +15,21 @@ class Match;
 struct FinishedGame {
     const Match *match;
     uint16_t game;
+};
+
+// A tournament's chronological game log (the watch's RESULTS, spec 19). RAM only.
+struct TournamentLog {
+    std::vector<FinishedGame> finished;
+    // Changes on every change to the listed games other than an append.
+    uint16_t rev = 0;
+
+    inline bool hasGameId(uint32_t id) const;
+
+    uint32_t newGameId() const {
+        uint32_t v = 0;
+        while (v == 0 || hasGameId(v)) v = esp_random();
+        return v;
+    }
 };
 
 /**
@@ -27,23 +43,40 @@ class Match {
     UserProfile &playerB;
 
     std::unique_ptr<Game> game = nullptr;
-    // Append-only: finishGame() is the only writer, so a FinishedGame index stays valid.
+    // Append-only: finishGame() and recordGame() are the only writers, so a FinishedGame
+    // index stays valid; markRemoved() only sets an offline game's `removed`.
     std::vector<GameResult> gameResults;
 
     Rules *rules;
 
     // The tournament's chronological log; null outside a Tournament.
-    std::vector<FinishedGame> *finishedLog;
+    TournamentLog *log;
 
     bool playersSwappedCourtSides = false;
 
-    // The orientation of the first finished game, for the watch's SIDES_SWAPPED (spec 11.3). RAM only.
+    // The orientation of the first tracked game, for the watch's SIDES_SWAPPED (spec 11.3). RAM only.
     bool startSwapped = false;
+    // Offline games have no court sides, so only a tracked one fixes startSwapped.
+    bool hasTrackedGame = false;
+
+    uint32_t newGameId() const {
+        if (log != nullptr) return log->newGameId();
+        uint32_t v = 0;
+        while (v == 0 || hasGameId(v)) v = esp_random();
+        return v;
+    }
+
+    void append(const GameResult &result) {
+        gameResults.push_back(result);
+        if (log != nullptr) {
+            log->finished.push_back({this, static_cast<uint16_t>(gameResults.size() - 1)});
+        }
+    }
 
 public:
     Match(const uint8_t id, UserProfile &userAProfile, UserProfile &userBProfile, Rules *rules,
-          std::vector<FinishedGame> *finishedLog = nullptr)
-        : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules), finishedLog(finishedLog) {
+          TournamentLog *log = nullptr)
+        : id(id), playerA(userAProfile), playerB(userBProfile), rules(rules), log(log) {
     }
 
     Match(const Match &) = delete;
@@ -72,31 +105,76 @@ public:
             : (playersSwappedCourtSides ? playerA.getId() : playerB.getId());
 
         // At finish, not createGame: a game left by UNDO at 0:0 must not fix the orientation.
-        if (gameResults.empty()) {
+        if (!hasTrackedGame) {
             startSwapped = playersSwappedCourtSides;
+            hasTrackedGame = true;
         }
 
-        gameResults.push_back({
+        append({
             playerA.getId(),
             game->getRealScore(sideA),
             playerB.getId(),
             game->getRealScore(sideB),
             winnerPlayerId,
+            newGameId(),
+            false,
+            false,
         });
 
-        if (finishedLog != nullptr) {
-            finishedLog->push_back({this, static_cast<uint16_t>(gameResults.size() - 1)});
-        }
-
         game.reset();
+    }
+
+    // An offline game in this match's own A/B order; the caller checked Rules::isFinalScore().
+    void recordGame(const uint8_t scoreA, const uint8_t scoreB) {
+        const uint8_t winnerPlayerId = rules->checkWinner(scoreA, scoreB) == GameSide::a
+                                           ? playerA.getId()
+                                           : playerB.getId();
+        append({playerA.getId(), scoreA, playerB.getId(), scoreB, winnerPlayerId, newGameId(), true, false});
+    }
+
+    // Only an offline game can be removed; false otherwise or when already removed.
+    bool markRemoved(const size_t index) {
+        if (index >= gameResults.size()) return false;
+        GameResult &result = gameResults[index];
+        if (!result.offline || result.removed) return false;
+        result.removed = true;
+        return true;
+    }
+
+    bool hasGameId(const uint32_t gameId) const {
+        for (const auto &result: gameResults) {
+            if (result.id == gameId) return true;
+        }
+        return false;
+    }
+
+    size_t getGameCount() const {
+        return gameResults.size();
     }
 
     const GameResult &getGameResult(const size_t index) const {
         return gameResults[index];
     }
 
-    const GameResult *getLastGameResult() const {
-        return gameResults.empty() ? nullptr : &gameResults.back();
+    // 1-based, counting this match's non-removed games up to `index`.
+    uint16_t turnOf(const size_t index) const {
+        uint16_t turn = 0;
+        for (size_t i = 0; i <= index && i < gameResults.size(); i++) {
+            if (!gameResults[i].removed) turn++;
+        }
+        return turn;
+    }
+
+    // A copy, never a pointer: an append can reallocate gameResults under a holder.
+    // The last tracked game, so a GAME_OVER after an offline add still shows its own game.
+    bool lastGameResult(GameResult &out) const {
+        for (size_t i = gameResults.size(); i > 0; i--) {
+            if (!gameResults[i - 1].offline) {
+                out = gameResults[i - 1];
+                return true;
+            }
+        }
+        return false;
     }
 
     MatchResult getMatchResult() const {
@@ -104,6 +182,7 @@ public:
         uint8_t bWins = 0;
 
         for (const auto &result: gameResults) {
+            if (result.removed) continue;
             if (result.winnerPlayerId == playerA.getId()) aWins++;
             else if (result.winnerPlayerId == playerB.getId()) bWins++;
         }
@@ -141,10 +220,17 @@ public:
         return playersSwappedCourtSides;
     }
 
-    // Reversed against the first game; false until that game is finished.
+    // Reversed against the first tracked game; false until that game is finished.
     bool sidesSwapped() const {
-        return !gameResults.empty() && playersSwappedCourtSides != startSwapped;
+        return hasTrackedGame && playersSwappedCourtSides != startSwapped;
     }
 };
+
+bool TournamentLog::hasGameId(const uint32_t id) const {
+    for (const auto &entry: finished) {
+        if (entry.match->getGameResult(entry.game).id == id) return true;
+    }
+    return false;
+}
 
 #endif //MATCH_H

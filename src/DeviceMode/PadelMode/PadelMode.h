@@ -124,6 +124,14 @@ public:
         return &tournament;
     }
 
+    // Not on CHOOSE_PLAYERS: the selection, and so the players an ADD may name, is still open.
+    Garmin::AckStatus editOfflineGames(const WatchCommand &command) override {
+        const bool onTournamentScreen = state == PadelModeState::MatchStartGame || state == PadelModeState::MatchIntro
+                                        || state == PadelModeState::GamePlaying
+                                        || state == PadelModeState::GameCelebration || state == PadelModeState::GameOver;
+        return WatchSupport::editOfflineGames(onTournamentScreen ? &tournament : nullptr, command);
+    }
+
     bool isInMatch() const override {
         return state != PadelModeState::TournamentChoosePlayers;
     }
