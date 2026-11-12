@@ -196,7 +196,11 @@ void playMatchOver(const CelebrationVariant variant) {
     }
 }
 
-void buildDeviceMode(const DeviceModeState deviceModeState, const bool tablet = false) {
+void buildDeviceMode(const DeviceModeState requested, const bool tablet = false) {
+    // Bench board (#599): only ever a tournament terminal, so boot and every leave land on TOURNAMENT_WAIT.
+    const DeviceModeState deviceModeState =
+        Board::IS_BENCH && requested == DeviceModeState::ModeSwitchingMode ? DeviceModeState::TournamentMode
+                                                                          : requested;
     deviceState = deviceModeState;
     TabletContext *tabletMode = tablet && tabletSession.active() ? &tabletContext : nullptr;
     if (tabletMode == nullptr) {
