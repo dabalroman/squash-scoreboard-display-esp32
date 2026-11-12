@@ -28,6 +28,12 @@ namespace Board {
     constexpr uint8_t LED_DATA = 18;
     constexpr uint8_t BUZZER = 3;      // via MOSFET on V2
 
+#ifndef BENCH_BOARD
+#  define BENCH_BOARD 0
+#endif
+    // v2_bench: a bare devkit used as a test board, run with no human input (#599).
+    constexpr bool IS_BENCH = BENCH_BOARD != 0;
+
     constexpr uint8_t EINK_SCK = 12;   // WeAct silk says SCL
     constexpr uint8_t EINK_MOSI = 11;  // WeAct silk says SDA
     constexpr uint8_t EINK_CS = 9;
@@ -120,5 +126,8 @@ static_assert(Board::DIGIT_BASE + Board::MODULE_COUNT * Board::PIXELS_PER_MODULE
 #else
 #  error "Unknown BOARD_REV"
 #endif
+
+// After the rev chain, so a bench flag on any rev trips it.
+static_assert(!Board::IS_BENCH || BOARD_REV == 2, "v2_bench runs the V2 image");
 
 #endif //BOARD_H

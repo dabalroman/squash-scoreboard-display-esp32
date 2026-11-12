@@ -72,7 +72,7 @@ pio run -t upload -e v1_bootstrap --upload-port COMx # naked board only, see bel
 pio device monitor                      # USB CDC serial, 115200 (both boards)
 ```
 
-The `v1_bootstrap` env is described in `.claude/rules/persistence-network.md`, `v1_ota_rmtdiag` in `platform.md`.
+The `v1_bootstrap` and `v2_bench` (bare-devkit test board, `--upload-port` only) envs are described in `.claude/rules/persistence-network.md`, `v1_ota_rmtdiag` in `platform.md`.
 
 - The S3's USB-Serial/JTAG maps DTR/RTS to BOOT/EN: opening or closing a terminal can park
   the chip in `waiting for download`. Reset with `esptool.py --chip esp32s3 -p COMx --after

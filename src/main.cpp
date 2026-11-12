@@ -380,7 +380,9 @@ void setup() {
 
     // Last, after the web server and OTA are up: init runs in a core-0 task and never
     // blocks here, and a BLE failure only leaves the feature off.
-    if (garminService.isEnabled()) {
+    if (Board::IS_BENCH && !garminService.isEnabled()) {
+        garminService.setEnabled(true);   // no fob reaches CONFIG > GARMIN; starts BLE as well
+    } else if (garminService.isEnabled()) {
         garminService.begin();
     }
 }
@@ -496,6 +498,10 @@ void updateWatchBadge() {
 void loop() {
     einkDisplay.update();
     garminService.loop(millis());
+    // Bench: nobody opens the window, so it reopens (fresh code) whenever it expires.
+    if (Board::IS_BENCH && garminService.isEnabled() && !garminService.pairingOpen()) {
+        garminService.openPairing();
+    }
     gRemoteDevelopmentService->loop();
     playerSetupWebUi.loop();
     remoteInputManager.handleInput(interruptTriggeredGpio);

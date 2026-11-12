@@ -13,7 +13,7 @@ POST /update on that board accepts:
     byte 0x00C  chip id     0x0009, ESP32-S3 - both boards, so it only rejects other chips
     byte 0x020  0xABCD5432  esp_app_desc magic - an application, not a bootloader
     byte 0x120  0xB0A2D5E7  board marker magic (src/BoardMarker.h), right after esp_app_desc_t
-    byte 0x124  board rev   1 = V1, 2 = V2
+    byte 0x124  board rev   1 = V1, 2 = V2, 0xBE = v2_bench (bare devkit; both boards refuse it)
 
 An unmarked image (built before the marker) passes on v2 only - the legacy V2
 case; on v1 it is MissingMarker. Nothing here identifies *this* project: an
@@ -36,7 +36,7 @@ HEADER_BYTES = MARKER_OFFSET + 8
 CHIP_ID_S3 = 0x0009
 LEGACY_UNMARKED_REV = 2
 
-BOARDS = {'v1': 1, 'v2': 2}
+BOARDS = {'v1': 1, 'v2': 2, 'v2_bench': 0xBE}   # v2_bench: BoardMarker::BENCH_REV
 
 CHIP_NAMES = {
     0x0000: 'ESP32',
@@ -67,11 +67,11 @@ def verdict(header, receiving_rev):
     if magic != MARKER_MAGIC:
         if receiving_rev == LEGACY_UNMARKED_REV:
             return 'Ok', None
-        return 'MissingMarker', 'no board marker at 0x%03X - a pre-marker build, v%d rejects it' % (
+        return 'MissingMarker', 'no board marker at 0x%03X - a pre-marker build, board 0x%02X rejects it' % (
             MARKER_OFFSET, receiving_rev)
 
     if rev != receiving_rev:
-        return 'WrongBoard', 'marked for board %d, receiving board is v%d' % (rev, receiving_rev)
+        return 'WrongBoard', 'marked for board 0x%02X, receiving board is 0x%02X' % (rev, receiving_rev)
 
     return 'Ok', None
 
@@ -79,11 +79,11 @@ def verdict(header, receiving_rev):
 def main():
     args = sys.argv[1:]
     if len(args) != 2:
-        fail('usage: python helpers/check_firmware_image.py <firmware.bin> v1|v2')
+        fail('usage: python helpers/check_firmware_image.py <firmware.bin> v1|v2|v2_bench')
 
     path, board = args[0], args[1].lower()
     if board not in BOARDS:
-        fail('unknown board %r - expected v1 or v2' % args[1])
+        fail('unknown board %r - expected v1, v2 or v2_bench' % args[1])
     receiving_rev = BOARDS[board]
 
     if not os.path.isfile(path):
@@ -107,7 +107,7 @@ def main():
     print('image magic   0x%02X  %s' % (header[0], 'ok' if header[0] == IMAGE_MAGIC else 'EXPECTED 0xE9'))
     print('chip id       0x%04X  %s' % (chip_id, CHIP_NAMES.get(chip_id, 'unknown')))
     print('app desc      0x%08X  %s' % (app_desc, 'ok' if app_desc == APP_DESC_MAGIC else 'EXPECTED 0xABCD5432'))
-    print('marker        0x%08X  %s' % (marker_magic, 'board %d' % marker_rev if marked else 'absent'))
+    print('marker        0x%08X  %s' % (marker_magic, 'board 0x%02X' % marker_rev if marked else 'absent'))
 
     result, reason = verdict(header, receiving_rev)
     print('verdict       %s' % result)

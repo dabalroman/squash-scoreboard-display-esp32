@@ -107,7 +107,7 @@ void test_marked_same_board_ok() {
 void test_marked_other_board_rejected() {
     CHECK(judgeWhole(makeImage(marked(2)), 1) == Verdict::WrongBoard, "v2 image on v1");
     CHECK(judgeWhole(makeImage(marked(1)), 2) == Verdict::WrongBoard, "v1 image on v2");
-    const uint8_t oddRevs[] = {0, 3, 7, 0xFF};
+    const uint8_t oddRevs[] = {0, 3, 7, BoardMarker::BENCH_REV, 0xFF};   // BENCH_REV: v2_bench must never land on a real board
     for (uint8_t rev = 1; rev <= 2; rev++) {
         for (const uint8_t odd : oddRevs) {
             CHECK(judgeWhole(makeImage(marked(odd)), rev) == Verdict::WrongBoard, "rev %u on v%u", odd, rev);

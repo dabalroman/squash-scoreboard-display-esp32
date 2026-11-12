@@ -21,6 +21,11 @@
 #include <cstddef>
 #include <cstdint>
 
+// v2_bench (bare devkit, #599). Its own rev, so neither real board accepts its image over OTA.
+#ifndef BENCH_BOARD
+#  define BENCH_BOARD 0
+#endif
+
 namespace BoardMarker {
     // No printable ASCII byte, so rodata strings in a legacy image cannot fake it.
     enum : uint32_t { MAGIC = 0xB0A2D5E7u };
@@ -29,7 +34,8 @@ namespace BoardMarker {
     enum : size_t { IMAGE_OFFSET = 24 + 8 + 256 };
 
     enum : uint8_t {
-        RUNNING_REV = BOARD_REV,
+        BENCH_REV = 0xBE,
+        RUNNING_REV = BENCH_BOARD ? BENCH_REV : BOARD_REV,
         LEGACY_UNMARKED_REV = 2,
     };
 

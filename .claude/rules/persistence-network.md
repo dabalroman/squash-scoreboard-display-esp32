@@ -41,3 +41,9 @@ paths:
   path only. `PreferencesManager::read()` seeds them with `enableDevMode = 1` **only when
   no valid blob exists** (`PrefsBootstrap::seed`, `test_prefs_bootstrap`). No other image
   contains the credentials. Delete that build dir afterwards; never upload it over OTA.
+
+## The `v2_bench` env
+
+- `v2_bench` is the V2 image for a **bare N16R8 devkit** used as an extra test board (#599, multi-board tests). The stock v2 image already boots on one with nothing attached; the bench flag only removes the human: GARMIN is forced on at boot and `loop()` reopens the pairing window whenever it expires (new code each time, read from the advertisement). Gated by `Board::IS_BENCH` (`-DBENCH_BOARD=1`), checked with plain `if`, never `#if`, outside `Board.h` / `BoardMarker.h`.
+- Its board marker is `BoardMarker::BENCH_REV` (0xBE): V1 and V2 refuse the image over OTA as WrongBoard, and the bench board refuses theirs - it is flashed over USB only. `helpers/check_firmware_image.py <bin> v2_bench` knows the rev.
+- It **extends `[s3]`, not `env:v2`**: an extending env inherits `upload_port` from `platformio.local.ini`, so `extends = env:v2` would flash the real V2. Always pass `--upload-port`; never give it a port in the local ini.
