@@ -8,7 +8,8 @@ characteristic:
     The finished games of the current tournament, for a watch that draws the standings.
   usage: >-
     ROSTER-style cursor: a write sets the per-connection read cursor, each read returns the game at
-    the cursor and advances it. The board is the source of truth; a watch never derives results
+    the cursor and advances it. Games are appended in finish order; only an offline game may later
+    be removed, which changes rev and renumbers that pair's later turns. The board is the source of truth; a watch never derives results
     from the states it observed. Optional for the watch (a pre-#527 v1 board lacks it).
   see: "#191-results-frames"
 
@@ -20,8 +21,8 @@ characteristic:
       size: 3
       description: Sets this connection's read cursor (0 at connect).
       usage: >-
-        To catch up, the watch writes [PROTO, n] with n = its cached count and reads until a 9-byte
-        frame.
+        To catch up, the watch writes [PROTO, n] with n = its cached count and reads until an end
+        frame (index >= count).
       structure:
         - field: proto
           type: uint8
@@ -35,11 +36,14 @@ characteristic:
       name: Read
       access: read
       sender: board
-      size: [9, 20]
-      description: One finished game, or the 9-byte header alone past the end.
+      size: [11, 20]
+      description: One finished game, or the 11-byte header with rev alone past the end.
       usage: >-
         Each read returns the game at the cursor and advances it; past the end it stays. A different
-        tournamentId or a count below the cached one drops the watch's cache.
+        tournamentId, a different rev or a count below the cached one drops the client's cache. rev is 0
+        for a new tournament and changes on every change other than an append. An 11-byte end frame
+        also tells the client the board supports offline games (a 9-byte one = older firmware: hide
+        the feature).
       structure:
         - field: proto
           type: uint8
@@ -54,6 +58,10 @@ characteristic:
         - field: tournament_id
           type: uint32
           description: Tournament id; 0 = no tournament (then count is 0).
+        - field: rev
+          type: uint16
+          present_if: index >= count
+          description: Revision of the listed games; changes on every change other than an append.
         - field: uid_a
           type: uint32
           present_if: index < count
@@ -73,4 +81,4 @@ characteristic:
         - field: turn
           type: uint8
           present_if: index < count
-          description: The pair's k-th finished game, 1-based.
+          description: "Bit 7 OFFLINE (game added by a client, not tracked by the board); bits 0-6 the pair's k-th listed game, 1-based."

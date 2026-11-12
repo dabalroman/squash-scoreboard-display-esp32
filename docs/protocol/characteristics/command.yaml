@@ -19,7 +19,7 @@ characteristic:
       name: Command
       access: write
       sender: watch
-      size: [3, 11]
+      size: [3, 13]
       description: A command id, its sequence number, and the command's arguments.
       usage: The arguments depend on the command id (commands.yaml).
       structure:

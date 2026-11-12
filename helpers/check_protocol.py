@@ -237,12 +237,25 @@ def field_size_bounds(spec, fld):
 def check_frame_size(spec, where, frame):
     declared = frame.get("size")
     lo = hi = 0
+    branches = {}  # `x < y` / `x >= y` fields exclude each other: one branch counts, not both
     for fld in frame.get("structure", []):
         b = field_size_bounds(spec, fld)
         if b is None or b[1] is None:
             return  # variable part: scenarios check the length
-        lo += b[0]
-        hi += b[1]
+        cond = fld.get("present_if")
+        m = re.fullmatch(r"\s*(\w+)\s*(<|>=)\s*(\w+)\s*", str(cond)) if cond else None
+        if m:
+            key = (m[1], m[3])
+            branches.setdefault(key, [0, 0])[m[2] == "<"] += b[1]
+        else:
+            lo += b[0]
+            hi += b[1]
+    for a, b in branches.values():
+        if a and b:
+            lo += min(a, b)
+            hi += max(a, b)
+        else:
+            hi += a + b
     want = (declared, declared) if isinstance(declared, int) else tuple(declared or (None, None))
     if (lo, hi) != want:
         spec.err(where, f"declared size {declared} but the fields add up to {lo if lo == hi else [lo, hi]}")
@@ -528,8 +541,14 @@ def enum_inline(spec, enum):
 
 def field_rows(spec, structure, offset, frame_bounds):
     rows = []
+    branch = {}  # `x < y` / `x >= y` fields exclude each other: the second branch restarts at the first's offset
     for fld in structure:
         name = f"`{fld['field']}`"
+        m = re.fullmatch(r"\s*(\w+)\s*(<|>=)\s*(\w+)\s*", str(fld.get("present_if", "")))
+        if m:
+            st = branch.setdefault((m[1], m[3]), [offset, m[2]])
+            if st[1] != m[2]:
+                st[1], offset = m[2], st[0]
         if "switch" in fld:
             target = "the command table (10.2)" if fld["cases"] == "commands" else \
                 "by `" + fld["switch"] + "`: " + ", ".join(

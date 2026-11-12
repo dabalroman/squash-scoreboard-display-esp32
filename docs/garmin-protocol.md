@@ -210,7 +210,11 @@ byte appended to INTRO (offset 16), CELEBRATION / GAME_OVER (offset 22) and MATC
 flags bits 4-5, the newest point's side (section 11.3, 16.12); a board without them sends 0 there,
 which reads as "unknown". Store app 1.0.0 ignores them. RESULTS (#527) - a new characteristic,
 the tournament's finished games (section 19, 16.13); optional for the watch, since a v1 board
-from before it lacks the characteristic. Store app 1.0.0 never looks for it.
+from before it lacks the characteristic. Store app 1.0.0 never looks for it. Offline games (#563) -
+ADD_OFFLINE_GAME / REMOVE_OFFLINE_GAME (0x0F / 0x10, a COMMAND frame of up to 13 B), a `rev` u16 on
+RESULTS' past-the-end frame (11 B instead of 9 B), and RESULTS `turn` bit 7 = OFFLINE (section 19,
+16.14). The `turn` bit is a deliberate exception to the rule above: a new meaning for an existing
+field, normally a `PROTO` bump (section 17, item 12).
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
@@ -406,7 +410,7 @@ write response arrives.
 
 <!-- generated: frames:COMMAND -->
 <!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
-**Command** (write, watch -> board, 3-11 B): A command id, its sequence number, and the command's arguments.
+**Command** (write, watch -> board, 3-13 B): A command id, its sequence number, and the command's arguments.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
@@ -438,6 +442,8 @@ The arguments depend on the command id (commands.yaml).
 | `0x0C` | UNUSED_0C | - | - | - | Reserved; never sent. |
 | `0x0D` | SYNC | - | 3 | ALL | No state change; re-push the full state. |
 | `0x0E` | FOCUS | `target` uint32 | 7 | MENU, CHOOSE_PLAYERS | Move the board's cursor to a row without acting on it (A / B scrolling, silent). |
+| `0x0F` | ADD_OFFLINE_GAME | `uid_a` uint32, `uid_b` uint32, `score_a` uint8, `score_b` uint8 | 13 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Append a game played off the board to the current tournament's results. |
+| `0x10` | REMOVE_OFFLINE_GAME | `tournament_id` uint32, `rev` uint16, `index` uint16 | 11 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Remove a mistaken offline game from the current tournament's results. |
 <!-- /generated: commands -->
 
 `side` other than 0/1 -> INVALID. Scoring through BLE bypasses the RF receiver's debounce;
@@ -1154,13 +1160,13 @@ ANNA - KRYSTIAN again, 9:11, the pair's second game (turn 2; KRYSTIAN won it).
 
 `results/read_past_end` - RESULTS read:
 ```
-01 03 00 03 00 01 ee ff c0    (9 B)
+01 03 00 03 00 01 ee ff c0 00 00    (11 B)
 ```
-Past the end: the 9-byte header alone. A catch-up write of [PROTO, n] with n = the cached count then reads until this 9-byte frame.
+Past the end: the 11-byte header with rev 0 (no change but appends so far). A catch-up write of [PROTO, n] with n = the cached count then reads until this end frame.
 
 `results/read_no_tournament` - RESULTS read:
 ```
-01 03 00 00 00 00 00 00 00    (9 B)
+01 03 00 00 00 00 00 00 00 00 00    (11 B)
 ```
 Outside a sport mode: no tournament, count 0, id 0 - the watch drops its cache.
 
@@ -1181,6 +1187,63 @@ A 2-byte write is too short for the 3-byte cursor frame; the cursor stays.
 00 00 00    (3 B)
 ```
 A v0 (PROTO 0) write is dropped; the cursor stays.
+
+### 16.14 Offline games
+
+A client adds a game played off the board, the board refuses an illegal score, another client reads the game with its OFFLINE flag, and the client removes it again, which changes rev.
+
+`offline_games/add` - COMMAND write:
+```
+01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07    (13 B)
+```
+ADD_OFFLINE_GAME, seq 5, ANNA - KRYSTIAN 11:7 (13 B).
+
+`offline_games/add_ack` - STATE notify:
+```
+01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+01 50 12 33 22 11 00    (7 B)
+```
+Legal squash score, both players selected: ack 5 APPLIED. The screen stays MATCH_START and the board plays no sound.
+
+`offline_games/add_illegal` - COMMAND write:
+```
+01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03    (13 B)
+```
+Seq 6: 15:3 is not a legal squash game (the winner had already won at 11); the frame itself is well-formed.
+
+`offline_games/add_illegal_ack` - STATE notify:
+```
+01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+01 51 12 33 22 11 00    (7 B)
+```
+Ack 6 INVALID, nothing was stored.
+
+`offline_games/read_offline` - RESULTS read:
+```
+01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81    (20 B)
+```
+A second client reads the game (cursor 0): turn 0x81 = OFFLINE (bit 7) and the pair's first game (bits 0-6 = 1).
+
+`offline_games/remove` - COMMAND write:
+```
+01 10 07 01 ee ff c0 00 00 00 00    (11 B)
+```
+REMOVE_OFFLINE_GAME, seq 7: game 0 of tournament 0xC0FFEE01 as read under rev 0 (11 B).
+
+`offline_games/remove_ack` - STATE notify:
+```
+01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+01 52 12 33 22 11 00    (7 B)
+```
+Ack 7 APPLIED, the game is gone and rev is now 1.
+
+`offline_games/read_end_rev` - RESULTS read:
+```
+01 00 00 00 00 01 ee ff c0 01 00    (11 B)
+```
+Reading from cursor 0 again: nothing is listed, so this is the end frame, with rev 1. A client that cached rev 0 drops its cache; the 11 B size also shows the board supports offline games.
+
+Tournament 0xC0FFEE01 is running on a squash board at MATCH_START with ANNA and KRYSTIAN selected and no game finished yet.
 <!-- /generated: scenarios -->
 ## 17. Open questions and deviations
 
@@ -1235,6 +1298,12 @@ A v0 (PROTO 0) write is dropped; the cursor stays.
     watch-only latch would anchor to whatever layout the watch first saw, so a late joiner or an
     app restart after a swap would disagree with the other watch. The board latches per `Match` at
     its first finished game and publishes the bit compatibly (section 5): no `PROTO` bump, no extra chunk.
+
+12. **RESULTS `turn` bit 7 = OFFLINE is a new meaning for an existing field (#563, 2026-11-12).**
+    Normally that is a `PROTO` bump (section 5); it ships in v1 because the gain (any client can
+    add games played off the board) outweighs the cost: store app 1.0.0 never reads RESULTS, and
+    only beta watches 1.3.x do, which show turn 129+ on offline games until updated. Everything
+    else of #563 is a plain compatible change.
 
 ## 18. Heart rate relay (HEART)
 
@@ -1320,16 +1389,23 @@ board is the source of truth: a watch never derives results from the states it o
 - **Tournament** = the games played since the board entered the current sport mode. It lives in
   RAM only: leaving the sport mode or a reboot ends it, and the next one has a new
   `tournamentId`. Nothing is persisted.
-- **Append-only, in finish order.** A finished game never changes or disappears (an UNDO at 0:0
-  leaves an unfinished game, never a finished one). A game appears once its winning point is
-  committed. Changes are not pushed: STATE is unchanged and a new game triggers no notify.
+- **Appended in finish order; only an offline game may later be removed, which changes `rev` and
+  renumbers that pair's later turns.** A game the board tracked never changes or disappears (an
+  UNDO at 0:0 leaves an unfinished game, never a finished one). A game appears once its winning
+  point is committed; an offline game (ADD_OFFLINE_GAME, section 10.2) appears at once. Changes are not pushed: STATE is unchanged and a new game triggers no notify.
 - **Players A and B are the pair's own order** (fixed when the board first set that pair up), not
   court sides: the exception to section 2, since a table needs the pair, not who stands where.
   A later swap of sides does not change A and B for that pair's games.
 - **Winner = the higher score.** A game only finishes on a winning point, so the scores never tie
   (padel: the set's gems, including 7-6 after a tiebreak).
-- **Turn** = the pair's k-th finished game, 1-based (ANNA - KRYSTIAN's second game is turn 2,
-  whatever other pairs played in between).
+- **Turn** = the pair's k-th listed game, 1-based (ANNA - KRYSTIAN's second game is turn 2,
+  whatever other pairs played in between), in bits 0-6 of the `turn` byte; bit 7 = OFFLINE (the
+  game was added by a client, not tracked by the board).
+- **`rev`** (past-the-end frame only) is 0 for a new tournament and changes on every change to the
+  listed games other than an append (today: removing an offline game). A client caches it beside
+  `tournamentId` and drops its cache on a different one; a remove followed by an add keeps `count`,
+  so `count` alone cannot show it. An 11 B end frame also tells the client the board supports
+  offline games; a 9 B one is older firmware: hide the feature.
 - uids belong to the active roster (section 12): players in squash, teams in padel and volleyball.
 - At most 128 games are listed per tournament (section 14); later games are not, and `count`
   stays 128.
@@ -1345,9 +1421,9 @@ board is the source of truth: a watch never derives results from the states it o
 | 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
 | 1 | 2 | `index` | Game index to read next. |
 
-To catch up, the watch writes [PROTO, n] with n = its cached count and reads until a 9-byte frame.
+To catch up, the watch writes [PROTO, n] with n = its cached count and reads until an end frame (index >= count).
 
-**Read** (read, board -> watch, 9-20 B): One finished game, or the 9-byte header alone past the end.
+**Read** (read, board -> watch, 11-20 B): One finished game, or the 11-byte header with rev alone past the end.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
@@ -1355,13 +1431,14 @@ To catch up, the watch writes [PROTO, n] with n = its cached count and reads unt
 | 1 | 2 | `index` | The cursor this read answers. |
 | 3 | 2 | `count` | Games listed now. |
 | 5 | 4 | `tournament_id` | Tournament id; 0 = no tournament (then count is 0). |
+| 9 | 2 | `rev` | Revision of the listed games; changes on every change other than an append. Present only when `index >= count`. |
 | 9 | 4 | `uid_a` | The pair's own A uid (not court side). Present only when `index < count`. |
 | 13 | 4 | `uid_b` | The pair's own B uid (not court side). Present only when `index < count`. |
 | 17 | 1 | `score_a` | A's score of the finished game. Present only when `index < count`. |
 | 18 | 1 | `score_b` | B's score of the finished game. Present only when `index < count`. |
-| 19 | 1 | `turn` | The pair's k-th finished game, 1-based. Present only when `index < count`. |
+| 19 | 1 | `turn` | Bit 7 OFFLINE (game added by a client, not tracked by the board); bits 0-6 the pair's k-th listed game, 1-based. Present only when `index < count`. |
 
-Each read returns the game at the cursor and advances it; past the end it stays. A different tournamentId or a count below the cached one drops the watch's cache.
+Each read returns the game at the cursor and advances it; past the end it stays. A different tournamentId, a different rev or a count below the cached one drops the client's cache. rev is 0 for a new tournament and changes on every change other than an append. An 11-byte end frame also tells the client the board supports offline games (a 9-byte one = older firmware: hide the feature).
 <!-- /generated: frames:RESULTS -->
 
 An empty tournament reads its own id with `count` 0.
@@ -1369,9 +1446,9 @@ An empty tournament reads its own id with `count` 0.
 ### 19.2 Watch (recommended)
 
 - **Incremental read.** Cache `(tournamentId, games)` per board. To catch up, write
-  `[PROTO, n]` with `n` = the cached count and read until a 9 B frame: 1 write + 1 read when
+  `[PROTO, n]` with `n` = the cached count and read until the end frame (index >= count): 1 write + 1 read when
   nothing is new.
-- **A different `tournamentId`, or a `count` below the cached one, drops the cache**: write
+- **A different `tournamentId` or `rev`, or a `count` below the cached one, drops the cache**: write
   `[PROTO, 0]` and read all `count` games. `0` = no tournament: show nothing.
 - When to read: on entering the table screen and when the state shows a game just finished
   (CELEBRATION, GAME_OVER); no polling during PLAYING. Each read costs one request tick (section

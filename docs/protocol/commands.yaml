@@ -149,3 +149,50 @@ commands:
       - field: target
         type: uint32
         description: A sport id (MENU) or a uid / 0 = START (CHOOSE_PLAYERS).
+
+  - id: 0x0F
+    name: ADD_OFFLINE_GAME
+    description: Append a game played off the board to the current tournament's results.
+    usage: >-
+      uid_a and uid_b must both be among the tournament's selected players and differ. The score
+      must be a legal finished game of the sport (the winner reached the winning score and had not
+      already won one point earlier: 12:10 and padel 7:6 pass, squash 15:3 does not), and fewer than
+      128 games may be listed already. Anything else -> INVALID. The game joins the pair's match
+      (either order; the board swaps the scores into the match's own A/B order) as its next turn and
+      is tagged offline in RESULTS. No screen change, no sound: APPLIED plus a state push.
+    see: "#102-command-table"
+    valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: uid_a
+        type: uint32
+        description: One player's uid.
+      - field: uid_b
+        type: uint32
+        description: The other player's uid.
+      - field: score_a
+        type: uint8
+        description: uid_a's score.
+      - field: score_b
+        type: uint8
+        description: uid_b's score.
+
+  - id: 0x10
+    name: REMOVE_OFFLINE_GAME
+    description: Remove a mistaken offline game from the current tournament's results.
+    usage: >-
+      index is the game's RESULTS index. A tournament_id or rev differing from the board's (the
+      client's view is stale), an index >= count, or a game the board tracked itself -> INVALID. The
+      board bumps rev and renumbers that pair's later turns. No screen change, no sound: APPLIED
+      plus a state push.
+    see: "#102-command-table"
+    valid_on: [MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER]
+    args:
+      - field: tournament_id
+        type: uint32
+        description: The tournament the client read the game from.
+      - field: rev
+        type: uint16
+        description: The RESULTS rev the client read the game under.
+      - field: index
+        type: uint16
+        description: The game's RESULTS index.

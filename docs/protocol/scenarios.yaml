@@ -708,19 +708,19 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 03 00 03 00 01 ee ff c0
-        fields: {index: 3, count: 3, tournament_id: 0xC0FFEE01}
+        hex: 01 03 00 03 00 01 ee ff c0 00 00
+        fields: {index: 3, count: 3, tournament_id: 0xC0FFEE01, rev: 0}
         why: >-
-          Past the end: the 9-byte header alone. A catch-up write of [PROTO, n] with n = the cached
-          count then reads until this 9-byte frame.
+          Past the end: the 11-byte header with rev 0 (no change but appends so far). A catch-up write of
+          [PROTO, n] with n = the cached count then reads until this end frame.
 
       - step: read_no_tournament
         direction: board -> watch
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 03 00 00 00 00 00 00 00
-        fields: {index: 3, count: 0, tournament_id: 0x00000000}
+        hex: 01 03 00 00 00 00 00 00 00 00 00
+        fields: {index: 3, count: 0, tournament_id: 0x00000000, rev: 0}
         why: >-
           Outside a sport mode: no tournament, count 0, id 0 - the watch drops its cache.
 
@@ -747,3 +747,104 @@ scenarios:
         frame: raw
         hex: 00 00 00
         why: A v0 (PROTO 0) write is dropped; the cursor stays.
+
+  - id: offline_games
+    section: "16.14"
+    title: Offline games
+    goal: >-
+      A client adds a game played off the board, the board refuses an illegal score, another client
+      reads the game with its OFFLINE flag, and the client removes it again, which changes rev.
+    notes: >-
+      Tournament 0xC0FFEE01 is running on a squash board at MATCH_START with ANNA and KRYSTIAN
+      selected and no game finished yet.
+    steps:
+      - step: add
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07
+        fields: {cmd: 0x0f, seq: 5, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7}
+        why: "ADD_OFFLINE_GAME, seq 5, ANNA - KRYSTIAN 11:7 (13 B)."
+
+      - step: add_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x50
+        hex:
+          - 01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 01 50 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 5, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: >-
+          Legal squash score, both players selected: ack 5 APPLIED. The screen stays MATCH_START and
+          the board plays no sound.
+
+      - step: add_illegal
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03
+        fields: {cmd: 0x0f, seq: 6, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 15, score_b: 3}
+        why: >-
+          Seq 6: 15:3 is not a legal squash game (the winner had already won at 11); the frame
+          itself is well-formed.
+
+      - step: add_illegal_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x51
+        hex:
+          - 01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 01 51 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 6, ack_status: INVALID, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 6 INVALID, nothing was stored.
+
+      - step: read_offline
+        direction: board -> watch
+        access: read
+        characteristic: RESULTS
+        frame: read
+        hex: 01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81
+        fields: {index: 0, count: 1, tournament_id: 0xC0FFEE01, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, turn: 0x81}
+        why: >-
+          A second client reads the game (cursor 0): turn 0x81 = OFFLINE (bit 7) and the pair's
+          first game (bits 0-6 = 1).
+
+      - step: remove
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 10 07 01 ee ff c0 00 00 00 00
+        fields: {cmd: 0x10, seq: 7, tournament_id: 0xC0FFEE01, rev: 0, index: 0}
+        why: >-
+          REMOVE_OFFLINE_GAME, seq 7: game 0 of tournament 0xC0FFEE01 as read under rev 0 (11 B).
+
+      - step: remove_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x52
+        hex:
+          - 01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 01 52 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 7, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 7 APPLIED, the game is gone and rev is now 1.
+
+      - step: read_end_rev
+        direction: board -> watch
+        access: read
+        characteristic: RESULTS
+        frame: read
+        hex: 01 00 00 00 00 01 ee ff c0 01 00
+        fields: {index: 0, count: 0, tournament_id: 0xC0FFEE01, rev: 1}
+        why: >-
+          Reading from cursor 0 again: nothing is listed, so this is the end frame, with rev 1. A
+          client that cached rev 0 drops its cache; the 11 B size also shows the board supports
+          offline games.
