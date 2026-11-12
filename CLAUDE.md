@@ -119,7 +119,7 @@ Each has its reasoning in the rule file named after it.
 - Every AP path goes through `RemoteDevelopmentService::startApOnly()`, and `-DFASTLED_RMT_MEM_BLOCKS=4` stays a build flag: a retrying STA glitches the LEDs (`platform.md`).
 - Never grow or add a field to `PrefsData`: its size is the stored layout, and a mismatch drops brightness and the WiFi credentials. New persisted data gets its own NVS key in namespace `"ns"` (`persistence-network.md`, `roster-web.md`).
 - Never add an erase/clear/remove of a roster blob (`roster-web.md`).
-- Never erase or rewrite a stored game: `Match::finishGame()` and `Match::recordGame()` are the only writers of `gameResults`, both append-only; the only later change is `markRemoved()` setting an offline game's `removed` bit. The watch's RESULTS relies on it (`tournament.md`, `garmin.md`).
+- Never erase or rewrite a stored game: `Match::finishGame()` and `Match::recordGame()` are the only writers of `gameResults`, both append-only; the only later change is `markRemoved()` setting an offline game's `removed` bit. The one exception is tablet mode's `Tournament::applyMirror()` (COMMIT_MIRROR), which rebuilds the game set from the tablet's mirror plus the un-ACKed outbox. The watch's RESULTS relies on it (`tournament.md`, `garmin.md`).
 - Every user-visible string lives in `src/Strings.h`, both language branches, no diacritics; LED words have no W, K, M or V (`strings.md`).
 - Set brightness only through `LedDisplay`, never `FastLED.setBrightness` (`battery.md`).
 - Never write a raw NUL into a source file from a script (`eink.md`).
