@@ -48,6 +48,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | `PROTO` | `0x01` | Protocol version. Byte 0 of every characteristic value and the advertised version byte. |
 | `COMPANY_ID` | `0xFFFF` | Bluetooth SIG test company id carried in the manufacturer data, until a registered one exists. |
 | `ADV_FLAG_PAIRING` | `0x01` | Bit 0 of the advertising flags byte: the pairing window is open and the code is present. |
+| `ADV_FLAG_TOURNAMENT` | `0x02` | Bit 1 of the advertising flags byte: the tournament pairing window is open and the code is present. |
 | `MAX_FRAME` | 20 | Maximum frame size in bytes; every read, write and notify is at most this. |
 | `MAX_ADV` | 31 | Maximum BLE advertising payload in bytes. |
 | `CHUNK_HEADER` | 3 | Fixed STATE notify header: PROTO, stateSeq, index<<4 \| count. |
@@ -59,6 +60,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | `NONCE_SIZE` | 8 | Length of the board nonce Nb and the watch nonce Nw. |
 | `MAC_SIZE` | 8 | Truncated MAC length - the first 8 bytes of HMAC-SHA256. |
 | `SLOT_COUNT` | 8 | Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot. |
+| `TABLET_SLOT` | `0x08` | The slot id of the key a tournament pairing issues; RAM only, one per board. |
 | `MAX_CONNECTIONS` | 4 | Concurrent BLE connections the board accepts; it stops advertising while all are open. |
 | `ROSTER_ENTRY_SIZE` | 16 | Wire size of one roster entry: uid (u32), r, g, b, then a 9-byte name. |
 | `ROSTER_NAME_SIZE` | 9 | Bytes of the roster entry's name field, printable ASCII, NUL-padded. |
@@ -133,8 +135,8 @@ Even without the Flags AD it is 34. Moving it to the scan response does not help
 | 4 | 4 | `magic` | `53 43 42 44` - Product magic. |
 | 8 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
 | 9 | 4 | `board_id` | Board id, drawn per board. |
-| 13 | 1 | `flags` | Bit 0 PAIRING (window open); bits 1-7 reserved, sent 0, ignored. |
-| 14 | 2 | `pairing_code` | Pairing code 0-9999 while PAIRING, else 0x0000 (ignored). |
+| 13 | 1 | `flags` | Bit 0 PAIRING (window open), bit 1 TOURNAMENT (tournament window open, section 9.2); bits 2-7 reserved, sent 0, ignored. |
+| 14 | 2 | `pairing_code` | Pairing code 0-9999 while PAIRING or TOURNAMENT, else 0x0000 (ignored). |
 | 16 | 3 | `flags_ad` | `02 01 06` - Flags AD: LE General Discoverable, BR/EDR not supported. |
 
 Broadcast always while BLE is up. The watch's pre-connect filter matches company id + magic (+ version + board id + flags) on this payload. The manufacturer bytes after the company id are frozen across protocol versions.
@@ -324,7 +326,7 @@ The watch reads AUTH before it has written a proof (connection sequence step 4) 
 |---|---|---|---|
 | 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
 | 1 | 1 | `type` | `0x01` PROOF - Marks this write as a proof. `0` CHALLENGE, `1` PROOF, `2` RESULT |
-| 2 | 1 | `slot` | Board slot the watch's key was issued in (PAIRING result). Range 0-SLOT_COUNT - 1. |
+| 2 | 1 | `slot` | Board slot the watch's key was issued in (PAIRING result); TABLET_SLOT for a tournament pairing. Range 0-TABLET_SLOT. |
 | 3 | 8 | `nw` | Watch nonce, fresh per attempt. |
 | 11 | 8 | `watch_mac` | First 8 bytes of HMAC-SHA256(K, 0x57 \|\| Nb). |
 
@@ -411,6 +413,30 @@ Read (or notified) after the request. OK carries slotId + the 16-byte key the wa
 
 The board answers within the write's access callback, so the result is readable as soon as the
 write response arrives.
+
+### 9.2 Tournament pairing
+
+A tablet pairs with no one at the board (#583): the person already chose the board by picking
+TOURNAMENT on it, so that choice is the user-opened window.
+
+1. On TOURNAMENT_WAIT (section 20) the board turns GARMIN on if it is off (it stays on, as after
+   PARUJ), draws a code and opens the **tournament window**: no time limit, advertised as
+   `ADV_FLAG_TOURNAMENT` (bit 1) + code, with bit 0 clear, so a watch never lists the board. The
+   window closes when the board leaves TOURNAMENT_WAIT (BEGIN_TOURNAMENT, or a person leaving).
+   It is not shown on the board's displays.
+2. A tablet lists advertisers with bit 1 set and runs section 9 steps 3-5 with the advertised
+   code, unasked. The board answers OK with slot `TABLET_SLOT` (8) and a fresh key, kept in RAM
+   only: never written to NVS, never in a watch slot, so no paired watch is evicted.
+3. The tablet authenticates with `TABLET_SLOT` like any slot (section 8), then and on every
+   reconnect while the tournament runs.
+4. The key ends with tablet mode: when the board leaves it (to the main menu, or back to
+   TOURNAMENT_WAIT) or restarts, the board drops every connection authenticated with it, and a
+   later proof for `TABLET_SLOT` answers UNKNOWN_SLOT. A tablet that sees UNKNOWN_SLOT forgets the
+   key and pairs again in the next tournament window. A second tournament pairing replaces the
+   key and drops the connection that held the old one.
+
+One tablet key per board. Any client may pair in the tournament window (the board does not tell a
+tablet from a watch); the result is the same 20 B OK frame of 9.1.
 
 ## 10. Commands
 
@@ -796,6 +822,12 @@ The identifying manufacturer data first, then the Flags AD. Board id is the litt
 0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06    (19 B)
 ```
 The pairing window is open, so flags bit 0 is set and the drawn code 4271 (0x10AF) is carried little-endian. The watch lists only advertisers with bit 0 set.
+
+`advertising/adv_tournament` - ADVERTISING advertise:
+```
+0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06    (19 B)
+```
+The board waits on TOURNAMENT_WAIT with its tournament window open: bit 1 only, so a watch does not list it, and the code a tablet pairs with unasked (section 9.2).
 
 `advertising/scan_rsp` - ADVERTISING scan_response:
 ```
@@ -1788,7 +1820,8 @@ outside it the board ignores the tablet commands (WRONG_SCREEN) and stays the so
   tournament, its roster and its games stay until tablet mode ends; then they are gone (RAM only,
   never NVS) and the stored roster returns.
 - **Any authenticated client** may send what follows; the board does not tell a tablet from a
-  watch. A tablet pairs like a watch (section 9).
+  watch. A tablet pairs in the tournament window on TOURNAMENT_WAIT, with no one at the board
+  (section 9.2).
 - **CRC** = CRC-32/ISO-HDLC (zlib `crc32`, as `rosterVersion`, section 12) over the count (1 B)
   followed by every entry's wire form in index order: 16 B roster entries (uid, r, g, b, name),
   or 15 B games (id, uidA, uidB, scoreA, scoreB, flags). On the wire a little-endian `uint32`

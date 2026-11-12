@@ -95,13 +95,16 @@ void test_crc32_check_value() {
 void test_advertising() {
     // spec: advertising/adv_normal
     expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06",
-              buildAdvertising(BOARD_ID, false, 0), "16.1 normal");
+              buildAdvertising(BOARD_ID, 0, 0), "16.1 normal");
     // spec: advertising/adv_pairing
     expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06",
-              buildAdvertising(BOARD_ID, true, 4271), "16.1 pairing");
+              buildAdvertising(BOARD_ID, ADV_FLAG_PAIRING, 4271), "16.1 pairing");
+    // spec: advertising/adv_tournament
+    expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06",
+              buildAdvertising(BOARD_ID, ADV_FLAG_TOURNAMENT, 4271), "16.1 tournament");
     // The code field is zero outside the window whatever the caller passes.
     expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06",
-              buildAdvertising(BOARD_ID, false, 4271), "code ignored when not pairing");
+              buildAdvertising(BOARD_ID, 0, 4271), "code ignored when not pairing");
 }
 
 void test_scan_response() {

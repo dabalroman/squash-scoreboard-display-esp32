@@ -338,7 +338,20 @@ void GarminService::takeMirrorStage(const uint8_t count, uint8_t *out) {
 }
 
 void GarminService::endTablet() {
-    gLink.endTablet();
+    gLink.endTablet(millis());
+}
+
+void GarminService::keepTournamentPairing(const bool wanted) {
+    if (!wanted) {
+        if (gLink.tournamentPairingOpen()) gLink.closePairing();
+        return;
+    }
+    if (failed()) return;
+    if (!gLink.enabled()) {
+        setEnabled(true); // stays on afterwards, as after PARUJ
+        return;
+    }
+    if (running() && !gLink.tournamentPairingOpen()) gLink.openPairing(millis(), true);
 }
 
 void GarminService::publishTablet(const Garmin::TabletStatus &status, const uint16_t outboxCount, const OutboxAt at,
@@ -397,11 +410,11 @@ void GarminService::begin() {
 
     gLink.ensureBoardId();
     const uint32_t boardId = gLink.boardId();
-    bool open;
+    uint8_t flags;
     uint16_t code;
     // The payload below already carries the current window.
-    gLink.takeAdvChanged(open, code);
-    gAdv = Garmin::buildAdvertising(boardId, gLink.pairingOpen(), gLink.pairingCode());
+    gLink.takeAdvChanged(flags, code);
+    gAdv = Garmin::buildAdvertising(boardId, gLink.advFlags(), gLink.pairingCode());
     gScanResponse = Garmin::buildScanResponse(boardId);
     gVersion = Garmin::buildVersion(FW_VERSION);
     snprintf(gName, sizeof(gName), "Score-%04X", static_cast<unsigned>(boardId & 0xFFFF));
@@ -507,10 +520,10 @@ void GarminService::loop(const uint32_t now) {
 
     gLink.tick(now);
 
-    bool open;
+    uint8_t flags;
     uint16_t code;
-    if (gLink.takeAdvChanged(open, code)) {
-        const Garmin::AdvData adv = Garmin::buildAdvertising(gLink.boardId(), open, code);
+    if (gLink.takeAdvChanged(flags, code)) {
+        const Garmin::AdvData adv = Garmin::buildAdvertising(gLink.boardId(), flags, code);
         const int rc = ble_gap_adv_set_data(adv.data, adv.len);
         if (rc != 0) {
             printLn("Garmin: advertising update failed (%d)", rc);

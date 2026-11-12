@@ -270,10 +270,10 @@ void test_pairing_window() {
 
     g_word = 4271 + 10000 * 7;
     TEST_ASSERT_EQUAL(4271, link.openPairing(1000));
-    bool open;
+    uint8_t open;
     uint16_t code;
     TEST_ASSERT_TRUE(link.takeAdvChanged(open, code));
-    TEST_ASSERT_TRUE(open);
+    TEST_ASSERT_EQUAL_HEX8(Garmin::ADV_FLAG_PAIRING, open);
     TEST_ASSERT_EQUAL(4271, code);
     TEST_ASSERT_FALSE(link.takeAdvChanged(open, code));
 
@@ -316,13 +316,83 @@ void test_pairing_window() {
     TEST_ASSERT_EQUAL(0, link.pairingCode());
     expectFrame("01 00", link.readPairing(1), "key wiped at close");
     TEST_ASSERT_TRUE(link.takeAdvChanged(open, code));
-    TEST_ASSERT_FALSE(open);
+    TEST_ASSERT_EQUAL_HEX8(0, open);
     TEST_ASSERT_EQUAL(0, code);
 
     // A request just past the window is refused even before tick() runs.
     link.openPairing(200000);
     putAt(link, &Link::writePairing, 1, "01 01 af 10", 320000);
     expectFrame("01 02 01", link.readPairing(1), "late request");
+}
+
+// Spec 9.2: the tournament window never expires, advertises bit 1 and keys into the RAM-only TABLET_SLOT.
+void test_tournament_pairing() {
+    const char *TABLET_PROOF = "01 01 08 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae";
+    Link link(fakeFill, fakeWord);
+    loadSpecKeys(link);
+    GarminData data;
+    link.takeDirtyData(data);
+    const uint8_t pairedBefore = link.pairedCount();
+
+    g_word = 4271;
+    link.openPairing(1000, true);
+    TEST_ASSERT_TRUE(link.tournamentPairingOpen());
+    uint8_t flags;
+    uint16_t code;
+    TEST_ASSERT_TRUE(link.takeAdvChanged(flags, code));
+    TEST_ASSERT_EQUAL_HEX8(Garmin::ADV_FLAG_TOURNAMENT, flags);
+    TEST_ASSERT_EQUAL(4271, code);
+    TEST_ASSERT_EQUAL(0, link.pairingRemainingMs(2000));
+    link.tick(1000 + 10 * Garmin::PAIRING_WINDOW_MS);
+    TEST_ASSERT_TRUE(link.tournamentPairingOpen());
+
+    // No slot for an unpaired tablet yet.
+    connectWithSpecNonce(link, 1, 0);
+    putAt(link, &Link::writeAuth, 1, TABLET_PROOF, 0);
+    expectFrame("01 02 02", link.readAuth(1), "no tablet key yet");
+    link.disconnect(1);
+
+    const uint32_t late = 1000 + 5 * Garmin::PAIRING_WINDOW_MS;
+    connectWithSpecNonce(link, 2, late);
+    g_fills.push_back(seq(0x00, 16));
+    putAt(link, &Link::writePairing, 2, "01 01 af 10", late);
+    expectFrame("01 02 00 08 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f", link.readPairing(2), "tablet slot");
+    TEST_ASSERT_FALSE(link.takeDirtyData(data)); // RAM only
+    TEST_ASSERT_EQUAL(pairedBefore, link.pairedCount());
+    putAt(link, &Link::writeAuth, 2, TABLET_PROOF, late);
+    expectFrame("01 02 00 18 57 e1 b4 a9 6e bf 5a", link.readAuth(2), "tablet authenticates");
+    TEST_ASSERT_EQUAL(1, link.authedCount());
+    TEST_ASSERT_FALSE(link.takeDirtyData(data)); // no LRU touch either
+
+    // Reconnecting in the same tournament needs no window.
+    link.closePairing();
+    connectWithSpecNonce(link, 3, late);
+    putAt(link, &Link::writeAuth, 3, TABLET_PROOF, late);
+    expectFrame("01 02 00 18 57 e1 b4 a9 6e bf 5a", link.readAuth(3), "reconnect");
+
+    // Tablet mode ends: both holders dropped, the slot is unknown again.
+    link.endTablet(late + 10);
+    uint16_t due[Garmin::MAX_CONNECTIONS];
+    TEST_ASSERT_EQUAL(2, link.dueDisconnects(late + 10, due));
+    TEST_ASSERT_EQUAL(0, link.authedCount());
+    link.disconnect(2);
+    link.disconnect(3);
+    connectWithSpecNonce(link, 4, late + 20);
+    putAt(link, &Link::writeAuth, 4, TABLET_PROOF, late + 20);
+    expectFrame("01 02 02", link.readAuth(4), "key gone with tablet mode");
+    link.disconnect(4);
+    TEST_ASSERT_EQUAL(pairedBefore, link.pairedCount());
+
+    // A watch window replaces a tournament window and wipes the key it issued.
+    link.openPairing(late, true);
+    connectWithSpecNonce(link, 5, late);
+    g_fills.push_back(seq(0x40, 16));
+    putAt(link, &Link::writePairing, 5, "01 01 af 10", late);
+    TEST_ASSERT_EQUAL(20, link.readPairing(5).len);
+    link.openPairing(late, false);
+    TEST_ASSERT_FALSE(link.tournamentPairingOpen());
+    TEST_ASSERT_EQUAL_HEX8(Garmin::ADV_FLAG_PAIRING, link.advFlags());
+    expectFrame("01 00", link.readPairing(5), "tournament key wiped");
 }
 
 void test_pairing_notify_only_to_subscriber() {
@@ -1137,7 +1207,7 @@ void test_tablet_staging() {
     // endTablet clears both stages.
     put(link, &Link::writeTournament, 1, ANNA_WRITE);
     put(link, &Link::writeTournament, 1, "01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
-    link.endTablet();
+    link.endTablet(0);
     link.takeRosterStage(1, stage);
     link.takeMirrorStage(1, mirror.data());
     TEST_ASSERT_EQUAL_HEX32(0, Garmin::getU32(stage));
@@ -1242,7 +1312,7 @@ void test_tablet_roster_slot() {
 
     // Back to a stored kind; the stored teams are untouched.
     link.useRoster(Garmin::RosterKind::Teams);
-    link.endTablet();
+    link.endTablet(0);
     TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 100, pushes));
     TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, link.rosterVersion());
     put(link, &Link::writeRoster, 1, "01 01");
@@ -1256,6 +1326,7 @@ int main() {
     RUN_TEST(test_proof_is_single_use);
     RUN_TEST(test_unauthenticated_timeout);
     RUN_TEST(test_pairing_window);
+    RUN_TEST(test_tournament_pairing);
     RUN_TEST(test_pairing_notify_only_to_subscriber);
     RUN_TEST(test_commands_dedupe_and_ack);
     RUN_TEST(test_queue_full_busy_and_disconnect);

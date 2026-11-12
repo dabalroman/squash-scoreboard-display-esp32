@@ -28,6 +28,9 @@ namespace Garmin {
     constexpr uint8_t NONCE_SIZE = 8;
     constexpr uint8_t MAC_SIZE = 8;
     constexpr uint8_t SLOT_COUNT = 8;
+    // The RAM-only key of a tournament pairing (spec 9.2), past the stored slots.
+    constexpr uint8_t TABLET_SLOT = 8;
+    static_assert(TABLET_SLOT >= SLOT_COUNT, "the tablet key must not alias a stored slot");
     constexpr uint8_t MAX_CONNECTIONS = 4;
     constexpr uint8_t ROSTER_ENTRY_SIZE = 16;
     constexpr uint8_t ROSTER_NAME_SIZE = 9;
@@ -65,6 +68,7 @@ namespace Garmin {
     static_assert(OUTBOX_FRAME <= MAX_FRAME, "an OUTBOX read must fit one frame");
 
     constexpr uint8_t ADV_FLAG_PAIRING = 0x01;
+    constexpr uint8_t ADV_FLAG_TOURNAMENT = 0x02;
 
     constexpr const char *SERVICE_UUID = "0d780001-2f44-4f31-93b7-b78dc9e29735";
     constexpr const char *VERSION_UUID = "0d780002-2f44-4f31-93b7-b78dc9e29735";
@@ -195,7 +199,8 @@ namespace Garmin {
 
     // --- Advertising (4.2, 4.3) ---
 
-    inline AdvData buildAdvertising(const uint32_t boardId, const bool pairing, const uint16_t code) {
+    // `flags`: ADV_FLAG_PAIRING, ADV_FLAG_TOURNAMENT or 0; the code is sent only with a window flag.
+    inline AdvData buildAdvertising(const uint32_t boardId, const uint8_t flags, const uint16_t code) {
         AdvData a{};
         uint8_t *p = a.data;
         p[0] = 0x0F;
@@ -207,8 +212,8 @@ namespace Garmin {
         p[7] = 0x44;
         p[8] = PROTO;
         putU32(p + 9, boardId);
-        p[13] = pairing ? ADV_FLAG_PAIRING : 0;
-        putU16(p + 14, pairing ? code : 0);
+        p[13] = flags;
+        putU16(p + 14, flags ? code : 0);
         p[16] = 0x02;
         p[17] = 0x01;
         p[18] = 0x06;

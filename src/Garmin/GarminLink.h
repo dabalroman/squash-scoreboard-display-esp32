@@ -125,6 +125,8 @@ public:
         Guard g;
         GarminPairingStore::forgetAll(data);
         dataDirty = true;
+        memset(tabletKey, 0, sizeof(tabletKey));
+        tabletKeySet = false;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             Conn &c = conns[i];
             if (c.handle == NO_HANDLE) continue;
@@ -172,16 +174,16 @@ public:
         if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
         const uint32_t version = Garmin::rosterVersion(count, entries);
         Guard g;
-        rosterCount[TABLET_SLOT] = count;
-        memcpy(roster[TABLET_SLOT], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
-        rosterVers[TABLET_SLOT] = version;
+        rosterCount[TABLET_ROSTER] = count;
+        memcpy(roster[TABLET_ROSTER], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        rosterVers[TABLET_ROSTER] = version;
         return version;
     }
 
     // Like useRoster(): effective with the next published state.
     void useTabletRoster() {
         Guard g;
-        pendingRoster = TABLET_SLOT;
+        pendingRoster = TABLET_ROSTER;
     }
 
     // BEGIN_TOURNAMENT answering APPLIED or INVALID: entries 0..count-1 into `out`
@@ -202,13 +204,15 @@ public:
     }
 
     // Tablet mode ended: both stages, the pushed roster and the snapshot are gone.
-    void endTablet() {
+    // Also ends the tournament pairing (spec 9.2): its key is gone, and so is every connection that proved it.
+    void endTablet(const uint32_t now) {
         Guard g;
+        forgetTabletKeyLocked(now);
         memset(rosterStage, 0, sizeof(rosterStage));
         memset(mirrorStage, 0, sizeof(mirrorStage));
-        memset(roster[TABLET_SLOT], 0, sizeof(roster[TABLET_SLOT]));
-        rosterCount[TABLET_SLOT] = 0;
-        rosterVers[TABLET_SLOT] = Garmin::rosterVersion(0, nullptr);
+        memset(roster[TABLET_ROSTER], 0, sizeof(roster[TABLET_ROSTER]));
+        rosterCount[TABLET_ROSTER] = 0;
+        rosterVers[TABLET_ROSTER] = Garmin::rosterVersion(0, nullptr);
         tabletStatus = Garmin::TabletStatus{};
         outboxCount = 0;
         outboxTotal = 0;
@@ -289,15 +293,24 @@ public:
 
     // --- Pairing window (loop) ---
 
-    // A fresh code on every open, also when re-opened while open.
-    uint16_t openPairing(const uint32_t now) {
+    // A fresh code on every open, also when re-opened while open. `tournament` = spec 9.2's window:
+    // no time limit, advertised as bit 1, keys into the RAM-only TABLET_SLOT.
+    uint16_t openPairing(const uint32_t now, const bool tournament = false) {
         const uint16_t code = Garmin::pairingCodeFrom(randomWord());
         Guard g;
+        // A reply issued under the other kind of window must not outlive it.
+        if (pairing && tournamentWindow != tournament) closePairingLocked();
         pairing = true;
+        tournamentWindow = tournament;
         pairingOpenedAt = now;
         pairingCode_ = code;
         advChanged = true;
         return code;
+    }
+
+    bool tournamentPairingOpen() const {
+        Guard g;
+        return pairing && tournamentWindow;
     }
 
     void closePairing() {
@@ -317,19 +330,24 @@ public:
 
     uint32_t pairingRemainingMs(const uint32_t now) const {
         Guard g;
-        if (!pairing) return 0;
+        if (!pairing || tournamentWindow) return 0;
         const uint32_t elapsed = now - pairingOpenedAt;
         return elapsed >= Garmin::PAIRING_WINDOW_MS ? 0 : Garmin::PAIRING_WINDOW_MS - elapsed;
     }
 
-    // The advertising payload must follow the pairing flag and code.
-    bool takeAdvChanged(bool &open, uint16_t &code) {
+    // The advertising payload must follow the window's flag and code.
+    bool takeAdvChanged(uint8_t &flags, uint16_t &code) {
         Guard g;
         if (!advChanged) return false;
         advChanged = false;
-        open = pairing;
+        flags = advFlagsLocked();
         code = pairing ? pairingCode_ : 0;
         return true;
+    }
+
+    uint8_t advFlags() const {
+        Guard g;
+        return advFlagsLocked();
     }
 
     // --- Host task: connection events ---
@@ -403,7 +421,7 @@ public:
             if (c == nullptr || c->proofUsed) return;
             c->proofUsed = true;
             memcpy(nb, c->nb, sizeof(nb));
-            const uint8_t *stored = GarminPairingStore::keyFor(data, proof.slotId);
+            const uint8_t *stored = keyForLocked(proof.slotId);
             haveKey = stored != nullptr;
             if (haveKey) memcpy(key, stored, sizeof(key));
         }
@@ -418,7 +436,7 @@ public:
             Conn *c = find(handle);
             if (c != nullptr && c->proofUsed && c->authReply.len == 0) {
                 // The slot may have been forgotten or re-issued while the MAC was computed.
-                const uint8_t *stored = GarminPairingStore::keyFor(data, proof.slotId);
+                const uint8_t *stored = keyForLocked(proof.slotId);
                 if (ok && (stored == nullptr || !GarminAuth::constantTimeEquals(stored, key, sizeof(key)))) {
                     ok = false;
                     haveKey = false; // the key it proved is gone: re-pair, not "untrusted"
@@ -430,8 +448,10 @@ public:
                     if (c->paired) completedPairings_++;
                     c->authReply = Garmin::buildAuthResultOk(boardMac);
                     c->needPush = true;
-                    GarminPairingStore::touch(data, proof.slotId);
-                    dataDirty = true;
+                    if (proof.slotId != Garmin::TABLET_SLOT) {
+                        GarminPairingStore::touch(data, proof.slotId);
+                        dataDirty = true;
+                    }
                 } else {
                     c->authReply = Garmin::buildAuthResultFail(haveKey ? Garmin::AuthStatus::BadProof
                                                                        : Garmin::AuthStatus::UnknownSlot);
@@ -460,7 +480,7 @@ public:
             Guard g;
             Conn *c = find(handle);
             if (c != nullptr) {
-                if (!pairing || now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) {
+                if (!pairing || (!tournamentWindow && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS)) {
                     c->pairingReply = Garmin::buildPairingFail(Garmin::PairingStatus::WindowClosed);
                 } else if (code != pairingCode_) {
                     c->pairingReply = Garmin::buildPairingFail(Garmin::PairingStatus::BadCode);
@@ -468,8 +488,16 @@ public:
                     // One key per connection: a central must not mint keys and evict every slot.
                     return;
                 } else {
-                    const uint8_t slot = GarminPairingStore::storeKey(data, key);
-                    dataDirty = true;
+                    uint8_t slot;
+                    if (tournamentWindow) {
+                        // RAM only: never NVS, never a watch slot (spec 9.2).
+                        slot = Garmin::TABLET_SLOT;
+                        memcpy(tabletKey, key, sizeof(tabletKey));
+                        tabletKeySet = true;
+                    } else {
+                        slot = GarminPairingStore::storeKey(data, key);
+                        dataDirty = true;
+                    }
                     c->paired = true;
                     c->pairingReply = Garmin::buildPairingOk(slot, key);
                     // Spec 9: the unauthenticated timeout restarts when a key is delivered; a failed
@@ -606,7 +634,7 @@ public:
 
     void tick(const uint32_t now) {
         Guard g;
-        if (pairing && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) closePairingLocked();
+        if (pairing && !tournamentWindow && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) closePairingLocked();
     }
 
     // Connections to terminate now: unauthenticated past the timeout, a failed proof's delay
@@ -855,7 +883,7 @@ private:
     uint8_t queueCount = 0;
 
     // Players, Teams, then the tablet's pushed roster (spec 20).
-    enum : uint8_t { ROSTER_SLOTS = 3, TABLET_SLOT = 2 };
+    enum : uint8_t { ROSTER_SLOTS = 3, TABLET_ROSTER = 2 };
 
     static uint8_t slotOf(const Garmin::RosterKind kind) {
         return kind == Garmin::RosterKind::Teams ? 1 : 0;
@@ -884,6 +912,9 @@ private:
     uint16_t outboxTotal = 0;
 
     bool pairing = false;
+    bool tournamentWindow = false;
+    uint8_t tabletKey[Garmin::KEY_SIZE] = {};
+    bool tabletKeySet = false;
     uint32_t pairingOpenedAt = 0;
     uint16_t pairingCode_ = 0;
     bool advChanged = false;
@@ -945,9 +976,27 @@ private:
         memset(&c.pairingReply, 0, sizeof(c.pairingReply));
     }
 
+    uint8_t advFlagsLocked() const {
+        if (!pairing) return 0;
+        return tournamentWindow ? Garmin::ADV_FLAG_TOURNAMENT : Garmin::ADV_FLAG_PAIRING;
+    }
+
+    const uint8_t *keyForLocked(const uint8_t slotId) const {
+        if (slotId == Garmin::TABLET_SLOT) return tabletKeySet ? tabletKey : nullptr;
+        return GarminPairingStore::keyFor(data, slotId);
+    }
+
+    void forgetTabletKeyLocked(const uint32_t now) {
+        if (!tabletKeySet) return;
+        memset(tabletKey, 0, sizeof(tabletKey));
+        tabletKeySet = false;
+        dropHoldersOf(Garmin::TABLET_SLOT, now, nullptr);
+    }
+
     void closePairingLocked() {
         if (!pairing) return;
         pairing = false;
+        tournamentWindow = false;
         advChanged = true;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             if (conns[i].pairingReply.len > 2

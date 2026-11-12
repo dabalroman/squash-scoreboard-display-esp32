@@ -48,10 +48,10 @@ advertising:
           description: Board id, drawn per board.
         - field: flags
           type: uint8
-          description: Bit 0 PAIRING (window open); bits 1-7 reserved, sent 0, ignored.
+          description: Bit 0 PAIRING (window open), bit 1 TOURNAMENT (tournament window open, section 9.2); bits 2-7 reserved, sent 0, ignored.
         - field: pairing_code
           type: uint16
-          description: Pairing code 0-9999 while PAIRING, else 0x0000 (ignored).
+          description: Pairing code 0-9999 while PAIRING or TOURNAMENT, else 0x0000 (ignored).
         - field: flags_ad
           type: uint8[]
           size: 3

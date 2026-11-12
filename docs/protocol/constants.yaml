@@ -28,8 +28,18 @@ constants:
     description: "Bit 0 of the advertising flags byte: the pairing window is open and the code is present."
     usage: >-
       The board sets it while the pairing window is open; the watch's pairing screen lists only
-      advertisers with it set. Bits 1-7 are reserved, sent 0, ignored.
+      advertisers with it set. Bits 2-7 are reserved, sent 0, ignored.
     see: "#42-advind-19-b"
+
+  - name: ADV_FLAG_TOURNAMENT
+    type: uint8
+    value: 0x02
+    description: "Bit 1 of the advertising flags byte: the tournament pairing window is open and the code is present."
+    usage: >-
+      The board sets it, never together with bit 0, while it waits on TOURNAMENT_WAIT; a tablet
+      lists such boards and pairs with the advertised code without asking anyone. Watches ignore
+      it, so they never offer the board for a lasting pairing.
+    see: "#92-tournament-pairing"
 
   - name: MAX_FRAME
     type: size
@@ -109,8 +119,17 @@ constants:
     type: size
     value: 8
     description: Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot.
-    usage: Bounds the AUTH proof's slot id (0 to SLOT_COUNT - 1).
+    usage: Bounds the AUTH proof's slot id (0 to SLOT_COUNT - 1, plus TABLET_SLOT).
     see: "#9-pairing"
+
+  - name: TABLET_SLOT
+    type: uint8
+    value: 8
+    description: The slot id of the key a tournament pairing issues; RAM only, one per board.
+    usage: >-
+      Returned in a tournament window's PAIRING result and accepted in the AUTH proof. The key
+      lives until the board leaves tablet mode or restarts; a new tournament pairing replaces it.
+    see: "#92-tournament-pairing"
 
   - name: MAX_CONNECTIONS
     type: size

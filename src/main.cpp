@@ -605,6 +605,8 @@ void updateWatchBadge() {
 void loop() {
     einkDisplay.update();
     garminService.loop(millis());
+    // Spec 9.2: TOURNAMENT_WAIT pairs a tablet with nobody at the board.
+    garminService.keepTournamentPairing(deviceState == DeviceModeState::TournamentMode);
     // Bench: nobody opens the window, so it reopens (fresh code) whenever it expires.
     if (Board::IS_BENCH && garminService.isEnabled() && !garminService.pairingOpen()) {
         garminService.openPairing();

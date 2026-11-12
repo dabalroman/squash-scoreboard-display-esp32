@@ -43,6 +43,17 @@ scenarios:
           The pairing window is open, so flags bit 0 is set and the drawn code 4271 (0x10AF) is
           carried little-endian. The watch lists only advertisers with bit 0 set.
 
+      - step: adv_tournament
+        direction: board -> tablet
+        access: advertise
+        characteristic: ADVERTISING
+        frame: adv_ind
+        hex: 0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06
+        fields: {board_id: 0x12345678, flags: ADV_FLAG_TOURNAMENT, pairing_code: 0x10AF}
+        why: >-
+          The board waits on TOURNAMENT_WAIT with its tournament window open: bit 1 only, so a
+          watch does not list it, and the code a tablet pairs with unasked (section 9.2).
+
       - step: scan_rsp
         direction: board -> watch
         access: scan_response

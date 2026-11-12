@@ -144,7 +144,8 @@ def parse_adv(adv):
     if len(payload) < 12 or payload[:4] != MAGIC:
         return None
     board_id, flags, code = struct.unpack_from("<IBH", payload, 5)
-    return payload[4], board_id, bool(flags & 1), code
+    # (proto, board id, PAIRING, code, TOURNAMENT window - spec 9.2); index users keep working.
+    return payload[4], board_id, bool(flags & 1), code, bool(flags & 2)
 
 
 async def scan(seconds=5.0):
@@ -480,9 +481,11 @@ async def main():
         found = await scan()
         if not found:
             print("no scoreboard advertising")
-        for address, (device, rssi, (proto, board_id, pairing, code)) in found.items():
+        for address, (device, rssi, (proto, board_id, pairing, code, tournament)) in found.items():
             paired = " paired" if f"{board_id:08x}" in store["boards"] else ""
             window = f" PAIRING code {code:04d}" if pairing else ""
+            if tournament:
+                window = f" TOURNAMENT code {code:04d}"
             print(f"Scoreboard {board_id & 0xFFFF:04X}  id {board_id:08x}  proto {proto}  {address}  "
                   f"rssi {rssi}{window}{paired}")
         return
@@ -492,10 +495,11 @@ async def main():
             sys.exit("pair <code>")
         code = int(opts.args[0])
         found = await scan()
-        match = [(a, v) for a, v in found.items() if v[2][2] and v[2][3] == code]
+        # A tournament window (spec 9.2) pairs the same way; its key is RAM-only on the board (slot 8).
+        match = [(a, v) for a, v in found.items() if (v[2][2] or v[2][4]) and v[2][3] == code]
         if not match:
-            sys.exit(f"no board advertising PAIRING with code {code:04d}")
-        address, (_, _, (proto, board_id, _, _)) = match[0]
+            sys.exit(f"no board advertising PAIRING or TOURNAMENT with code {code:04d}")
+        address, (_, _, (proto, board_id, _, _, _)) = match[0]
         async with BleakClient(address) as client:
             session = Session(client)
             version = await session.read_version()
