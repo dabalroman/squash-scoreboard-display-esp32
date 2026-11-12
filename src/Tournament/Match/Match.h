@@ -22,6 +22,10 @@ struct TournamentLog {
     std::vector<FinishedGame> finished;
     // Changes on every change to the listed games other than an append.
     uint16_t rev = 0;
+    // Tablet mode (spec 20): board games get outbox seqs and a tracked game starts pending.
+    bool tablet = false;
+    // The newest outbox seq handed out; 0 = none yet.
+    uint16_t outboxTo = 0;
 
     inline bool hasGameId(uint32_t id) const;
 
@@ -44,7 +48,8 @@ class Match {
 
     std::unique_ptr<Game> game = nullptr;
     // Append-only: finishGame() and recordGame() are the only writers, so a FinishedGame
-    // index stays valid; markRemoved() only sets an offline game's `removed`.
+    // index stays valid; markRemoved() only sets an offline game's `removed`. Tablet mode's
+    // mirror commit (clearForMirror/appendMirrored) is the one exception.
     std::vector<GameResult> gameResults;
 
     Rules *rules;
@@ -66,8 +71,14 @@ class Match {
         return v;
     }
 
-    void append(const GameResult &result) {
+    void append(GameResult result) {
+        result.local = true;
+        if (log != nullptr && log->tablet) result.outboxSeq = ++log->outboxTo;
         gameResults.push_back(result);
+        logLast();
+    }
+
+    void logLast() {
         if (log != nullptr) {
             log->finished.push_back({this, static_cast<uint16_t>(gameResults.size() - 1)});
         }
@@ -119,6 +130,7 @@ public:
             newGameId(),
             false,
             false,
+            log != nullptr && log->tablet,
         });
 
         game.reset();
@@ -130,6 +142,37 @@ public:
                                            ? playerA.getId()
                                            : playerB.getId();
         append({playerA.getId(), scoreA, playerB.getId(), scoreB, winnerPlayerId, newGameId(), true, false});
+    }
+
+    // Tablet mode's mirror commit (Tournament::applyMirror) only, never in board mode: the
+    // tablet's list replaces this match's games; the caller rebuilds the log.
+    void clearForMirror() {
+        gameResults.clear();
+    }
+
+    void appendMirrored(const GameResult &result) {
+        gameResults.push_back(result);
+        logLast();
+    }
+
+    // SET_SIDE: the running game (score per court side) moves to another pair's match.
+    std::unique_ptr<Game> releaseGame() {
+        return std::move(game);
+    }
+
+    void adoptGame(std::unique_ptr<Game> running) {
+        game = std::move(running);
+    }
+
+    bool hasGame() const {
+        return game != nullptr;
+    }
+
+    // ACK_OUTBOX: board games with seq <= upTo are stored on the tablet.
+    void ackUpTo(const uint16_t upTo) {
+        for (auto &result: gameResults) {
+            if (result.outboxSeq != 0 && result.outboxSeq <= upTo) result.acked = true;
+        }
     }
 
     // Only an offline game can be removed; false otherwise or when already removed.
@@ -156,20 +199,26 @@ public:
         return gameResults[index];
     }
 
-    // 1-based, counting this match's non-removed games up to `index`.
+    // 1-based, counting this match's listed games up to `index`.
     uint16_t turnOf(const size_t index) const {
         uint16_t turn = 0;
         for (size_t i = 0; i <= index && i < gameResults.size(); i++) {
-            if (!gameResults[i].removed) turn++;
+            if (isListed(gameResults[i])) turn++;
         }
         return turn;
     }
 
+    // RESULTS lists it; a pending game counts only in the court's tally.
+    static bool isListed(const GameResult &result) {
+        return !result.removed && !result.pending;
+    }
+
     // A copy, never a pointer: an append can reallocate gameResults under a holder.
-    // The last tracked game, so a GAME_OVER after an offline add still shows its own game.
+    // The last game tracked on this board, so a GAME_OVER after an offline add or a
+    // mirror still shows its own game.
     bool lastGameResult(GameResult &out) const {
         for (size_t i = gameResults.size(); i > 0; i--) {
-            if (!gameResults[i - 1].offline) {
+            if (!gameResults[i - 1].offline && gameResults[i - 1].local) {
                 out = gameResults[i - 1];
                 return true;
             }
