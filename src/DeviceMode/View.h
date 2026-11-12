@@ -51,6 +51,15 @@ public:
     // An offline game was added or removed (#563): a view caching a standing refreshes it.
     virtual void onTournamentEdited() {}
 
+    /**
+     * SET_SIDE moved the active match (and a running Game) to another pair: re-read the
+     * match and players, keep the game. true = the screen changed and restoreView() follows;
+     * the default (CELEBRATION, GAME_OVER) keeps showing the finished game.
+     */
+    virtual bool refreshPair() {
+        return false;
+    }
+
     // The screen the watches see. Default: board busy.
     virtual void describeForWatch(WatchState &state) const {
         state.setBusy(Garmin::ScreenId::Booting);

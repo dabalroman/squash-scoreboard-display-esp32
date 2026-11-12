@@ -68,6 +68,7 @@ bool lowBatteryLatchActive = false;
 // While the pack is low the LEDs are held at menu level 1, whatever the config says.
 constexpr uint8_t LOW_BATTERY_BRIGHTNESS_CAP = 31;
 constexpr uint32_t LOW_BATTERY_OVERLAY_MS = 10000;
+constexpr uint32_t UNSYNCED_OVERLAY_MS = 4000;
 
 // V2 e-paper; an empty stub on V1.
 EInkDisplay einkDisplay;
@@ -111,7 +112,8 @@ public:
 };
 
 GarminTabletLink tabletLink;
-TabletContext tabletContext = {tabletSession, tabletLink};
+void showUnsyncedOverlay(uint16_t unsynced);
+TabletContext tabletContext = {tabletSession, tabletLink, showUnsyncedOverlay};
 
 PlayerSetupWebUi playerSetupWebUi(playerRoster, teamRoster, preferencesManager, [](const uint8_t brightness) {
     ledDisplay.setBrightness(brightness);
@@ -465,6 +467,28 @@ void showLowBatteryOverlay() {
     gBuzzer.playLowBattery();
 }
 
+// The unsynced warning's long C: the tablet tournament ends, as an empty outbox's long C.
+void leaveTabletTournament() {
+    requestDeviceMode(DeviceModeState::ModeSwitchingMode);
+}
+
+// Long C on a tablet MATCH_START with games the tablet has not ACKed (spec 20.6).
+void showUnsyncedOverlay(const uint16_t unsynced) {
+    char title[20];
+    snprintf(title, sizeof(title), Str::OVERLAY_UNSYNCED_TITLE_FMT, static_cast<unsigned>(unsynced));
+
+    const OverlayContent content = {
+        title,
+        Str::OVERLAY_UNSYNCED_LINE,
+        LedText::toWord(Str::LED_OVERLAY_UNSYNCED),
+        Colors::Yellow,
+        UNSYNCED_OVERLAY_MS,
+        leaveTabletTournament
+    };
+
+    overlay.show(content, millis());
+}
+
 /**
  * One watch command per tick, through the active mode, with the sound a fob press makes
  * (the buzzer mode gates both alike), except FOCUS: a watch scrolling its list stays silent.
@@ -619,6 +643,11 @@ void loop() {
     // paused - no input, no rendering. Its state and timers are untouched, so a
     // pending score commit lands on the first frame after.
     if (overlay.active(lastUpdate)) {
+        // An overlay that asks for long C ends on it; its callback may request a mode change.
+        if (overlay.confirmsLongC() && remoteInputManager.buttonC.takeLongPressIfPossible()) {
+            gBuzzer.playBack();
+            overlay.confirmLongC();
+        }
         overlay.render(ledDisplay, *backDisplay, einkDisplay);
         // Watch commands are not queued for later: each is answered BUSY at once.
         garminService.rejectQueued();

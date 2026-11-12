@@ -26,6 +26,8 @@ class PadelMode final : public DeviceMode {
     std::function<void(CelebrationVariant)> onMatchOver;
     // Non-null: a tablet tournament (spec 20) - the pushed roster, no picker, no SelectionStore.
     TabletContext *tablet;
+    // GAME_OVER's game: SET_SIDE on CELEBRATION moves the active match to the next pair.
+    const Match *celebratedMatch = nullptr;
 
     bool onTournamentScreen() const {
         return state == PadelModeState::MatchStartGame || state == PadelModeState::MatchIntro
@@ -85,6 +87,7 @@ class PadelMode final : public DeviceMode {
                     Str::MATCH_SCORE_LABEL_GEMS,
                     true
                 );
+                celebratedMatch = tournament.getActiveMatch();
                 // Once per game: restoreView() after an Overlay never comes through here.
                 if (onMatchOver) {
                     onMatchOver(view->getVariant());
@@ -95,7 +98,7 @@ class PadelMode final : public DeviceMode {
             }
             case PadelModeState::GameOver:
                 activeView = std::make_unique<PadelGameOverView>(
-                    tournament,
+                    celebratedMatch,
                     [this](const PadelModeState newState) { setState(newState); }
                 );
                 break;
@@ -158,6 +161,12 @@ public:
         return state != previousState;
     }
 
+    // Only a person ends a tablet tournament (spec 20.6).
+    bool goBackFromWatch() override {
+        if (tablet != nullptr && state == PadelModeState::MatchStartGame) return false;
+        return goBack();
+    }
+
     bool goBack() override {
         switch (state) {
             case PadelModeState::TournamentChoosePlayers:
@@ -166,7 +175,7 @@ public:
             case PadelModeState::MatchStartGame:
                 // Tablet mode has no picker: the tournament ends here.
                 if (tablet != nullptr) {
-                    onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                    TabletSupport::leave(*tablet, tournament, onDeviceModeChange);
                 } else {
                     setState(PadelModeState::TournamentChoosePlayers);
                 }

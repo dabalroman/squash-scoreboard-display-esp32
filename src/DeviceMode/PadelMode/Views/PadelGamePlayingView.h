@@ -142,7 +142,7 @@ public:
         match = tournament.getActiveMatch();
 
         if (match == nullptr) {
-            onStateChange(PadelModeState::MatchStartGame);
+            this->onStateChange(PadelModeState::MatchStartGame);
             return;
         }
 
@@ -221,6 +221,19 @@ public:
 
     void leaveToMatchStart() {
         onStateChange(PadelModeState::MatchStartGame);
+    }
+
+    // The Game (the set) moved with the pair; the gem scorer and finished gems stay here.
+    bool refreshPair() override {
+        Match *moved = tournament.getActiveMatch();
+        if (moved == nullptr || moved == match || game == nullptr) return false;
+        match = moved;
+        const bool lastWasLeft = lastPointScoredBy == playerLeft;
+        playerLeft = &match->getLeftCourtSidePlayer();
+        playerRight = &match->getRightCourtSidePlayer();
+        if (lastPointScoredBy != nullptr) lastPointScoredBy = lastWasLeft ? playerLeft : playerRight;
+        shouldUpdateLedBarState = true;
+        return true;
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {

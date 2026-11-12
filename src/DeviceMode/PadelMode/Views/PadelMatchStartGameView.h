@@ -179,6 +179,15 @@ public:
         queueRender();
     }
 
+    // An unchanged pair is the same Match: no redraw.
+    bool refreshPair() override {
+        Match *moved = tournament.getActiveMatch();
+        if (moved == nullptr || moved == match) return false;
+        match = moved;
+        setupMatchData();
+        return true;
+    }
+
     void initLedDisplay(LedDisplay &ledDisplay) override {
         ledDisplay.resetAnimations();
         ledDisplay.setColonAppearance();

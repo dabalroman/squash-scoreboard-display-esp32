@@ -120,6 +120,9 @@ namespace Str {
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "NISKA BATERIA";
+    // Leaving a tablet tournament with games the tablet has not stored yet.
+    constexpr const char *const OVERLAY_UNSYNCED_TITLE_FMT = "NIEWYSLANE: %u";
+    constexpr const char *const OVERLAY_UNSYNCED_LINE = "TRZYMAJ C";
 
     // Boot / WiFi, OLED only
     constexpr const char *const BOOT_OLED_INITIALIZING = "STARTUJE...";
@@ -159,6 +162,7 @@ namespace Str {
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "StAr";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
+    constexpr const char *const LED_OVERLAY_UNSYNCED = "trZY";
     // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".
     constexpr const char *const LED_OTA_PROGRESS = "otA";
     constexpr const char *const LED_OTA_FAILED = "FAIL";
@@ -239,6 +243,9 @@ namespace Str {
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "LOW BATTERY";
+    // Leaving a tablet tournament with games the tablet has not stored yet.
+    constexpr const char *const OVERLAY_UNSYNCED_TITLE_FMT = "NOT SYNCED: %u";
+    constexpr const char *const OVERLAY_UNSYNCED_LINE = "HOLD C";
 
     // Boot / WiFi, OLED only
     constexpr const char *const BOOT_OLED_INITIALIZING = "Initializing...";
@@ -277,6 +284,7 @@ namespace Str {
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "PLAY";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
+    constexpr const char *const LED_OVERLAY_UNSYNCED = "HoLd";
     // The glyph table has no uppercase T, and no K - so neither "OTA" nor "OK".
     constexpr const char *const LED_OTA_PROGRESS = "otA";
     constexpr const char *const LED_OTA_FAILED = "FAIL";

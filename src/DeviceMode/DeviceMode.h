@@ -56,6 +56,11 @@ public:
         return false;
     }
 
+    // The watch's BACK: goBack(), unless a screen leaves something only a person may leave.
+    virtual bool goBackFromWatch() {
+        return goBack();
+    }
+
     /**
      * A mode that defers its view swap to its next loop() (setState) says so here: the
      * view still on screen is then the outgoing one, and a watch command gets BUSY.
@@ -73,7 +78,7 @@ public:
         return WatchSupport::route(
             command,
             viewChangePending() || !activeView,
-            [this] { return goBack(); },
+            [this] { return goBackFromWatch(); },
             [this, &command] {
                 const Garmin::AckStatus status = editOfflineGames(command);
                 if (status == Garmin::AckStatus::Applied) activeView->onTournamentEdited();
@@ -81,8 +86,14 @@ public:
             },
             [this, &command] {
                 const Garmin::AckStatus status = handleTabletCommand(command);
+                if (status != Garmin::AckStatus::Applied) return status;
+                // The view's cached match lost its Game to the new pair's match.
+                if (command.id == Garmin::CommandId::SetSide) {
+                    if (activeView->refreshPair()) restoreView();
+                    return status;
+                }
                 // A re-push renames or adds entries, a mirror changes the standings.
-                if (status == Garmin::AckStatus::Applied && command.id != Garmin::CommandId::AckOutbox) {
+                if (command.id != Garmin::CommandId::AckOutbox) {
                     activeView->onTournamentEdited();
                     activeView->queueRender();
                 }

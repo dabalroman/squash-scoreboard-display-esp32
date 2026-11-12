@@ -29,7 +29,7 @@ public:
         match = tournament.getActiveMatch();
 
         if (match == nullptr) {
-            onStateChange(SquashModeState::MatchStartGame);
+            this->onStateChange(SquashModeState::MatchStartGame);
             return;
         }
 
@@ -102,6 +102,19 @@ public:
 
     void leaveToMatchStart() {
         onStateChange(SquashModeState::MatchStartGame);
+    }
+
+    // The Game moved with the pair and keeps its score per court side.
+    bool refreshPair() override {
+        Match *moved = tournament.getActiveMatch();
+        if (moved == nullptr || moved == match || game == nullptr) return false;
+        match = moved;
+        const bool lastWasLeft = lastPointScoredBy == playerLeft;
+        playerLeft = &match->getLeftCourtSidePlayer();
+        playerRight = &match->getRightCourtSidePlayer();
+        if (lastPointScoredBy != nullptr) lastPointScoredBy = lastWasLeft ? playerLeft : playerRight;
+        shouldUpdateLedBarState = true;
+        return true;
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {

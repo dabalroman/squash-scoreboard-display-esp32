@@ -9,7 +9,6 @@
 #include "Tournament/Tournament.h"
 
 class PadelGameOverView final : public View {
-    Tournament &tournament;
     const Match *match = nullptr;
     GameResult gameResult = {};
     bool hasResult = false;
@@ -18,18 +17,17 @@ class PadelGameOverView final : public View {
     std::function<void(PadelModeState)> onStateChange;
 
 public:
-    PadelGameOverView(Tournament &tournament, std::function<void(PadelModeState)> onStateChange)
-        : tournament(tournament), onStateChange(std::move(onStateChange)) {
-        match = tournament.getActiveMatch();
-
+    // `finished` = the celebrated game's match: a SET_SIDE on CELEBRATION moved the active match on.
+    PadelGameOverView(const Match *finished, std::function<void(PadelModeState)> onStateChange)
+        : match(finished), onStateChange(std::move(onStateChange)) {
         if (match == nullptr) {
-            onStateChange(PadelModeState::MatchStartGame);
+            this->onStateChange(PadelModeState::MatchStartGame);
             return;
         }
 
         hasResult = match->lastGameResult(gameResult);
         if (!hasResult) {
-            onStateChange(PadelModeState::MatchStartGame);
+            this->onStateChange(PadelModeState::MatchStartGame);
             return;
         }
 

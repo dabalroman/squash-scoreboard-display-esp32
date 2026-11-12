@@ -233,7 +233,9 @@ public:
     }
 
     // REMOVE_OFFLINE_GAME: `index` is a listed index under (tournamentId, rev); tracked games stay.
+    // Tablet mode: the tablet is the only editor (spec 20.6).
     Garmin::AckStatus removeOfflineGame(const uint32_t tournamentId, const uint16_t rev, const uint16_t index) {
+        if (log.tablet) return Garmin::AckStatus::WrongScreen;
         if (tournamentId != id || rev != log.rev || index >= listedCount()) return Garmin::AckStatus::Invalid;
 
         const FinishedGame &entry = listedGame(index);

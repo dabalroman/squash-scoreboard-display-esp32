@@ -27,6 +27,8 @@ class VolleyballMode final : public DeviceMode {
     std::function<void(CelebrationVariant)> onMatchOver;
     // Non-null: a tablet tournament (spec 20) - the pushed roster, no picker, no SelectionStore.
     TabletContext *tablet;
+    // GAME_OVER's game: SET_SIDE on CELEBRATION moves the active match to the next pair.
+    const Match *celebratedMatch = nullptr;
 
     bool onTournamentScreen() const {
         return state == VolleyballModeState::MatchStartGame || state == VolleyballModeState::MatchIntro
@@ -86,6 +88,7 @@ class VolleyballMode final : public DeviceMode {
                     Str::MATCH_SCORE_LABEL_SETS,
                     false
                 );
+                celebratedMatch = tournament.getActiveMatch();
                 // Once per game: restoreView() after an Overlay never comes through here.
                 if (onMatchOver) {
                     onMatchOver(view->getVariant());
@@ -96,7 +99,7 @@ class VolleyballMode final : public DeviceMode {
             }
             case VolleyballModeState::GameOver:
                 activeView = std::make_unique<VolleyballGameOverView>(
-                    tournament,
+                    celebratedMatch,
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
@@ -159,6 +162,12 @@ public:
         return state != previousState;
     }
 
+    // Only a person ends a tablet tournament (spec 20.6).
+    bool goBackFromWatch() override {
+        if (tablet != nullptr && state == VolleyballModeState::MatchStartGame) return false;
+        return goBack();
+    }
+
     bool goBack() override {
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
@@ -167,7 +176,7 @@ public:
             case VolleyballModeState::MatchStartGame:
                 // Tablet mode has no picker: the tournament ends here.
                 if (tablet != nullptr) {
-                    onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                    TabletSupport::leave(*tablet, tournament, onDeviceModeChange);
                 } else {
                     setState(VolleyballModeState::TournamentChoosePlayers);
                 }

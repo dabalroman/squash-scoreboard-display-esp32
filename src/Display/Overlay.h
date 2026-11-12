@@ -18,6 +18,8 @@ struct OverlayContent {
     LedWord glyphs;         // front LED digits
     Color color;            // LED colour, blinking
     uint32_t durationMs;
+    // Optional: a long C while it shows calls this and ends the overlay. Null = long C waits.
+    void (*onConfirmLongC)();
 };
 
 /**
@@ -41,6 +43,7 @@ class Overlay {
     char line[LINE_LEN] = "";
     LedWord glyphs = {Glyph::Empty, Glyph::Empty, Glyph::Empty, Glyph::Empty};
     Color color = Colors::White;
+    void (*onConfirmLongC)() = nullptr;
 
 public:
     void show(const OverlayContent &content, const uint32_t nowMs) {
@@ -50,6 +53,7 @@ public:
         glyphs = content.glyphs;
 
         color = content.color;
+        onConfirmLongC = content.onConfirmLongC;
         endsAtMs = nowMs + content.durationMs;
         showing = true;
         backRendered = false;
@@ -71,6 +75,20 @@ public:
         }
 
         return true;
+    }
+
+    bool confirmsLongC() const {
+        return showing && onConfirmLongC != nullptr;
+    }
+
+    // The long C the content asked for: its callback runs, and the overlay ends as on timeout.
+    void confirmLongC() {
+        if (!confirmsLongC()) return;
+        void (*confirm)() = onConfirmLongC;
+        onConfirmLongC = nullptr;
+        showing = false;
+        finished = true;
+        confirm();
     }
 
     // One-shot: true exactly once, on the pass the overlay ended.

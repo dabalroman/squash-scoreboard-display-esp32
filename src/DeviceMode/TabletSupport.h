@@ -29,6 +29,9 @@ public:
 struct TabletContext {
     TabletSession &session;
     TabletLink &link;
+    // Long C on MATCH_START with un-ACKed games: main.cpp's warning, which leaves on a second
+    // long C. Null leaves at once.
+    void (*warnUnsynced)(uint16_t unsynced);
 };
 
 namespace TabletSupport {
@@ -54,7 +57,7 @@ namespace TabletSupport {
 
     /**
      * A tablet sport mode on MATCH_START..GAME_OVER (`onTournamentScreen`): roster re-push,
-     * mirror commit and outbox ACK. SET_SIDE is not wired yet (WRONG_SCREEN).
+     * mirror commit, outbox ACK and SET_SIDE (the caller refreshes the view after it).
      */
     inline Garmin::AckStatus handle(TabletContext *tablet, Tournament &tournament, const WatchCommand &command,
                                     const bool onTournamentScreen) {
@@ -83,9 +86,22 @@ namespace TabletSupport {
             }
             case Garmin::CommandId::AckOutbox:
                 return tournament.ackOutbox(command.tournamentId, command.upTo);
+            case Garmin::CommandId::SetSide:
+                return tournament.reassignSide(command.side, command.uid);
             default:
                 return Garmin::AckStatus::WrongScreen;
         }
+    }
+
+    // Long C on a tablet MATCH_START: the tournament ends, after a warning while games are unsynced.
+    template <typename OnModeChange>
+    void leave(const TabletContext &tablet, const Tournament &tournament, OnModeChange onDeviceModeChange) {
+        const uint16_t unsynced = tournament.outboxCount();
+        if (unsynced > 0 && tablet.warnUnsynced != nullptr) {
+            tablet.warnUnsynced(unsynced);
+            return;
+        }
+        onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
     }
 }
 

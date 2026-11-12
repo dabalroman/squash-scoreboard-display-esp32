@@ -57,6 +57,17 @@ inline void printLn(const char *, ...) {}
 class BackDisplay {
 public:
     enum : uint8_t { ONE_CHAR_WIDTH_24pt7b = 26 };
+    // Overlay's built-in-font text.
+    struct Screen {
+        void setFont(const void *) {}
+        void setTextSize(uint8_t) {}
+        void setCursor(int16_t, int16_t) {}
+        void print(const char *) {}
+    };
+    Screen screenStub;
+    Screen *screen = &screenStub;
+    constexpr static uint8_t DEAD_TOP_ROWS = 0;
+
     void clear() {}
     void setCursorFromTopLeft(uint8_t, uint8_t = 0) {}
     void setCursorToLine(uint8_t = 0, uint8_t = 0) {}
@@ -109,6 +120,7 @@ public:
     void showMatchScore(const char *, uint8_t, const char *, uint8_t, const char *) {}
     void showMenu(const char *, const EInkMenuRow *, uint8_t, uint8_t, const EInkFooter & = EInkFooter()) {}
     void showImage(const uint8_t *) {}
+    void showMessage(const char *, const char *, bool = false) {}
     void showCode(const char *, const char *, const char *, const char *) {}
 };
 

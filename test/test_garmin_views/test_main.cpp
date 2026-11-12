@@ -13,6 +13,8 @@
 #include "DeviceMode/SquashMode/SquashMode.h"
 #include "DeviceMode/VolleyballMode/VolleyballMode.h"
 #include "DeviceMode/TournamentMode/TournamentWaitMode.h"
+#include "Display/Overlay.h"
+#include "Tournament/Rules/VolleyballRules.h"
 #include "Tournament/Rules/ShortVolleyballRules.h"
 #include "DeviceMode/WatchSupport.h"
 #include "../common/check.h"
@@ -403,7 +405,7 @@ static void test_celebration_and_game_over_describe() {
     TEST_ASSERT_EQUAL(1, states.size());
     TEST_ASSERT_EQUAL(SquashModeState::GameOver, states[0]);
 
-    SquashGameOverView over(tournament, onState);
+    SquashGameOverView over(tournament.getActiveMatch(), onState);
     over.describeForWatch(state);
     const Body overBody(state);
     TEST_ASSERT_EQUAL_HEX8(0x15, overBody.screen());
@@ -1208,13 +1210,35 @@ struct TabletRig : Rig {
     }
 
     // main.cpp's buildDeviceMode for a tablet target.
-    void buildSport() {
+    void buildSport(const DeviceModeState expected = DeviceModeState::SquashMode) {
         TEST_ASSERT_EQUAL(1, begun.size());
-        TEST_ASSERT_EQUAL(DeviceModeState::SquashMode, begun[0]);
+        TEST_ASSERT_EQUAL(expected, begun[0]);
         mode.reset();
-        mode.reset(new SquashMode(led, back, eink, remote, onModeChange(), session.profiles(),
-                                  std::function<void(CelebrationVariant)>(), &context));
+        const std::function<void(CelebrationVariant)> noSound;
+        switch (expected) {
+            case DeviceModeState::PadelMode:
+                mode.reset(new PadelMode(led, back, eink, remote, onModeChange(), session.profiles(), noSound,
+                                         &context));
+                break;
+            case DeviceModeState::VolleyballMode:
+                mode.reset(new VolleyballMode(led, back, eink, remote, onModeChange(), session.profiles(),
+                                              std::unique_ptr<Rules>(new VolleyballRules()), noSound, &context));
+                break;
+            default:
+                mode.reset(new SquashMode(led, back, eink, remote, onModeChange(), session.profiles(), noSound,
+                                          &context));
+                break;
+        }
         tick();
+    }
+
+    // TOURNAMENT_WAIT -> BEGIN with `count` entries -> the sport's MATCH_START.
+    void beginSport(const uint8_t sportId, const DeviceModeState expected, const uint8_t count = 3) {
+        toWait();
+        const uint32_t crc = stageRoster(link, count);
+        TEST_ASSERT_EQUAL(AckStatus::Applied, send(::begin(TID, sportId, count, crc)));
+        buildSport(expected);
+        TEST_ASSERT_EQUAL_HEX8(0x11, describe().screen());
     }
 };
 
@@ -1388,13 +1412,220 @@ static void test_tablet_begin_game_ack_mirror() {
     TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(begin(TID, 0x01, 2, Garmin::rosterVersion(2, rig.link.roster))));
     TEST_ASSERT_EQUAL(4, rig.session.count());
     TEST_ASSERT_EQUAL_HEX32(crc4, rig.link.rosterVersion);
-    // SET_SIDE is not wired yet.
-    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_T[2])));
+    // The tablet is the only editor: REMOVE is refused, the offline game stays.
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(removeGame(TID, tournament->getRev(), 2)));
+    TEST_ASSERT_EQUAL(3, tournament->listedCount());
+    TEST_ASSERT_TRUE(tournament->outboxEntry(0, seq, entry));
+    TEST_ASSERT_EQUAL(2, seq);
+    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(Garmin::GameFlags::Offline), Garmin::parseGameEntry(entry).flags);
+    // SET_SIDE on MATCH_START: the left side becomes EWA, OLA stays right.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(0, UID_T[2])));
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX32(UID_T[2], u32(body.data() + 4));
+    TEST_ASSERT_EQUAL_HEX32(UID_T[1], u32(body.data() + 8));
 
     // Long C on a tablet MATCH_START leaves the tournament for the menu.
     TEST_ASSERT_TRUE(rig.mode->goBack());
     TEST_ASSERT_EQUAL(1, rig.requested.size());
     TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+}
+
+// PLAYING's score bytes (body 11 / 12: squash and volleyball points, padel gems).
+static void expectPlaying(TabletRig &rig, const uint32_t left, const uint32_t right, const uint8_t leftScore,
+                          const uint8_t rightScore) {
+    const Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x13, body.screen());
+    TEST_ASSERT_EQUAL_HEX32(left, u32(body.data()));
+    TEST_ASSERT_EQUAL_HEX32(right, u32(body.data() + 4));
+    TEST_ASSERT_EQUAL(leftScore, body.data()[11]);
+    TEST_ASSERT_EQUAL(rightScore, body.data()[12]);
+}
+
+/**
+ * SET_SIDE mid-PLAYING: the running game moves to ALA-EWA with its score, OLA's match keeps
+ * nothing, and finishing it goes through the view's refreshed match (a stale one has no Game,
+ * so its finishGame() would dereference null). On CELEBRATION it sets the next pair only.
+ */
+static void setSideMidGame(const uint8_t sportId, const DeviceModeState state, const uint8_t leftScore,
+                           const uint8_t rightScore) {
+    TabletRig rig;
+    rig.beginSport(sportId, state);
+    const Tournament *tournament = rig.mode->getTournament();
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartMatch)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    Match *before = tournament->getActiveMatch();
+    expectPlaying(rig, UID_T[0], UID_T[1], 0, 0);
+
+    // Squash / volleyball: 3:2 in points. Padel: one gem to the left, then 0:30 in the second.
+    if (state == DeviceModeState::PadelMode) {
+        rallies(rig, 0, 4);
+        rallies(rig, 1, 2);
+    } else {
+        rallies(rig, 0, 3);
+        rallies(rig, 1, 2);
+    }
+    expectPlaying(rig, UID_T[0], UID_T[1], leftScore, rightScore);
+
+    // Refusals change nothing: no such side, an unknown uid, the kept (left) player.
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(setSide(2, UID_T[2])));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(setSide(1, UID_NOBODY)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(setSide(1, UID_T[0])));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(1, UID_T[1])));   // already there
+    TEST_ASSERT_EQUAL_PTR(before, tournament->getActiveMatch());
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(1, UID_T[2])));
+    Match *after = tournament->getActiveMatch();
+    TEST_ASSERT_TRUE(after != before);
+    TEST_ASSERT_FALSE(before->hasGame());
+    TEST_ASSERT_TRUE(after->hasGame());
+    expectPlaying(rig, UID_T[0], UID_T[2], leftScore, rightScore);
+    if (state == DeviceModeState::PadelMode) {
+        TEST_ASSERT_EQUAL(0, rig.describe().data()[13]);   // the gem ladder kept: Love
+        TEST_ASSERT_EQUAL(2, rig.describe().data()[14]);   // Thirty
+    }
+    rig.tick();   // a frame on the refreshed view
+
+    for (int i = 0; i < 300 && rig.describe().screen() == 0x13; i++) {
+        TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Score, 0)));
+        rig.commit();
+        if (rig.mode->viewChangePending()) rig.tick();
+    }
+    TEST_ASSERT_EQUAL_HEX8(0x14, rig.describe().screen());
+    TEST_ASSERT_EQUAL(0, before->getGameCount());
+    TEST_ASSERT_EQUAL(1, after->getGameCount());
+    TEST_ASSERT_EQUAL(1, tournament->outboxCount());
+    uint16_t seq = 0;
+    uint8_t entry[Garmin::GAME_ENTRY_SIZE];
+    TEST_ASSERT_TRUE(tournament->outboxEntry(0, seq, entry));
+    const Garmin::GameEntry played = Garmin::parseGameEntry(entry);
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], played.uidA);
+    TEST_ASSERT_EQUAL_HEX32(UID_T[2], played.uidB);
+    TEST_ASSERT_EQUAL(rightScore, played.scoreB);   // the right side's score survived the swap
+    TEST_ASSERT_TRUE(played.scoreA > played.scoreB);
+
+    // CELEBRATION: OLA takes the left side for the next game; the screen keeps the finished one.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(0, UID_T[1])));
+    Body body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x14, body.screen());
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], u32(body.data()));
+    TEST_ASSERT_EQUAL_HEX32(UID_T[2], u32(body.data() + 4));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Skip)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x15, rig.describe().screen());
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], u32(rig.describe().data()));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::NextGame)));
+    rig.tick();
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x11, body.screen());
+    TEST_ASSERT_EQUAL_HEX32(UID_T[1], u32(body.data() + 4));
+    TEST_ASSERT_EQUAL_HEX32(UID_T[2], u32(body.data() + 8));
+    TEST_ASSERT_EQUAL(1, tournament->outboxCount());
+    TEST_ASSERT_EQUAL(1, after->getGameCount());
+
+    // INTRO moves the pair as well.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartMatch)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(1, UID_T[0])));
+    body = rig.describe();
+    TEST_ASSERT_EQUAL_HEX8(0x12, body.screen());
+    TEST_ASSERT_EQUAL_HEX32(UID_T[1], u32(body.data()));
+    TEST_ASSERT_EQUAL_HEX32(UID_T[0], u32(body.data() + 4));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x12, rig.describe().screen());   // the wipe replays, no hand-over
+}
+
+static void test_tablet_set_side_squash() {
+    setSideMidGame(0x01, DeviceModeState::SquashMode, 3, 2);
+}
+
+static void test_tablet_set_side_volleyball() {
+    setSideMidGame(0x02, DeviceModeState::VolleyballMode, 3, 2);
+}
+
+static void test_tablet_set_side_padel() {
+    setSideMidGame(0x04, DeviceModeState::PadelMode, 1, 0);
+}
+
+static uint16_t warnedUnsynced = 0;
+
+static void recordUnsynced(const uint16_t unsynced) {
+    warnedUnsynced = unsynced;
+}
+
+// Long C on a tablet MATCH_START: a warning while the outbox holds games, else the menu.
+static void test_tablet_leave_with_unsynced_games() {
+    warnedUnsynced = 0;
+    TabletRig rig;
+    rig.context.warnUnsynced = recordUnsynced;
+    rig.beginSport(0x01, DeviceModeState::SquashMode);
+
+    // Watch BACK never ends a tablet tournament.
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(cmd(CommandId::Back)));
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_T[0], UID_T[2], 11, 4)));
+    TEST_ASSERT_EQUAL(1, rig.mode->getTournament()->outboxCount());
+    TEST_ASSERT_TRUE(rig.mode->goBack());
+    TEST_ASSERT_EQUAL(1, warnedUnsynced);
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+    TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(cmd(CommandId::Back)));
+
+    // BACK still steps back elsewhere: INTRO -> MATCH_START.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::StartMatch)));
+    rig.tick();
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
+    rig.tick();
+    TEST_ASSERT_EQUAL_HEX8(0x11, rig.describe().screen());
+
+    // ACKed: long C leaves at once.
+    uint16_t seq = 0;
+    uint8_t entry[Garmin::GAME_ENTRY_SIZE];
+    TEST_ASSERT_TRUE(rig.mode->getTournament()->outboxEntry(0, seq, entry));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackOutbox(TID, seq)));
+    warnedUnsynced = 0;
+    TEST_ASSERT_TRUE(rig.mode->goBack());
+    TEST_ASSERT_EQUAL(0, warnedUnsynced);
+    TEST_ASSERT_EQUAL(1, rig.requested.size());
+    TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+}
+
+static int overlayConfirms = 0;
+
+static void countConfirm() {
+    overlayConfirms++;
+}
+
+// The long-C confirm: only while showing and only when the content asks for it.
+static void test_overlay_long_c_confirm() {
+    overlayConfirms = 0;
+    Overlay overlay;
+    const OverlayContent plain = {"T", "L", LedText::toWord("HoLd"), Colors::Yellow, 4000, nullptr};
+    overlay.show(plain, 1000);
+    TEST_ASSERT_TRUE(overlay.active(1000));
+    TEST_ASSERT_FALSE(overlay.confirmsLongC());
+    overlay.confirmLongC();
+    TEST_ASSERT_TRUE(overlay.active(1050));
+
+    const OverlayContent confirm = {"T", "L", LedText::toWord("HoLd"), Colors::Yellow, 4000, countConfirm};
+    overlay.show(confirm, 2000);
+    TEST_ASSERT_TRUE(overlay.confirmsLongC());
+    overlay.confirmLongC();
+    TEST_ASSERT_EQUAL(1, overlayConfirms);
+    TEST_ASSERT_FALSE(overlay.active(2050));
+    TEST_ASSERT_TRUE(overlay.takeFinished());
+    overlay.confirmLongC();
+    TEST_ASSERT_EQUAL(1, overlayConfirms);
+
+    // Timed out: no confirm, and a later plain show() drops the callback.
+    overlay.show(confirm, 10000);
+    TEST_ASSERT_FALSE(overlay.active(14000));
+    TEST_ASSERT_FALSE(overlay.confirmsLongC());
+    overlay.show(plain, 20000);
+    TEST_ASSERT_FALSE(overlay.confirmsLongC());
+    TEST_ASSERT_EQUAL(1, overlayConfirms);
 }
 
 int main(int, char **) {
@@ -1431,5 +1662,10 @@ int main(int, char **) {
     RUN_TEST(test_tablet_wait_screen_and_begin_refusals);
     RUN_TEST(test_tablet_commands_wrong_screen_outside_tablet_mode);
     RUN_TEST(test_tablet_begin_game_ack_mirror);
+    RUN_TEST(test_tablet_set_side_squash);
+    RUN_TEST(test_tablet_set_side_volleyball);
+    RUN_TEST(test_tablet_set_side_padel);
+    RUN_TEST(test_tablet_leave_with_unsynced_games);
+    RUN_TEST(test_overlay_long_c_confirm);
     return UNITY_END();
 }

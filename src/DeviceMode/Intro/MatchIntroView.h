@@ -15,6 +15,7 @@
  */
 template <typename StateEnum>
 class MatchIntroView final : public View {
+    Tournament &tournament;
     const Match *match = nullptr;
     UserProfile *playerLeft = nullptr, *playerRight = nullptr;
     std::function<void(StateEnum)> onStateChange;
@@ -29,7 +30,8 @@ public:
         const char *einkLabel,
         const bool einkShowsMatchSets
     )
-        : onStateChange(std::move(onStateChange)), einkLabel(einkLabel), einkShowsMatchSets(einkShowsMatchSets) {
+        : tournament(tournament), onStateChange(std::move(onStateChange)), einkLabel(einkLabel),
+          einkShowsMatchSets(einkShowsMatchSets) {
         match = tournament.getActiveMatch();
 
         if (match == nullptr) {
@@ -51,6 +53,17 @@ public:
 
     void skip() {
         onStateChange(StateEnum::GamePlaying);
+    }
+
+    // SET_SIDE: the wipe replays in the new pair's colours (restoreView() follows).
+    bool refreshPair() override {
+        const Match *moved = tournament.getActiveMatch();
+        if (match == nullptr || moved == nullptr || moved == match) return false;
+        match = moved;
+        playerLeft  = &match->getLeftCourtSidePlayer();
+        playerRight = &match->getRightCourtSidePlayer();
+        started = false;
+        return true;
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {

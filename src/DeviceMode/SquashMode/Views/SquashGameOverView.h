@@ -9,7 +9,6 @@
 #include "Tournament/Tournament.h"
 
 class SquashGameOverView final : public View {
-    Tournament &tournament;
     const Match *match = nullptr;
     GameResult gameResult = {};
     bool hasResult = false;
@@ -18,18 +17,17 @@ class SquashGameOverView final : public View {
     std::function<void(SquashModeState)> onStateChange;
 
 public:
-    SquashGameOverView(Tournament &tournament, std::function<void(SquashModeState)> onStateChange)
-        : tournament(tournament), onStateChange(std::move(onStateChange)) {
-        match = tournament.getActiveMatch();
-
+    // `finished` = the celebrated game's match: a SET_SIDE on CELEBRATION moved the active match on.
+    SquashGameOverView(const Match *finished, std::function<void(SquashModeState)> onStateChange)
+        : match(finished), onStateChange(std::move(onStateChange)) {
         if (match == nullptr) {
-            onStateChange(SquashModeState::MatchStartGame);
+            this->onStateChange(SquashModeState::MatchStartGame);
             return;
         }
 
         hasResult = match->lastGameResult(gameResult);
         if (!hasResult) {
-            onStateChange(SquashModeState::MatchStartGame);
+            this->onStateChange(SquashModeState::MatchStartGame);
             return;
         }
 
