@@ -129,8 +129,9 @@ characteristic:
       description: The board's tablet tournament, read first after every (re)connect.
       usage: >-
         tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every
-        field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. A different id or 0
-        on TOURNAMENT_WAIT: push the roster and BEGIN.
+        field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. 0 on TOURNAMENT_WAIT:
+        push the roster and BEGIN. A different id: the board runs another tournament; only a person
+        leaving and re-entering TOURNAMENT clears it.
       structure:
         - field: proto
           type: uint8

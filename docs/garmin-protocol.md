@@ -1899,7 +1899,7 @@ STATUS: every read answers the status frame (seq ignored, send 0). OUTBOX: reads
 | 14 | 2 | `outbox_to` | Seq of the newest board game; 0 = none yet. |
 | 16 | 4 | `mirror_crc` | CRC of the last applied COMMIT_MIRROR; 0 = none since BEGIN_TOURNAMENT. |
 
-tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. A different id or 0 on TOURNAMENT_WAIT: push the roster and BEGIN.
+tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. 0 on TOURNAMENT_WAIT: push the roster and BEGIN. A different id: the board runs another tournament; only a person leaving and re-entering TOURNAMENT clears it.
 
 **Read OUTBOX** (read, board -> watch, 19 B): The first un-ACKed board game at or after the cursor; the cursor moves past it.
 
