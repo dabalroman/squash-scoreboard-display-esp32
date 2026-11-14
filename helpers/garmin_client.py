@@ -34,7 +34,7 @@ Usage:
   python helpers/garmin_client.py send focus 0x<uid>   CHOOSE_PLAYERS: cursor to that profile (0 = START)
 
 Commands: select_sport <id>, back, toggle_player <uid>, start_tournament, set_pair <l> <r>,
-swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | uid | 0>,
+swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | tablet | uid | 0>,
 raw <hex...>.
 HEART is taken only while the board is on PLAYING (spec 18). The other watch must be a real one or
 another PC: Windows shares one link per board between processes, so a second instance here would be
@@ -82,6 +82,10 @@ SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x04:
            0x11: "MATCH_START", 0x12: "INTRO", 0x13: "PLAYING", 0x14: "CELEBRATION", 0x15: "GAME_OVER"}
 SPORTS = {0: "none", 1: "squash", 2: "volleyball", 3: "short volleyball", 4: "padel"}
 SPORT_IDS = {name: sid for sid, name in SPORTS.items()}
+# MENU rows that are not sports (spec 11.3); `select_sport` / `focus` take them like a sport id.
+MENU_ENTRIES = {0x80: "TABLET_MODE"}
+MENU_ENTRY_IDS = {name.lower(): eid for eid, name in MENU_ENTRIES.items()}
+MENU_ENTRY_IDS["tablet"] = 0x80
 ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUSY", 5: "MALFORMED"}
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
 # Bit 6 of the PLAYING flags and of the MATCH_START / INTRO / result flags byte (spec 11.3).
@@ -196,7 +200,9 @@ def describe(body, names=None):
            f"ack={ack_seq}:{ACKS.get(ack_status, ack_status)} roster={roster_version:08x}")
     try:
         if screen == 0x01:
-            out += f" cursor={SPORTS.get(data[0], data[0])} sports={[SPORTS.get(s, s) for s in data[2:2 + data[1]]]}"
+            def entry(i):
+                return MENU_ENTRIES.get(i, SPORTS.get(i, i))
+            out += f" cursor={entry(data[0])} entries={[entry(i) for i in data[2:2 + data[1]]]}"
         elif screen == 0x10:
             out += f" selected={struct.unpack_from('<I', data)[0]:#010x}"
             if len(data) >= 8:
@@ -449,6 +455,8 @@ def build_command(name, args, seq):
     cmd_id, fmt = COMMANDS[name]
     if len(args) != len(fmt):
         sys.exit(f"{name} takes {len(fmt)} argument(s)")
+    if name in ("select_sport", "focus"):
+        args = [str(MENU_ENTRY_IDS.get(a.lower(), a)) for a in args]
     values = [int(a, 0) for a in args]
     return bytes([PROTO, cmd_id, seq]) + struct.pack("<" + fmt, *values)
 

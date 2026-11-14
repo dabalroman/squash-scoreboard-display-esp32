@@ -94,6 +94,27 @@ class TestCommand(unittest.TestCase):
         self.assertEqual(gc.build_command("score", ["1"], 1), H("01 08 01 01"))
 
 
+class TestTabletModeEntry(unittest.TestCase):
+    def test_entry_and_leave(self):
+        # spec: tablet_mode_entry/menu
+        out = gc.describe(feed(["01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80"]))
+        self.assertIn("cursor=padel", out)
+        self.assertIn("TABLET_MODE", out)
+        # spec: tablet_mode_entry/focus_tablet
+        self.assertEqual(gc.build_command("focus", ["0x80"], 1), H("01 0E 01 80 00 00 00"))
+        self.assertEqual(gc.build_command("focus", ["tablet"], 1), H("01 0E 01 80 00 00 00"))
+        # spec: tablet_mode_entry/focus_tablet_ack
+        self.assertIn("cursor=TABLET_MODE", gc.describe(feed(["01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80"])))
+        # spec: tablet_mode_entry/select_tablet
+        self.assertEqual(gc.build_command("select_sport", ["tablet"], 2), H("01 01 02 80"))
+        # spec: tablet_mode_entry/select_tablet_ack
+        self.assertIn("TOURNAMENT_WAIT", gc.describe(feed(["01 72 01 04 00 02 00 5b e7 0f 15"])))
+        # spec: tablet_mode_entry/back_on_wait
+        self.assertEqual(gc.build_command("back", [], 3), H("01 02 03"))
+        # spec: tablet_mode_entry/back_on_wait_ack
+        self.assertIn("cursor=padel", gc.describe(feed(["01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80"])))
+
+
 class TestOfflineCommands(unittest.TestCase):
     def test_build_offline(self):
         # spec: offline_games/add
@@ -110,7 +131,7 @@ class TestOfflineCommands(unittest.TestCase):
 class TestState(unittest.TestCase):
     def test_state_decode(self):
         # spec: menu_state/menu
-        self.assertIn("MENU", gc.describe(feed(["01 01 01 01 00 00 00 5B E7 0F 15 04 04 04 01 02 03"])))
+        self.assertIn("MENU", gc.describe(feed(["01 01 01 01 00 00 00 5B E7 0F 15 04 05 04 01 02 03 80"])))
 
         # spec: score_confirm/state
         chunks = ["01 2A 02 13 01 07 00 5B E7 0F 15 0D 0C 0B 0A 44 33 22 11 11",
@@ -128,7 +149,7 @@ class TestState(unittest.TestCase):
         self.assertIn("PLAYING", gc.describe(feed(chunks)))
 
         # spec: focus/menu_state
-        self.assertIn("MENU", gc.describe(feed(["01 02 01 01 00 03 00 5B E7 0F 15 01 04 04 01 02 03"])))
+        self.assertIn("MENU", gc.describe(feed(["01 02 01 01 00 03 00 5B E7 0F 15 01 05 04 01 02 03 80"])))
 
         # spec: focus/choose_players_state
         self.assertIn("CHOOSE_PLAYERS", gc.describe(feed(["01 10 01 10 01 04 00 5B E7 0F 15 05 00 00 00 44 33 22 11"])))
@@ -382,7 +403,7 @@ class TestTabletStates(unittest.TestCase):
         self.assertIn("ack=9:WRONG_SCREEN", gc.describe(feed(chunks)))
 
         # spec: tablet_refusals/begin_on_menu_ack
-        self.assertIn("ack=1:WRONG_SCREEN", gc.describe(feed(["01 02 01 01 00 01 01 5b e7 0f 15 04 04 04 01 02 03"])))
+        self.assertIn("ack=1:WRONG_SCREEN", gc.describe(feed(["01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80"])))
 
     def test_uuids(self):
         self.assertEqual(gc.TOURNAMENT, "0d78000a-2f44-4f31-93b7-b78dc9e29735")
