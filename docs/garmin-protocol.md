@@ -221,7 +221,11 @@ RESULTS' past-the-end frame (11 B instead of 9 B), and RESULTS `turn` bit 7 = OF
 16.14). The `turn` bit is a deliberate exception to the rule above: a new meaning for an existing
 field, normally a `PROTO` bump (section 17, item 12). Tablet tournament (#583) - screen
 TOURNAMENT_WAIT (0x04), commands 0x11-0x14 and the TOURNAMENT characteristic (section 20, 16.15):
-old watches show "board busy" on the new screen and never send the commands.
+old watches show "board busy" on the new screen and never send the commands. Tablet mode entry
+(#612) - MENU lists menu entry 0x80 TABLET_MODE after the sports, SELECT_SPORT takes it and BACK
+on TOURNAMENT_WAIT leaves tablet mode (section 11.3, 20.6, 16.16): old watches skip the unknown
+id and never send BACK on TOURNAMENT_WAIT (a busy screen for them); BACK on a tablet MATCH_START
+stays WRONG_SCREEN; an old board answers INVALID to the select and WRONG_SCREEN to that BACK.
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
@@ -416,13 +420,14 @@ write response arrives.
 
 ### 9.2 Tournament pairing
 
-A tablet pairs with no one at the board (#583): the person already chose the board by picking
-TOURNAMENT on it, so that choice is the user-opened window.
+A tablet pairs with no one at the board (#583): someone already chose the board by entering
+tablet mode on it (a person picking TOURNAMENT, or an authenticated client's SELECT_SPORT
+TABLET_MODE), so that choice is the user-opened window.
 
 1. On TOURNAMENT_WAIT (section 20) the board turns GARMIN on if it is off (it stays on, as after
    PARUJ), draws a code and opens the **tournament window**: no time limit, advertised as
    `ADV_FLAG_TOURNAMENT` (bit 1) + code, with bit 0 clear, so a watch never lists the board. The
-   window closes when the board leaves TOURNAMENT_WAIT (BEGIN_TOURNAMENT, or a person leaving).
+   window closes when the board leaves TOURNAMENT_WAIT (BEGIN_TOURNAMENT, or leaving tablet mode).
    It is not shown on the board's displays.
 2. A tablet lists advertisers with bit 1 set and runs section 9 steps 3-5 with the advertised
    code, unasked. The board answers OK with slot `TABLET_SLOT` (8) and a fresh key, kept in RAM
@@ -462,8 +467,8 @@ The arguments depend on the command id (commands.yaml).
 <!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
 | Id | Name | Args | Size | Valid on | Board effect |
 |---|---|---|---|---|---|
-| `0x01` | SELECT_SPORT | `sport` uint8 | 4 | MENU | Enter that sport's CHOOSE_PLAYERS (cursor to the row + D). |
-| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | DeviceMode::goBack(): one step back toward the menu. |
+| `0x01` | SELECT_SPORT | `sport` uint8 | 4 | MENU | Act on a MENU row (cursor to the row + D). |
+| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE, TOURNAMENT_WAIT | DeviceMode::goBack(): one step back toward the menu. |
 | `0x03` | TOGGLE_PLAYER | `uid` uint32 | 7 | CHOOSE_PLAYERS | Add or remove that profile (D on its row). |
 | `0x04` | START_TOURNAMENT | - | 3 | CHOOSE_PLAYERS | -> MATCH_START (D on START). |
 | `0x05` | SET_PAIR | `left_uid` uint32, `right_uid` uint32 | 11 | MATCH_START | Make the match between leftUid and rightUid, leftUid on the left. |
@@ -491,8 +496,8 @@ FOCUS is cosmetic: it never changes the screen, the selection or any score, and 
 no sound for it (a fob scroll beeps; a watch scrolling through a list must not). It exists so the
 board's highlight (OLED, e-paper, LEDs) follows the watch's own list while the user scrolls on
 the watch. One `target` field serves both screens so the frame has one size: a CHOOSE_PLAYERS
-row is named by its `uid` (uids are never 0, so 0 is free for START); a MENU row by its `sport`
-(PROFILE and CONFIG are never shown on the watch, so it cannot focus them). Each
+row is named by its `uid` (uids are never 0, so 0 is free for START); a MENU row by its menu-entry
+id (PROFILE and CONFIG are never listed, so no client can focus them). Each
 FOCUS costs the e-paper at most one partial refresh; requests made during a refresh coalesce
 into one, as for fob scrolling.
 
@@ -556,8 +561,8 @@ connection, so each connection gets its own push.
 | 8 | n | screen data |
 
 Sports - one wire table, independent of `DeviceModeState`; the watch offers exactly the sports
-the board's MENU state lists (built from `ModeSwitchingView`'s `ModeMenuEntry` table, sport rows
-only, in menu order):
+the board's MENU state lists (built from `ModeSwitchingView`'s `ModeMenuEntry` table, in menu
+order; the list also carries the `menu_entry` rows of 11.3, which are not sports):
 
 | `sport` | Name |
 |---|---|
@@ -572,7 +577,7 @@ Screens:
 | `screen` | Name | Board state | Watch shows |
 |---|---|---|---|
 | `0x00` | BOOTING | before the first mode | board busy |
-| `0x01` | MENU | `ModeSwitchingMode` | sport list (PROFILE / CONFIG never shown) |
+| `0x01` | MENU | `ModeSwitchingMode` | sport list, plus the menu entries it knows (PROFILE / CONFIG never listed) |
 | `0x02` | CONFIG | `ConfigMode` | board busy |
 | `0x03` | PROFILE | `PlayerSetupMode` | "edit on phone" + BACK |
 | `0x04` | TOURNAMENT_WAIT | `TournamentWaitMode` (section 20) | board busy |
@@ -592,9 +597,13 @@ MENU (body `10 + n`):
 
 | Off | Size | Field |
 |---|---|---|
-| 8 | 1 | cursor: `sport` of the highlighted row, 0 on a non-sport row |
-| 9 | 1 | `n` sports |
-| 10 | n | sport ids in menu order (today `04 01 02 03`: padel, squash, volleyball, short volleyball) |
+| 8 | 1 | cursor: menu-entry id of the highlighted row, 0 on a row not listed (PROFILE, CONFIG) |
+| 9 | 1 | `n` menu entries |
+| 10 | n | menu-entry ids in menu order (today `04 01 02 03 80`: padel, squash, volleyball, short volleyball, TABLET_MODE) |
+
+A menu-entry id is a `sport` id or a `menu_entry` value (`0x80` TABLET_MODE, the TOURNAMENT row,
+section 20). Entries share one id space so FOCUS and SELECT_SPORT name any row the same way; a
+client skips ids it does not know.
 
 CHOOSE_PLAYERS (body 16, 1 chunk):
 
@@ -963,13 +972,13 @@ Past the end: the 3-byte header alone.
 
 ### 16.5 MENU state
 
-A MENU body in one chunk, the sport list with the highlighted row - the first place a state body's rosterVersion appears on the wire.
+A MENU body in one chunk, the menu entries with the highlighted row - the first place a state body's rosterVersion appears on the wire.
 
 `menu_state/menu` - STATE notify:
 ```
-01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03    (17 B)
+01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
 ```
-Cursor on padel, four sports listed. The body is 14 B, so it fits one chunk: header PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
+Cursor on padel, four sports and TABLET_MODE listed. The body is 15 B, so it fits one chunk: header PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
 
 ### 16.6 SCORE with confirm (squash)
 
@@ -1040,9 +1049,9 @@ On MENU, focus the squash row (sport id 0x00000001), seq 3.
 
 `focus/menu_state` - STATE notify:
 ```
-01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03    (17 B)
+01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80    (18 B)
 ```
-The board answers with the cursor on squash (body 14 B, stateSeq 2).
+The board answers with the cursor on squash (body 15 B, stateSeq 2).
 
 `focus/focus_krystian` - COMMAND write:
 ```
@@ -1582,11 +1591,59 @@ The BEGIN of tablet_begin/begin, sent to a board on MENU.
 
 `tablet_refusals/begin_on_menu_ack` - STATE notify:
 ```
-01 02 01 01 00 01 01 5b e7 0f 15 04 04 04 01 02 03    (17 B)
+01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
 ```
-Ack 1 WRONG_SCREEN; a connection never switches a board into tablet mode, and MENU never lists TOURNAMENT.
+Ack 1 WRONG_SCREEN; BEGIN_TOURNAMENT never enters tablet mode, SELECT_SPORT TABLET_MODE does (16.16).
 
 The board of 16.15 at MATCH_START (ANNA - OLA), then a board on MENU that a tablet BEGINs by mistake (a new connection, seq starts at 1).
+
+### 16.16 Tablet mode entry and exit
+
+A client enters tablet mode with the standard MENU commands (TABLET_MODE is a menu entry like a sport) and leaves TOURNAMENT_WAIT with BACK, as a person's long C does.
+
+`tablet_mode_entry/menu` - STATE notify:
+```
+01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
+```
+The TOURNAMENT row is listed as menu entry 0x80 after the sports; a watch skips an id it does not know.
+
+`tablet_mode_entry/focus_tablet` - COMMAND write:
+```
+01 0e 01 80 00 00 00    (7 B)
+```
+FOCUS on the TOURNAMENT row, as on a sport row.
+
+`tablet_mode_entry/focus_tablet_ack` - STATE notify:
+```
+01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80    (18 B)
+```
+Ack 1 APPLIED, the cursor is the menu-entry id 0x80.
+
+`tablet_mode_entry/select_tablet` - COMMAND write:
+```
+01 01 02 80    (4 B)
+```
+SELECT_SPORT on the TOURNAMENT row, the person's D on it.
+
+`tablet_mode_entry/select_tablet_ack` - STATE notify:
+```
+01 72 01 04 00 02 00 5b e7 0f 15    (11 B)
+```
+Ack 2 APPLIED on TOURNAMENT_WAIT; tablet mode runs and the tournament window is open (9.2).
+
+`tablet_mode_entry/back_on_wait` - COMMAND write:
+```
+01 02 03    (3 B)
+```
+BACK on TOURNAMENT_WAIT, the person's long C.
+
+`tablet_mode_entry/back_on_wait_ack` - STATE notify:
+```
+01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
+```
+Ack 3 APPLIED on a new MENU (cursor on the first row); tablet mode and the window ended.
+
+A squash board on MENU, a new connection (seq starts at 1).
 <!-- /generated: scenarios -->
 ## 17. Open questions and deviations
 
@@ -1814,9 +1871,10 @@ outside it the board ignores the tablet commands (WRONG_SCREEN) and stays the so
   read, authentication required: before authentication writes are discarded and reads answer
   `[PROTO]`. Optional for a watch; a board from before #583 lacks it (the tablet then asks for a
   firmware update).
-- **Tablet mode** lasts from a person picking TOURNAMENT on the board (screen TOURNAMENT_WAIT)
-  until a person leaves to the main menu or the board powers off. A BLE connection never enters
-  it and MENU never lists it. A dropped link does not end it: the board keeps scoring, and the
+- **Tablet mode** lasts from entering TOURNAMENT_WAIT (a person picking TOURNAMENT, or SELECT_SPORT
+  TABLET_MODE on MENU) until the board leaves to the main menu (a person's long C, or BACK on
+  TOURNAMENT_WAIT, 20.6) or powers off. A client tells it apart by STATUS: `tournament_id` non-zero, or TOURNAMENT_WAIT
+  on STATE; there is no STATE flag for it. A dropped link does not end it: the board keeps scoring, and the
   tournament, its roster and its games stay until tablet mode ends; then they are gone (RAM only,
   never NVS) and the stored roster returns.
 - **Any authenticated client** may send what follows; the board does not tell a tablet from a
@@ -1837,7 +1895,8 @@ outside it the board ignores the tablet commands (WRONG_SCREEN) and stays the so
   previous one's response.
 - **Reconnect.** Read STATUS first. Same `tournament_id` as the tablet's: pull the outbox, ACK,
   mirror. 0 on TOURNAMENT_WAIT: push the roster and BEGIN. A different id on a sport screen: the
-  board runs another tournament; a person must leave and re-enter TOURNAMENT on it.
+  board runs another tournament; a person must leave it (long C) before tablet mode is entered
+  again.
 
 ### 20.1 TOURNAMENT frames
 
@@ -1998,11 +2057,14 @@ game stays as recorded and the tablet fixes its pending card.
 
 ### 20.6 Watches and the fob in tablet mode
 
-- TOURNAMENT_WAIT is a busy screen for a watch: only BEGIN_TOURNAMENT and SYNC act, everything
-  else answers WRONG_SCREEN.
+- TOURNAMENT_WAIT is a busy screen for a watch: only BEGIN_TOURNAMENT, BACK and SYNC act,
+  everything else answers WRONG_SCREEN. BACK leaves to MENU, as long C does.
 - On the sport screens watches work as usual on the pushed roster. ADD_OFFLINE_GAME goes into the
   outbox (20.3); REMOVE_OFFLINE_GAME answers WRONG_SCREEN (the tablet is the only editor); BACK
   on MATCH_START answers WRONG_SCREEN.
-- Only a person leaves: long C on MATCH_START. With an un-ACKed outbox the board first shows a
+- Only a person leaves from MATCH_START: long C. With an un-ACKed outbox the board first shows a
   warning (games not synced, hold C again) and leaves on a second long C while it shows; with an
-  empty outbox it leaves at once. While the warning shows every command answers BUSY.
+  empty outbox it leaves at once. While the warning shows every command answers BUSY. A client
+  cannot end a running tournament: the tablet could not pair again on MENU.
+- Leaving tablet mode, the board lands on MENU; the bench board (no MENU) on TOURNAMENT_WAIT
+  again.

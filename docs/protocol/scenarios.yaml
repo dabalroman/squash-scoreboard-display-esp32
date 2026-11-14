@@ -291,7 +291,7 @@ scenarios:
     section: "16.5"
     title: MENU state
     goal: >-
-      A MENU body in one chunk, the sport list with the highlighted row - the first place a state
+      A MENU body in one chunk, the menu entries with the highlighted row - the first place a state
       body's rosterVersion appears on the wire.
     steps:
       - step: menu
@@ -301,10 +301,10 @@ scenarios:
         frame: chunk
         state_seq: 0x01
         hex:
-          - 01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03
-        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: padel, n: 4, sport_ids: 04 01 02 03}
+          - 01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
         why: >-
-          Cursor on padel, four sports listed. The body is 14 B, so it fits one chunk: header
+          Cursor on padel, four sports and TABLET_MODE listed. The body is 15 B, so it fits one chunk: header
           PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
 
   - id: score_confirm
@@ -433,9 +433,9 @@ scenarios:
         frame: chunk
         state_seq: 0x02
         hex:
-          - 01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
-        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: squash, n: 4, sport_ids: 04 01 02 03}
-        why: The board answers with the cursor on squash (body 14 B, stateSeq 2).
+          - 01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.squash, n: 5, entry_ids: 04 01 02 03 80}
+        why: The board answers with the cursor on squash (body 15 B, stateSeq 2).
 
       - step: focus_krystian
         direction: watch -> board
@@ -1326,8 +1326,87 @@ scenarios:
         frame: chunk
         state_seq: 0x02
         hex:
-          - 01 02 01 01 00 01 01 5b e7 0f 15 04 04 04 01 02 03
-        body: {screen: MENU, sport: none, ack_seq: 1, ack_status: WRONG_SCREEN, roster_version: 0x150fe75b, cursor: padel, n: 4, sport_ids: 04 01 02 03}
+          - 01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 1, ack_status: WRONG_SCREEN, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
         why: >-
-          Ack 1 WRONG_SCREEN; a connection never switches a board into tablet mode, and MENU never
-          lists TOURNAMENT.
+          Ack 1 WRONG_SCREEN; BEGIN_TOURNAMENT never enters tablet mode, SELECT_SPORT TABLET_MODE
+          does (16.16).
+
+  - id: tablet_mode_entry
+    section: "16.16"
+    title: Tablet mode entry and exit
+    goal: >-
+      A client enters tablet mode with the standard MENU commands (TABLET_MODE is a menu entry like
+      a sport) and leaves TOURNAMENT_WAIT with BACK, as a person's long C does.
+    notes: A squash board on MENU, a new connection (seq starts at 1).
+    steps:
+      - step: menu
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x70
+        hex:
+          - 01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
+        why: The TOURNAMENT row is listed as menu entry 0x80 after the sports; a watch skips an id it does not know.
+
+      - step: focus_tablet
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 0e 01 80 00 00 00
+        fields: {cmd: 0x0e, seq: 1, target: 0x00000080}
+        why: FOCUS on the TOURNAMENT row, as on a sport row.
+
+      - step: focus_tablet_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x71
+        hex:
+          - 01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: menu_entry.TABLET_MODE, n: 5, entry_ids: 04 01 02 03 80}
+        why: Ack 1 APPLIED, the cursor is the menu-entry id 0x80.
+
+      - step: select_tablet
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 01 02 80
+        fields: {cmd: 0x01, seq: 2, sport: menu_entry.TABLET_MODE}
+        why: SELECT_SPORT on the TOURNAMENT row, the person's D on it.
+
+      - step: select_tablet_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x72
+        hex:
+          - 01 72 01 04 00 02 00 5b e7 0f 15
+        body: {screen: TOURNAMENT_WAIT, sport: none, ack_seq: 2, ack_status: APPLIED, roster_version: 0x150fe75b}
+        why: Ack 2 APPLIED on TOURNAMENT_WAIT; tablet mode runs and the tournament window is open (9.2).
+
+      - step: back_on_wait
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 01 02 03
+        fields: {cmd: 0x02, seq: 3}
+        why: BACK on TOURNAMENT_WAIT, the person's long C.
+
+      - step: back_on_wait_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x73
+        hex:
+          - 01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80
+        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
+        why: Ack 3 APPLIED on a new MENU (cursor on the first row); tablet mode and the window ended.

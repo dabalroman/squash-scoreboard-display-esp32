@@ -97,3 +97,15 @@ repo declares is untagged, or when it finds fewer tags than declared.
 YAML first, then `python helpers/check_protocol.py build` (rewrites the generated markdown
 regions), then the code and the tagged vectors in every implementation. Generated regions are
 never edited by hand.
+
+## Design rules
+
+Keep the protocol standard; extend what exists before adding anything.
+
+- A new place to go is a new id in an existing list (MENU's menu-entry ids), acted on by the
+  existing commands (FOCUS, SELECT_SPORT, BACK); a new screen is a new `screen` id.
+- No magic flags: no STATE bit or field that restates what a client can already read (the
+  screen, TOURNAMENT STATUS, the roster).
+- No one-off commands for one feature (`ENTER_X` / `LEAVE_X`). When a behaviour needs two generic
+  commands, use two: every command needs support in the firmware, `garmin_client.py`, the watch
+  and the tablet.

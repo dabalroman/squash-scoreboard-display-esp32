@@ -4,16 +4,17 @@
 commands:
   - id: 0x01
     name: SELECT_SPORT
-    description: Enter that sport's CHOOSE_PLAYERS (cursor to the row + D).
+    description: Act on a MENU row (cursor to the row + D).
     usage: >-
-      The watch sends it on MENU when the user picks a sport. A sport not in the menu -> INVALID.
+      Takes any menu-entry id the MENU state lists: a sport enters its CHOOSE_PLAYERS, TABLET_MODE
+      enters tablet mode on TOURNAMENT_WAIT (section 20). An id the menu does not list -> INVALID.
     see: "#102-command-table"
     valid_on: [MENU]
     args:
       - field: sport
         type: uint8
         enum: sport
-        description: The sport to enter.
+        description: The menu-entry id to act on (a sport or a menu_entry).
 
   - id: 0x02
     name: BACK
@@ -21,10 +22,10 @@ commands:
     usage: >-
       CHOOSE_PLAYERS -> MENU, MATCH_START -> CHOOSE_PLAYERS, INTRO / CELEBRATION / GAME_OVER ->
       MATCH_START; PROFILE -> MENU through its C/D exit. Never on PLAYING (a game must not be
-      discarded). Tablet mode: MATCH_START -> WRONG_SCREEN (only the board's long C leaves);
-      TOURNAMENT_WAIT -> WRONG_SCREEN.
+      discarded). Tablet mode (20.6): TOURNAMENT_WAIT -> MENU; MATCH_START -> WRONG_SCREEN (only
+      the board's long C leaves it).
     see: "#102-command-table"
-    valid_on: [CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE]
+    valid_on: [CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE, TOURNAMENT_WAIT]
     args: []
 
   - id: 0x03
@@ -141,7 +142,7 @@ commands:
     name: FOCUS
     description: Move the board's cursor to a row without acting on it (A / B scrolling, silent).
     usage: >-
-      MENU: target = a sport id the menu lists; CHOOSE_PLAYERS: a profile's uid, or 0 for the START
+      MENU: target = a menu-entry id the menu lists; CHOOSE_PLAYERS: a profile's uid, or 0 for the START
       row. A row the screen does not show -> INVALID. APPLIED also when the cursor already sits
       there; the board plays no sound for it.
     see: "#102-command-table"
@@ -149,7 +150,7 @@ commands:
     args:
       - field: target
         type: uint32
-        description: A sport id (MENU) or a uid / 0 = START (CHOOSE_PLAYERS).
+        description: A menu-entry id (MENU) or a uid / 0 = START (CHOOSE_PLAYERS).
 
   - id: 0x0F
     name: ADD_OFFLINE_GAME

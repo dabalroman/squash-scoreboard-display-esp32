@@ -459,7 +459,7 @@ enums:
     description: The sport a mode belongs to; 0 outside a sport (byte 1 of the state body).
     usage: >-
       Drives the roster kind (teams vs players) and the PLAYING score interpretation; the watch
-      offers exactly the sports the board's MENU state lists.
+      offers exactly the sports the board's MENU state lists (beside the menu_entry rows it knows).
     see: "#112-body"
     values:
       - name: none
@@ -477,6 +477,19 @@ enums:
       - name: padel
         value: 0x04
         description: Padel.
+
+  - name: menu_entry
+    type: uint8
+    description: A MENU row id that is not a sport. Sport rows use their sport id.
+    usage: >-
+      MENU lists menu-entry ids (sport ids and these) in menu order and reports the highlighted
+      one as its cursor; FOCUS and SELECT_SPORT take them like sport ids. Never a state body's
+      sport, never a BEGIN_TOURNAMENT sport. A watch skips ids it does not know.
+    see: "#113-screen-data"
+    values:
+      - name: TABLET_MODE
+        value: 0x80
+        description: The TOURNAMENT row; selecting it enters tablet mode (section 20).
 
   - name: side
     type: uint8

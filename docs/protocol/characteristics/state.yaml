@@ -77,19 +77,18 @@ structures:
 
   - name: menu_body
     offset: 8
-    description: "MENU screen data: the sport list with the highlighted row."
+    description: "MENU screen data: the menu entries with the highlighted row."
     structure:
       - field: cursor
         type: uint8
-        enum: sport
-        description: Sport of the highlighted row, 0 on a non-sport row.
+        description: Menu-entry id of the highlighted row (a sport id or a menu_entry), 0 on a row not listed (PROFILE, CONFIG).
       - field: n
         type: uint8
-        description: Number of sports in the menu.
-      - field: sport_ids
+        description: Number of menu entries listed.
+      - field: entry_ids
         type: uint8[]
         size: n
-        description: Sport ids in menu order.
+        description: Menu-entry ids in menu order (sport ids and menu_entry values).
 
   - name: choose_players_body
     offset: 8
