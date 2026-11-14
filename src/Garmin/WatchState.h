@@ -59,13 +59,13 @@ public:
         begin(value);
     }
 
-    // `count` is clamped to what fits.
-    void setMenu(const Garmin::SportId cursor, const Garmin::SportId *sports, uint8_t count) {
+    // Menu-entry ids (a sport id or a MenuEntry); `count` is clamped to what fits.
+    void setMenu(const uint8_t cursor, const uint8_t *entries, uint8_t count) {
         begin(Garmin::ScreenId::Menu);
         if (count > MAX_DATA - 2) count = MAX_DATA - 2;
-        put8(static_cast<uint8_t>(cursor));
+        put8(cursor);
         put8(count);
-        for (uint8_t i = 0; i < count; i++) put8(static_cast<uint8_t>(sports[i]));
+        for (uint8_t i = 0; i < count; i++) put8(entries[i]);
     }
 
     // `cursorUid` 0 = the START row.

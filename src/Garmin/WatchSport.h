@@ -28,7 +28,7 @@ namespace WatchSport {
             {DeviceModeState::ModeSwitchingMode, Garmin::SportId::None, true, Garmin::ScreenId::Menu, Garmin::RosterKind::Players},
             {DeviceModeState::ConfigMode, Garmin::SportId::None, false, Garmin::ScreenId::Config, Garmin::RosterKind::Players},
             {DeviceModeState::PlayerSetupMode, Garmin::SportId::None, false, Garmin::ScreenId::Profile, Garmin::RosterKind::Players},
-            // Sport none, so MENU never lists it; BEGIN_TOURNAMENT picks the sport.
+            // Sport none; MENU lists it as MenuEntry::TabletMode, BEGIN_TOURNAMENT picks the sport.
             {DeviceModeState::TournamentMode, Garmin::SportId::None, false, Garmin::ScreenId::TournamentWait,
              Garmin::RosterKind::Players},
             {DeviceModeState::SquashMode, Garmin::SportId::Squash, true, Garmin::ScreenId::ChoosePlayers,

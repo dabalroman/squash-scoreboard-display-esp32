@@ -135,10 +135,9 @@ namespace {
     }
 
     WatchState menuState() {
-        const Garmin::SportId sports[] = {Garmin::SportId::Padel, Garmin::SportId::Squash,
-                                          Garmin::SportId::Volleyball, Garmin::SportId::ShortVolleyball};
+        const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
         WatchState s;
-        s.setMenu(Garmin::SportId::Padel, sports, 4);
+        s.setMenu(0x04, entries, 5);
         return s;
     }
 
@@ -516,9 +515,9 @@ void test_push_spec_vector_and_retry() {
     link.subscribe(1, Link::Sub::State, true);
     TEST_ASSERT_EQUAL(1, link.preparePushes(&s, 0, pushes));
     TEST_ASSERT_EQUAL(1, Garmin::chunkCount(pushes[0].len));
-    expectFrame("01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03", chunk(pushes[0], 0), "spec 16.5");
+    expectFrame("01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80", chunk(pushes[0], 0), "spec 16.5");
     // The read returns chunk 0 of the same state.
-    expectFrame("01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03", link.readState(1), "state read");
+    expectFrame("01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80", link.readState(1), "state read");
 
     // A failed chunk: nothing until the retry delay, then a whole set under a new stateSeq.
     link.pushFailed(1, 1000);

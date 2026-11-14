@@ -506,12 +506,13 @@ void applyWatchCommand() {
     }
 
     // Busy screens take nothing (spec 10.2): ConfigMode::goBack() saves and leaves, which a
-    // watch must not trigger. PROFILE takes BACK only, TOURNAMENT_WAIT BEGIN_TOURNAMENT only (spec 20.6).
+    // watch must not trigger. PROFILE takes BACK only, TOURNAMENT_WAIT BACK and BEGIN_TOURNAMENT (spec 20.6).
     const WatchModeInfo info = WatchSport::fromModeState(deviceState);
     const bool screenTakesIt =
         info.viewDescribes
         || (info.screen == Garmin::ScreenId::Profile && command.id == Garmin::CommandId::Back)
-        || (info.screen == Garmin::ScreenId::TournamentWait && command.id == Garmin::CommandId::BeginTournament);
+        || (info.screen == Garmin::ScreenId::TournamentWait
+            && (command.id == Garmin::CommandId::BeginTournament || command.id == Garmin::CommandId::Back));
     const Garmin::AckStatus status = screenTakesIt
                                          ? deviceMode->handleWatchCommand(command)
                                          : Garmin::AckStatus::WrongScreen;

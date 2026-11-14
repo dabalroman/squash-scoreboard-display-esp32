@@ -237,13 +237,13 @@ void test_unauthenticated_read() {
 
 void test_menu_state() {
     WatchState s;
-    const SportId sports[] = {SportId::Padel, SportId::Squash, SportId::Volleyball, SportId::ShortVolleyball};
-    s.setMenu(SportId::Padel, sports, 4);
-    TEST_ASSERT_EQUAL_UINT8(14, s.bodySize());
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
+    s.setMenu(0x04, entries, 5);
+    TEST_ASSERT_EQUAL_UINT8(15, s.bodySize());
     const std::vector<Frame> c = chunks(1, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: menu_state/menu
-    expectBuf("01 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03", c[0], "16.5 MENU");
+    expectBuf("01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80", c[0], "16.5 MENU");
 }
 
 void test_squash_playing_state() {
@@ -502,10 +502,10 @@ void test_state_change_detection() {
 }
 
 void test_menu_clamped_to_buffer() {
-    SportId many[40];
-    for (uint8_t i = 0; i < 40; i++) many[i] = SportId::Squash;
+    uint8_t many[40];
+    for (uint8_t i = 0; i < 40; i++) many[i] = 0x01;
     WatchState s;
-    s.setMenu(SportId::None, many, 40);
+    s.setMenu(0, many, 40);
     TEST_ASSERT_EQUAL_UINT8(STATE_HEADER + WatchState::MAX_DATA, s.bodySize());
     uint8_t body[STATE_HEADER + WatchState::MAX_DATA];
     s.build(0, AckStatus::Applied, 0, body);
@@ -644,12 +644,12 @@ void test_focus() {
     TEST_ASSERT_EQUAL_HEX32(0, cmd.uid);
 
     WatchState s;
-    const SportId sports[] = {SportId::Padel, SportId::Squash, SportId::Volleyball, SportId::ShortVolleyball};
-    s.setMenu(SportId::Squash, sports, 4);
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
+    s.setMenu(0x01, entries, 5);
     std::vector<Frame> c = chunks(2, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: focus/menu_state
-    expectBuf("01 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03", c[0], "16.9 MENU");
+    expectBuf("01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80", c[0], "16.9 MENU");
 
     // 16.9 CHOOSE_PLAYERS: focus KRYSTIAN with ANNA and OLA selected.
     // spec: focus/focus_krystian
@@ -1053,12 +1053,51 @@ void test_tablet_frames() {
                  "01 69 12 77 66 55 00", "back ack");
 
     WatchState menu;
-    const SportId sports[] = {SportId::Padel, SportId::Squash, SportId::Volleyball, SportId::ShortVolleyball};
-    menu.setMenu(SportId::Padel, sports, 4);
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
+    menu.setMenu(0x04, entries, 5);
     const std::vector<Frame> mc = chunks(0x02, menu, 1, AckStatus::WrongScreen);
     TEST_ASSERT_EQUAL(1, mc.size());
     // spec: tablet_refusals/begin_on_menu_ack
-    expectBuf("01 02 01 01 00 01 01 5b e7 0f 15 04 04 04 01 02 03", mc[0], "begin on MENU");
+    expectBuf("01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80", mc[0], "begin on MENU");
+}
+
+// 16.16: a client enters tablet mode with FOCUS / SELECT_SPORT on the menu entry 0x80 and leaves with BACK.
+void test_tablet_mode_entry() {
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
+    WatchState menu;
+    menu.setMenu(0x04, entries, 5);
+    // spec: tablet_mode_entry/menu
+    expectBuf("01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80",
+                 chunks(0x70, menu, 0, AckStatus::Applied)[0], "menu");
+
+    // spec: tablet_mode_entry/focus_tablet
+    WatchCommand cmd = parsed("01 0e 01 80 00 00 00");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::Focus && cmd.seq == 1);
+    TEST_ASSERT_EQUAL_HEX32(0x80, cmd.target);
+    menu.setMenu(0x80, entries, 5);
+    // spec: tablet_mode_entry/focus_tablet_ack
+    expectBuf("01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80",
+                 chunks(0x71, menu, 1, AckStatus::Applied)[0], "focus ack");
+
+    // spec: tablet_mode_entry/select_tablet
+    cmd = parsed("01 01 02 80");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::SelectSport && cmd.seq == 2);
+    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(MenuEntry::TabletMode), cmd.sport);
+
+    WatchState wait;
+    wait.setBusy(ScreenId::TournamentWait);
+    // spec: tablet_mode_entry/select_tablet_ack
+    expectBuf("01 72 01 04 00 02 00 5b e7 0f 15",
+                 chunks(0x72, wait, 2, AckStatus::Applied)[0], "select ack");
+
+    // spec: tablet_mode_entry/back_on_wait
+    cmd = parsed("01 02 03");
+    TEST_ASSERT_TRUE(cmd.id == CommandId::Back && cmd.seq == 3);
+
+    menu.setMenu(0x04, entries, 5);
+    // spec: tablet_mode_entry/back_on_wait_ack
+    expectBuf("01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80",
+                 chunks(0x73, menu, 3, AckStatus::Applied)[0], "back ack");
 }
 
 // Discards and lengths of the TOURNAMENT writes and the tablet commands.
@@ -1132,6 +1171,7 @@ int main() {
     RUN_TEST(test_results_frames);
     RUN_TEST(test_offline_games);
     RUN_TEST(test_tablet_frames);
+    RUN_TEST(test_tablet_mode_entry);
     RUN_TEST(test_tablet_frame_edges);
     return UNITY_END();
 }

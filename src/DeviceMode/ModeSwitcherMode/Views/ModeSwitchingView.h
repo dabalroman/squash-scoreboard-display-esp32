@@ -82,7 +82,7 @@ public:
         queueRender();
     }
 
-    // SELECT_SPORT is the request D makes on that row, FOCUS the cursor move A/B make. A sport
+    // SELECT_SPORT is the request D makes on that row, FOCUS the cursor move A/B make. An id
     // the menu does not list is INVALID.
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
         const bool focus = command.id == Garmin::CommandId::Focus;
@@ -90,8 +90,8 @@ public:
             return Garmin::AckStatus::WrongScreen;
         }
 
-        const uint32_t sport = focus ? command.target : command.sport;
-        const int index = sport <= 0xFF ? rowOfSport(static_cast<uint8_t>(sport)) : -1;
+        const uint32_t id = focus ? command.target : command.sport;
+        const int index = id <= 0xFF ? rowOfEntryId(static_cast<uint8_t>(id)) : -1;
         if (index < 0) {
             return Garmin::AckStatus::Invalid;
         }
@@ -167,18 +167,18 @@ public:
         shouldRenderBack = false;
     }
 
-    // Enabled sport rows in menu order; the cursor is 0 on PROFILE / CONFIG.
+    // Listed rows (sports and TABLET_MODE) in menu order; the cursor is 0 on PROFILE / CONFIG.
     void describeForWatch(WatchState &state) const override {
-        Garmin::SportId sports[MAX_ENTRIES];
+        uint8_t ids[MAX_ENTRIES];
         uint8_t count = 0;
         for (uint8_t i = 0; i < entryIds.size() && count < MAX_ENTRIES; i++) {
-            const Garmin::SportId sport = WatchSport::fromModeState(entryAt(i).target).sport;
-            if (sport != Garmin::SportId::None) {
-                sports[count++] = sport;
+            const uint8_t id = menuEntryId(entryAt(i));
+            if (id != 0) {
+                ids[count++] = id;
             }
         }
 
-        state.setMenu(WatchSport::fromModeState(selectedEntry().target).sport, sports, count);
+        state.setMenu(menuEntryId(selectedEntry()), ids, count);
     }
 
 private:
@@ -243,14 +243,21 @@ private:
         return entries[entryIds[index < entryIds.size() ? index : 0]];
     }
 
-    // Visible row of that sport, -1 when the menu does not list it (or for None).
-    int rowOfSport(const uint8_t sport) const {
-        DeviceModeState mode;
-        if (!WatchSport::modeForSport(sport, mode)) {
+    // The row's id on the watch's MENU: its sport id, TABLET_MODE for TOURNAMENT, 0 when unlisted.
+    static uint8_t menuEntryId(const ModeMenuEntry &entry) {
+        if (entry.target == DeviceModeState::TournamentMode) {
+            return static_cast<uint8_t>(Garmin::MenuEntry::TabletMode);
+        }
+        return static_cast<uint8_t>(WatchSport::fromModeState(entry.target).sport);
+    }
+
+    // Visible row of that menu-entry id, -1 when the menu does not list it.
+    int rowOfEntryId(const uint8_t id) const {
+        if (id == 0) {
             return -1;
         }
         for (uint8_t i = 0; i < entryIds.size(); i++) {
-            if (entryAt(i).target == mode) {
+            if (menuEntryId(entryAt(i)) == id) {
                 return i;
             }
         }

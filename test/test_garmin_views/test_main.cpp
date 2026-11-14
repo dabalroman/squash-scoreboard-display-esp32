@@ -798,9 +798,9 @@ static void test_menu_select_sport_and_describe() {
     rig.mode.reset(new ModeSwitchingMode(rig.led, rig.back, rig.eink, rig.remote, rig.onModeChange(), battery));
 
     const Body body = rig.describe();
-    TEST_ASSERT_EQUAL(14, body.size);
-    const uint8_t menu[6] = {0x04, 4, 0x04, 0x01, 0x02, 0x03};
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(menu, body.data(), 6);
+    TEST_ASSERT_EQUAL(15, body.size);
+    const uint8_t menu[7] = {0x04, 5, 0x04, 0x01, 0x02, 0x03, 0x80};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(menu, body.data(), 7);
 
     TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(sport(0)));
     TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(sport(9)));
@@ -811,6 +811,11 @@ static void test_menu_select_sport_and_describe() {
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(sport(0x03)));
     TEST_ASSERT_EQUAL(1, rig.requested.size());
     TEST_ASSERT_EQUAL(DeviceModeState::ShortVolleyballMode, rig.requested[0]);
+
+    // TABLET_MODE is the TOURNAMENT row: the request a person's D on it makes.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(sport(0x80)));
+    TEST_ASSERT_EQUAL(2, rig.requested.size());
+    TEST_ASSERT_EQUAL(DeviceModeState::TournamentMode, rig.requested[1]);
 }
 
 // --- RESULTS (spec 19): what the mode hands GarminService::publishResults --------------
@@ -1027,6 +1032,12 @@ static void test_menu_focus() {
     TEST_ASSERT_EQUAL_HEX8(0x00, rig.describe().data()[0]);
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0x03)));
     TEST_ASSERT_EQUAL_HEX8(0x03, rig.describe().data()[0]);
+    TEST_ASSERT_EQUAL(0, rig.requested.size());
+
+    // The TOURNAMENT row is focusable as 0x80, and the cursor reports it.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(focus(0x80)));
+    TEST_ASSERT_EQUAL_HEX8(0x80, rig.describe().data()[0]);
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(focus(0x81)));
     TEST_ASSERT_EQUAL(0, rig.requested.size());
 }
 
@@ -1275,10 +1286,12 @@ static void test_tablet_wait_screen_and_begin_refusals() {
     TEST_ASSERT_EQUAL(0, rig.begun.size());
     TEST_ASSERT_EQUAL(0, rig.requested.size());
 
-    // C leaves to the menu, short or long.
-    TEST_ASSERT_TRUE(rig.mode->goBack());
+    // A client's BACK leaves to the menu like C (spec 20.6), short or long.
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
     TEST_ASSERT_EQUAL(1, rig.requested.size());
     TEST_ASSERT_EQUAL(DeviceModeState::ModeSwitchingMode, rig.requested[0]);
+    TEST_ASSERT_TRUE(rig.mode->goBack());
+    TEST_ASSERT_EQUAL(2, rig.requested.size());
 }
 
 static void test_tablet_commands_wrong_screen_outside_tablet_mode() {

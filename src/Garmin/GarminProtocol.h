@@ -112,6 +112,11 @@ namespace Garmin {
         Padel = 0x04,
     };
 
+    // MENU rows that are not sports (spec 11.3); a sport row uses its SportId. Never a state body's sport.
+    enum class MenuEntry : uint8_t {
+        TabletMode = 0x80,
+    };
+
     // Which roster a screen's uids belong to (spec 12). Never on the wire: the watch derives it from the sport.
     enum class RosterKind : uint8_t { Players = 0, Teams = 1 };
 
