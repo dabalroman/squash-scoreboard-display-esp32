@@ -825,6 +825,19 @@ def selftest():
         failed += not ok
         print(f"  {'ok  ' if ok else 'FAIL'} scan wrong bytes: {'red' if errs else 'green'}"
               + ("" if ok else "".join(f"\n         {e}" for e in errs[:5])))
+        watch = d / "watch"
+        (watch / "source" / "protocol").mkdir(parents=True)
+        (watch / "test").mkdir()
+        (watch / "source" / "protocol" / "Proto.mc").write_text(
+            "module Proto {\n    const PROTO = 0x01;\n    const CMD_SCORE = 0x09;\n    const MAX_FRAME = 20 as Number;\n"
+            "    const MAC_SIZE = 8;\n    const MAC_SIZE = 8;\n}\n", encoding="utf-8")
+        errs = scan_watch(spec, watch)
+        ok = (any("`CMD_SCORE` = 9" in e for e in errs) and any("`KEY_SIZE` not found" in e for e in errs)
+              and any("`MAX_FRAME` in" in e for e in errs) and any("`MAC_SIZE` declared twice" in e for e in errs)
+              and not any("`PROTO`" in e for e in errs) and not any("does not define" in e for e in errs))
+        failed += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} watch scan wrong / missing / typed / duplicate constant: {'red' if errs else 'green'}"
+              + ("" if ok else "".join(f"\n         {e}" for e in errs[:5])))
 
     return failed == 0
 
@@ -904,6 +917,57 @@ FIRMWARE_EXCLUDE = frozenset({
 })
 
 
+# The scenario steps the watch app (squash-scoreboard-display-garmin-app) must carry, tagged in its
+# test/*.mc. The watch is a board-king client without tablet tournaments or offline-game entry: it
+# carries the frames it builds (commands, auth, pairing, heart, cursors) and every board frame it
+# parses, including the MENU / RESULTS forms newer boards send (a 0x80 menu entry, an OFFLINE game,
+# the 11 B end frame). It owns too_old/too_new, which the firmware never produces. The discard_* steps
+# are the board dropping malformed writes the watch never builds, so they stay the firmware's.
+WATCH_STEPS = frozenset({
+    "advertising/adv_normal", "advertising/adv_pairing", "advertising/scan_rsp", "advertising/version",
+    "auth/challenge", "auth/proof", "auth/result_ok", "auth/result_bad_proof",
+    "pairing/request", "pairing/result_ok", "pairing/result_bad_code",
+    "roster_read/write", "roster_read/read_anna", "roster_read/read_krystian", "roster_read/read_ola",
+    "roster_read/read_past_end",
+    "roster_read_teams/read_orly", "roster_read_teams/read_lisy", "roster_read_teams/read_past_end",
+    "menu_state/menu", "score_confirm/score", "score_confirm/state",
+    "padel_playing/tiebreak", "padel_playing/ladder",
+    "board_version/too_old", "board_version/too_new",
+    "focus/focus_squash", "focus/menu_state", "focus/focus_krystian", "focus/choose_players_state",
+    "focus/focus_start", "focus/focus_unknown_uid",
+    "heart/write_a", "heart/write_c", "heart/write_c_clear", "heart/notify_a", "heart/notify_b",
+    "heart/notify_c", "heart/notify_a_empty",
+    "sides_swapped/intro", "sides_swapped/playing", "sides_swapped/game_over", "sides_swapped/match_start",
+    "last_known/score_right", "last_known/state",
+    "results/write", "results/read_1", "results/read_2", "results/read_3", "results/read_past_end",
+    "results/read_no_tournament", "results/unauth_read",
+    "offline_games/read_offline", "offline_games/read_end_rev",
+    "tablet_mode_entry/menu", "tablet_mode_entry/focus_tablet_ack", "tablet_mode_entry/back_on_wait_ack",
+})
+
+# YAML names the watch's source/protocol/Proto.mc must define (same name, same value). Any other YAML
+# constant it happens to define is compared too; these are the ones whose absence is a finding.
+WATCH_CONSTANTS = frozenset({
+    "PROTO", "COMPANY_ID", "ADV_FLAG_PAIRING", "MAX_FRAME", "CHUNK_HEADER", "CHUNK_BODY", "MAX_CHUNKS",
+    "MAX_STATE_BODY", "STATE_HEADER", "KEY_SIZE", "NONCE_SIZE", "MAC_SIZE", "SLOT_COUNT",
+    "ROSTER_ENTRY_SIZE", "ROSTER_NAME_SIZE", "PAIRING_CODE_COUNT", "RESULTS_HEADER", "RESULTS_MAX",
+})
+WATCH_UUIDS_EXCLUDE = frozenset({"TOURNAMENT_UUID"})
+
+# YAML enum -> the Proto.mc prefix of its values (`SCREEN_` + `PLAYING`; lower-case names upper-cased).
+# Enums the watch has no use for (menu_entry, game_flags, the tournament ones) are not listed.
+WATCH_ENUMS = {
+    "screen": "SCREEN_", "sport": "SPORT_", "side": "SIDE_", "ack_status": "ACK_",
+    "auth_type": "AUTH_", "auth_status": "AUTH_", "pairing_type": "PAIRING_", "pairing_status": "PAIRING_",
+}
+# Values / commands of the tablet tournament and offline-game entry, which the watch does not implement.
+WATCH_EXCLUDE = frozenset({
+    "SCREEN_TOURNAMENT_WAIT",
+    "CMD_ADD_OFFLINE_GAME", "CMD_REMOVE_OFFLINE_GAME", "CMD_BEGIN_TOURNAMENT", "CMD_COMMIT_MIRROR",
+    "CMD_ACK_OUTBOX", "CMD_SET_SIDE",
+})
+
+
 def pascal(name):
     return "".join(w.capitalize() for w in str(name).lower().split("_"))
 
@@ -914,6 +978,8 @@ def repo_errors(repo, spec, checkout):
         return scan_firmware(spec, checkout)
     if repo == "client":
         return scan_client(spec, checkout)
+    if repo == "watch":
+        return scan_watch(spec, checkout)
     return []
 
 
@@ -1054,6 +1120,60 @@ def scan_client(spec, root):
     return errors
 
 
+MC_CONST_RE = re.compile(r"^\s*const\s+(\w+)\s*=\s*([^;]+);", re.M)
+
+
+def scan_watch(spec, root):
+    errors = []
+    src = root / "source" / "protocol" / "Proto.mc"
+    if not src.exists():
+        return [f"watch: {src.relative_to(root)} not found"]
+    consts = {}
+    for name, value in MC_CONST_RE.findall(src.read_text(encoding="utf-8")):
+        if name in consts:
+            errors.append(f"watch: `{name}` declared twice in {src.name}")
+        value = value.strip()
+        if value.startswith('"') and value.endswith('"'):
+            consts[name] = value[1:-1]
+        else:
+            try:
+                consts[name] = parse_int(value)
+            except ValueError:
+                # A typed or computed value would otherwise escape the comparison.
+                consts[name] = None
+
+    known = set()
+
+    def compare(name, want, required):
+        known.add(name)
+        if name not in consts:
+            if required:
+                errors.append(f"watch: `{name}` not found in {src.name}")
+        elif consts[name] is None:
+            errors.append(f"watch: `{name}` in {src.name} is not a plain number or string")
+        elif consts[name] != want:
+            errors.append(f"watch: `{name}` = {consts[name]} but the YAML says {want}")
+
+    for c in spec.constants:
+        compare(c["name"], c["value"], c["name"] in WATCH_CONSTANTS)
+    for u in spec.uuids:
+        compare(u["name"], u["value"], u["name"] not in WATCH_UUIDS_EXCLUDE)
+    for ename, prefix in WATCH_ENUMS.items():
+        for v in spec.enums[ename]["values"]:
+            name = prefix + str(v["name"]).upper()
+            compare(name, (1 << v["bit"]) if "bit" in v else v.get("value"), name not in WATCH_EXCLUDE)
+    for cmd in spec.commands:
+        if not cmd.get("unused"):
+            name = "CMD_" + cmd["name"]
+            compare(name, cmd["id"], name not in WATCH_EXCLUDE)
+    # A name the YAML dropped or renamed must not linger in the override lists.
+    for name in sorted((WATCH_CONSTANTS | WATCH_UUIDS_EXCLUDE | WATCH_EXCLUDE) - known):
+        errors.append(f"watch: check_protocol's watch lists name `{name}`, which the YAML does not define")
+
+    errors += scan_vectors(spec, "watch", WATCH_STEPS, root / "test", "*.mc")
+    return errors
+
+
 def py_dict(text, name):
     i = text.find(name + " = {")
     if i < 0:
@@ -1133,9 +1253,9 @@ def scan_repos(spec, names):
             if not checkout.exists():
                 errors.append(f"--repo {name}: sibling checkout not found at {checkout}")
                 continue
-            if name in ("watch", "android"):
-                errors.append(f"--repo {name}: scan not implemented yet (#567/#568), so it is not checked")
-                continue  # #567 / #568 add these scans
+            if name == "android":
+                errors.append(f"--repo {name}: scan not implemented yet (#568), so it is not checked")
+                continue  # #568 adds this scan
             errors += repo_errors(name, spec, checkout)
     return errors
 
