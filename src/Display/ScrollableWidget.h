@@ -8,7 +8,7 @@
  * that only moves as far as needed to keep the selection visible.
  */
 class ScrollableWidget {
-    // Baselines 24/42/60: row 0 clears the navbar strip (y 1..7) and the dead V2 rows.
+    // Baselines 24/42/60: row 0 clears the navbar strip (y 1..7).
     enum : uint8_t { ROWS_ON_SCREEN = 3, ROW_PITCH = 18, TOP_OFFSET = 6 };
 
     static uint8_t rowBaseline(const uint8_t row) {

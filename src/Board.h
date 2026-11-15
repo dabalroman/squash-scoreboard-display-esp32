@@ -73,9 +73,6 @@ namespace Board {
 
     constexpr uint8_t OLED_ROTATION = 2;   // mounted upside down
 
-    // Healthy panel: text may use every row (BackDisplay::DEAD_TOP_ROWS).
-    constexpr uint8_t OLED_DEAD_TOP_ROWS = 0;
-
     // Divider x ADC calibration. Starting value copied from V2 - same 10k/10k
     // divider and module, but not yet measured against a meter on this unit.
     constexpr float BATTERY_FACTOR = 2.027f;
@@ -98,10 +95,6 @@ namespace Board {
     constexpr bool HAS_PLAYER_SETUP = true;
 
     constexpr uint8_t OLED_ROTATION = 0;   // mounted upright (device, 2026-09-17)
-
-    // The bench panel is damaged: every even row from 0 to 12 is dead. 11 is the
-    // first row text may occupy (BackDisplay::DEAD_TOP_ROWS has the reasoning).
-    constexpr uint8_t OLED_DEAD_TOP_ROWS = 11;
 
     // Combined divider (measured 1.988) x ADC calibration, measured on core 2.0.17
     // against a meter. Never hard-code x2.

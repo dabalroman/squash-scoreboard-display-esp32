@@ -143,7 +143,7 @@ Subsystem detail lives in `.claude/rules/`. Each file loads automatically when a
 | `led-engine.md` | sweep, layer engine, smoke, intro, brightness compensation, glyph tables, LED slot maps |
 | `tournament.md` | game ball, on fire, comeback, commit timeout, padel two-level scoring and tiebreak |
 | `eink.md` | e-paper driver, match screen, fonts, menus, footer, ghosting, images |
-| `oled.md` | dead rows, text clamp, menu rows, navbar, battery icon |
+| `oled.md` | bitmaps, menu rows, navbar, battery icon |
 | `input-buzzer.md` | 433 MHz receiver measurements, long C, buzzer modes, `safeRestart()` |
 | `garmin.md` | NimBLE pin, `src/Garmin/` core, `GarminService`, watch commands, CONFIG GARMIN screens, protocol v1 HEART relay, RESULTS (tournament results) |
 | `persistence-network.md` | `PrefsData`, Dev Mode, apply-on-save, OTA image check and board marker, `v1_bootstrap`, core-3.x fixes |

@@ -594,8 +594,7 @@ void updateWatchBadge() {
     }
 
     shownWatchCount = count;
-    // The OLED badge only where there is no e-paper, like the battery percent: V2's OLED
-    // has no free corner below its dead rows (the right score reaches y 11).
+    // The OLED badge only where there is no e-paper, like the battery percent.
     backDisplay->setWatchCount(EInkDisplay::available() ? 0 : count);
     einkDisplay.setWatchCount(count);
     if (deviceMode) {

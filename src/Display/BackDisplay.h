@@ -22,7 +22,6 @@ class BackDisplay {
     uint8_t watchCount = 0;
     bool sameSideMode = false;
     Dimensions currentFontDimensions = {0, 0};
-    uint8_t currentFontAscent = 0;
     const GFXfont *currentFont = nullptr;
 
 public:
@@ -33,20 +32,6 @@ public:
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_2x_24pt7b = 59;
     constexpr static uint8_t VERTICAL_CURSOR_OFFSET_9pt7b = 20;
 
-    /**
-     * First row text may occupy: Board::OLED_DEAD_TOP_ROWS, 11 on V2 and 0 on V1.
-     * The V2 bench panel is damaged. The damage is not a
-     * solid strip: every *even* row from 0 to 12 is dead (alternating COM lines),
-     * measured on the device 2026-09-18. 13 would clear it completely, but 11 is
-     * the chosen floor - only the stripe at row 12 then crosses a glyph, and one
-     * missing line is hard to notice, while the two rows saved keep the 3-row menu
-     * spacing closer to even.
-     *
-     * Any text that would land above is pushed down by exactly the deficit; 0
-     * restores the original layout. V1's healthy panel has 0, which frees its top
-     * strip for drawBatteryPercent().
-     */
-    constexpr static uint8_t DEAD_TOP_ROWS = Board::OLED_DEAD_TOP_ROWS;
 
     Adafruit_SSD1306 *screen;
 
@@ -54,8 +39,6 @@ public:
         screen->setRotation(Board::OLED_ROTATION);
         screen->clearDisplay();
         screen->setTextColor(SSD1306_WHITE);
-        // Through initSmallFont, so the ascent used by clearDeadTop is set before
-        // the first draw rather than left at 0.
         initSmallFont();
         setCursorToLine();
         println(Str::BOOT_OLED_INITIALIZING);
@@ -100,18 +83,15 @@ public:
     }
 
     void print(const String &text) const {
-        clearDeadTop();
         screen->print(text);
     }
 
     void println(const String &text) const {
-        clearDeadTop();
         screen->println(text);
     }
 
     /**
-     * A full-screen 128x64 PROGMEM bitmap, set bit = lit. Deliberately ignores
-     * DEAD_TOP_ROWS: artwork uses the whole panel (user's call, 2026-09-28).
+     * A full-screen 128x64 PROGMEM bitmap, set bit = lit.
      */
     void drawBitmap(const uint8_t *bitmap) const {
         if (bitmap == nullptr) {
@@ -175,8 +155,8 @@ public:
 
     /**
      * Small right-aligned "85%" in the built-in 5x7 font with a battery icon just left of
-     * it, in the top strip above the menu (y 1..7). Only meaningful where that strip is
-     * lit (DEAD_TOP_ROWS == 0); drawn through OledNavbar, which owns that gate. Restores
+     * it, in the top strip above the menu (y 1..7); drawn through OledNavbar, which owns
+     * the gate. Restores
      * the current GFX font so the caller's next draw is unaffected.
      */
     void drawBatteryPercent(const uint8_t percent) const {
@@ -184,7 +164,7 @@ public:
         snprintf(text, sizeof(text), "%u%%", percent);
         const int16_t width = static_cast<int16_t>(strlen(text)) * 6 - 1;
         const int16_t textX = 126 - width;
-        const int16_t y = DEAD_TOP_ROWS + 1;
+        const int16_t y = 1;
 
         const int16_t iconX = textX - BATTERY_ICON_GAP - BATTERY_ICON_WIDTH;
         screen->drawRect(iconX, y, BATTERY_ICON_WIDTH - 1, 7, SSD1306_WHITE);
@@ -208,7 +188,7 @@ public:
     void drawTopLeftNote(const char *text) const {
         screen->setFont(nullptr);
         screen->setTextSize(1);
-        screen->setCursor(0, DEAD_TOP_ROWS + 1);
+        screen->setCursor(0, 1);
         screen->print(text);
         screen->setFont(currentFont);
     }
@@ -218,7 +198,6 @@ public:
         screen->setFont(&FreeMonoBold24pt7b);
         currentFont = &FreeMonoBold24pt7b;
         currentFontDimensions = {ONE_CHAR_WIDTH_24pt7b, VERTICAL_CURSOR_OFFSET_24pt7b};
-        currentFontAscent = measureAscent();
     }
 
     void initSmallFont() {
@@ -226,7 +205,6 @@ public:
         screen->setFont(&FreeMono9pt7b);
         currentFont = &FreeMono9pt7b;
         currentFontDimensions = {ONE_CHAR_WIDTH_9pt7b, VERTICAL_CURSOR_OFFSET_9pt7b};
-        currentFontAscent = measureAscent();
     }
 
     void setCursorToCenter(const uint8_t amountOfChars) const {
@@ -255,7 +233,7 @@ public:
     // The badge's top-left: on drawBatteryPercent's strip, left of its widest "100%" plus
     // icon (x 87..125); the badge's blanked box ends at x 85. main.cpp feeds a count only
     // on boards without an e-paper.
-    enum : uint8_t { WATCH_BADGE_X = 74, WATCH_BADGE_Y = DEAD_TOP_ROWS + 1 };
+    enum : uint8_t { WATCH_BADGE_X = 74, WATCH_BADGE_Y = 1 };
 
     /**
      * The main screen's header, beside the battery percent: a 5x7 watch (strap, case,
@@ -289,51 +267,6 @@ public:
     }
 
 private:
-    /**
-     * Tallest ascent among the glyphs these screens actually draw, for the font
-     * that is currently set. Measured once per font switch, from one sample
-     * string, rather than from the font's whole table: the table's worst case
-     * comes from punctuation nothing here uses and would drop every line 3 px
-     * further than needed.
-     */
-    uint8_t measureAscent() const {
-        int16_t x1, y1;
-        uint16_t w, h;
-        screen->getTextBounds(
-            F("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"),
-            0, 0, &x1, &y1, &w, &h
-        );
-
-        return y1 < 0 ? static_cast<uint8_t>(-y1) : 0;
-    }
-
-    /**
-     * Push the cursor down so the line about to be drawn starts at or below
-     * DEAD_TOP_ROWS.
-     *
-     * Applied here, at print time, rather than in each cursor setter: this is the
-     * one point every draw passes through, so no call site can land in the dead
-     * rows by using a setter that was missed. The drop comes from the font's
-     * ascent, not the individual string - fitting each string exactly made the top
-     * score hop 1-2 px as its value changed ('1' and '4' are shorter than the
-     * other digits) and put the menu's ">" marker a pixel off its label. A
-     * `println` block inherits the same offset on its following lines.
-     *
-     * With no GFX font set the ascent is 0 and the cursor y is already the glyph
-     * top, so this degrades to a plain floor - which is correct for that font too.
-     */
-    void clearDeadTop() const {
-        if (DEAD_TOP_ROWS == 0) {
-            return;
-        }
-
-        const int16_t y = screen->getCursorY();
-        const int16_t top = y - currentFontAscent;
-
-        if (top < DEAD_TOP_ROWS) {
-            screen->setCursor(screen->getCursorX(), y + (DEAD_TOP_ROWS - top));
-        }
-    }
 };
 
 #endif //BACK_DISPLAY_H

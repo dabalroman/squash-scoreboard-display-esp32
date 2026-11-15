@@ -66,7 +66,6 @@ public:
     };
     Screen screenStub;
     Screen *screen = &screenStub;
-    constexpr static uint8_t DEAD_TOP_ROWS = 0;
 
     void clear() {}
     void setCursorFromTopLeft(uint8_t, uint8_t = 0) {}

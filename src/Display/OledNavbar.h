@@ -11,7 +11,7 @@
  * the right and the watch badge beside it. Values are passed in, so a view says what
  * it shows and the strip draws it.
  *
- * It is lit only on V1; V2's OLED has dead rows there and carries the same facts in the
+ * It is lit only on V1; V2 carries the same facts in the
  * e-paper footer. The gate is on that fact (no e-paper), never on the board, and lives
  * here alone so no view repeats it.
  */
