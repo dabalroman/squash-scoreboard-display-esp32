@@ -23,12 +23,15 @@ struct WatchCommand {
     uint32_t uidB;      // ADD_OFFLINE_GAME
     uint8_t scoreA;     // ADD_OFFLINE_GAME
     uint8_t scoreB;     // ADD_OFFLINE_GAME
-    uint32_t tournamentId; // REMOVE_OFFLINE_GAME, BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX
+    uint32_t tournamentId; // REMOVE_OFFLINE_GAME, BEGIN_TOURNAMENT, ACK_CHANGES
     uint16_t rev;          // REMOVE_OFFLINE_GAME
     uint16_t index;        // REMOVE_OFFLINE_GAME: a listed RESULTS index
-    uint8_t count;         // BEGIN_TOURNAMENT, COMMIT_MIRROR: staged entries to take
-    uint32_t crc;          // BEGIN_TOURNAMENT (roster), COMMIT_MIRROR (mirror)
-    uint16_t upTo;         // ACK_OUTBOX
+    uint8_t count;         // BEGIN_TOURNAMENT: staged entries to take
+    uint32_t crc;          // BEGIN_TOURNAMENT: roster_crc
+    uint16_t upTo;         // ACK_CHANGES
+    // Not on the wire: the sender's pairing slot, the writer of a change the command makes
+    // (spec 20.2). Set by GarminService::takeCommand().
+    uint8_t writer;
 
     bool hasValidSide() const {
         return side <= 1;
@@ -59,9 +62,7 @@ namespace Garmin {
             case CommandId::AddOfflineGame:
             case CommandId::BeginTournament:
                 return 13;
-            case CommandId::CommitMirror:
-                return 12;
-            case CommandId::AckOutbox:
+            case CommandId::AckChanges:
                 return 9;
             case CommandId::SetSide:
                 return 8;
@@ -123,12 +124,7 @@ namespace Garmin {
                 out.count = in[8];
                 out.crc = getU32(in + 9);
                 break;
-            case CommandId::CommitMirror:
-                out.tournamentId = getU32(in + 3);
-                out.count = in[7];
-                out.crc = getU32(in + 8);
-                break;
-            case CommandId::AckOutbox:
+            case CommandId::AckChanges:
                 out.tournamentId = getU32(in + 3);
                 out.upTo = getU16(in + 7);
                 break;

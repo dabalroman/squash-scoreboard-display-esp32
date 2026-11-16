@@ -78,14 +78,6 @@ namespace Str {
     constexpr const char *const MODE_OPTION_PLAYERS = "PROFILE";
     constexpr const char *const MODE_OPTION_PLAYERS_OLED = " [PROFILE]";
     constexpr const char *const MODE_OPTION_CONFIG_OLED =  " [OPCJE]   ";
-    constexpr const char *const MODE_OPTION_TOURNAMENT = "TURNIEJ";
-    constexpr const char *const MODE_OPTION_TOURNAMENT_OLED = "  TURNIEJ ";
-
-    // Tablet tournament: waiting for the tablet's BEGIN. The e-paper title bar holds ~8 bold characters.
-    constexpr const char *const TOURNAMENT_WAIT_TITLE = "TURNIEJ";
-    constexpr const char *const TOURNAMENT_WAIT_CODE = "...";
-    constexpr const char *const TOURNAMENT_WAIT_LINE1 = "CZEKAM NA";
-    constexpr const char *const TOURNAMENT_WAIT_LINE2 = "TABLET";
 
     // Player picker
     constexpr const char *const PLAYERS_ROW_START = "START";
@@ -120,7 +112,7 @@ namespace Str {
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "NISKA BATERIA";
-    // Leaving a tablet tournament with games the tablet has not stored yet.
+    // Leaving a tournament with changes no peer has ACKed (spec 20.6).
     constexpr const char *const OVERLAY_UNSYNCED_TITLE_FMT = "NIEWYSLANE: %u";
     constexpr const char *const OVERLAY_UNSYNCED_LINE = "TRZYMAJ C";
 
@@ -158,7 +150,6 @@ namespace Str {
     constexpr const char *const LED_MODE_PADEL = "PAdE";
     constexpr const char *const LED_MODE_CONFIG = "oPCJ";
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
-    constexpr const char *const LED_MODE_TOURNAMENT = "tUrn";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "StAr";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";
@@ -216,14 +207,6 @@ namespace Str {
     constexpr const char *const MODE_OPTION_PLAYERS = "Profiles";
     constexpr const char *const MODE_OPTION_PLAYERS_OLED = "[Profiles]";
     constexpr const char *const MODE_OPTION_CONFIG_OLED = " [Config] ";
-    constexpr const char *const MODE_OPTION_TOURNAMENT = "Tournament";
-    constexpr const char *const MODE_OPTION_TOURNAMENT_OLED = "Tournament";
-
-    // Tablet tournament: waiting for the tablet's BEGIN
-    constexpr const char *const TOURNAMENT_WAIT_TITLE = "TOURNEY";
-    constexpr const char *const TOURNAMENT_WAIT_CODE = "...";
-    constexpr const char *const TOURNAMENT_WAIT_LINE1 = "WAITING";
-    constexpr const char *const TOURNAMENT_WAIT_LINE2 = "FOR TABLET";
 
     // Player picker
     constexpr const char *const PLAYERS_ROW_START = "Start";
@@ -243,7 +226,7 @@ namespace Str {
 
     // Overlay
     constexpr const char *const OVERLAY_LOW_BATTERY_TITLE = "LOW BATTERY";
-    // Leaving a tablet tournament with games the tablet has not stored yet.
+    // Leaving a tournament with changes no peer has ACKed (spec 20.6).
     constexpr const char *const OVERLAY_UNSYNCED_TITLE_FMT = "NOT SYNCED: %u";
     constexpr const char *const OVERLAY_UNSYNCED_LINE = "HOLD C";
 
@@ -280,7 +263,6 @@ namespace Str {
     constexpr const char *const LED_MODE_PADEL = "PAdE";
     constexpr const char *const LED_MODE_CONFIG = "CFG";
     constexpr const char *const LED_MODE_PLAYERS = "ProF";
-    constexpr const char *const LED_MODE_TOURNAMENT = "toUr";
     constexpr const char *const LED_PLAYER_SETUP = "ProF";
     constexpr const char *const LED_PLAYERS_START = "PLAY";
     constexpr const char *const LED_OVERLAY_LOW_BATTERY = "bAtt";

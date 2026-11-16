@@ -46,6 +46,8 @@ public:
 
     struct Queued {
         uint16_t handle;
+        // The sender's pairing slot: the writer of a change the command makes (spec 20.2).
+        uint8_t slot;
         WatchCommand cmd;
     };
 
@@ -125,8 +127,6 @@ public:
         Guard g;
         GarminPairingStore::forgetAll(data);
         dataDirty = true;
-        memset(tabletKey, 0, sizeof(tabletKey));
-        tabletKeySet = false;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             Conn &c = conns[i];
             if (c.handle == NO_HANDLE) continue;
@@ -137,6 +137,9 @@ public:
             c.dropPending = true;
             c.dropAt = now;
         }
+        // Its writer's slot is gone with the keys.
+        recordQueued = false;
+        recordTaken = false;
     }
 
     // --- Roster (both tables built in setup; they only change across a reboot) ---
@@ -167,92 +170,94 @@ public:
         return rosterVers[activeRoster];
     }
 
-    // --- Tablet tournament (loop; spec 20) ---
+    // --- Tournament (loop; spec 20) ---
 
-    // The pushed roster, in a slot of its own: the stored tables stay as they are. Returns its CRC.
-    uint32_t setTabletRoster(uint8_t count, const uint8_t *entries) {
-        if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
+    // The running tournament's roster, in a slot of its own: the stored tables stay as they are.
+    void setTournamentRoster(uint8_t count, const uint8_t *entries) {
+        if (count > Garmin::TOURNAMENT_ROSTER_MAX) count = Garmin::TOURNAMENT_ROSTER_MAX;
         const uint32_t version = Garmin::rosterVersion(count, entries);
         Guard g;
-        rosterCount[TABLET_ROSTER] = count;
-        memcpy(roster[TABLET_ROSTER], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
-        rosterVers[TABLET_ROSTER] = version;
-        return version;
+        rosterCount[TOURNAMENT_ROSTER] = count;
+        memcpy(roster[TOURNAMENT_ROSTER], entries, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
+        rosterVers[TOURNAMENT_ROSTER] = version;
     }
 
     // Like useRoster(): effective with the next published state.
-    void useTabletRoster() {
+    void useTournamentRoster() {
         Guard g;
-        pendingRoster = TABLET_ROSTER;
+        pendingRoster = TOURNAMENT_ROSTER;
     }
 
     // BEGIN_TOURNAMENT answering APPLIED or INVALID: entries 0..count-1 into `out`
     // (count * 16 B), then the stage is cleared. A never-written entry reads as zeros.
     void takeRosterStage(uint8_t count, uint8_t *out) {
-        if (count > Garmin::TABLET_ROSTER_MAX) count = Garmin::TABLET_ROSTER_MAX;
+        if (count > Garmin::TOURNAMENT_ROSTER_MAX) count = Garmin::TOURNAMENT_ROSTER_MAX;
         Guard g;
         memcpy(out, rosterStage, static_cast<size_t>(count) * Garmin::ROSTER_ENTRY_SIZE);
         memset(rosterStage, 0, sizeof(rosterStage));
     }
 
-    // COMMIT_MIRROR answering APPLIED or INVALID: games 0..count-1 into `out` (count * 15 B).
-    void takeMirrorStage(uint8_t count, uint8_t *out) {
-        if (count > Garmin::RESULTS_MAX) count = Garmin::RESULTS_MAX;
+    // Leaving the tournament.
+    void clearRosterStage() {
         Guard g;
-        memcpy(out, mirrorStage, static_cast<size_t>(count) * Garmin::GAME_ENTRY_SIZE);
-        memset(mirrorStage, 0, sizeof(mirrorStage));
-    }
-
-    // Tablet mode ended: both stages, the pushed roster and the snapshot are gone.
-    // Also ends the tournament pairing (spec 9.2): its key is gone, and so is every connection that proved it.
-    void endTablet(const uint32_t now) {
-        Guard g;
-        forgetTabletKeyLocked(now);
         memset(rosterStage, 0, sizeof(rosterStage));
-        memset(mirrorStage, 0, sizeof(mirrorStage));
-        memset(roster[TABLET_ROSTER], 0, sizeof(roster[TABLET_ROSTER]));
-        rosterCount[TABLET_ROSTER] = 0;
-        rosterVers[TABLET_ROSTER] = Garmin::rosterVersion(0, nullptr);
-        tabletStatus = Garmin::TabletStatus{};
-        outboxCount = 0;
-        outboxTotal = 0;
     }
 
     /**
-     * The STATUS / OUTBOX snapshot, like syncResults: `entryAt(i, seq, out)` writes the i-th
-     * un-ACKed board game (seq order) and its seq. An outbox only loses games (ACK, mirror) or
-     * gains the next seqs, so with the same tid and outboxFrom, `count` growing by exactly as
-     * much as outboxTo is a pure append; anything else (a game acked out of the middle) starts
-     * over. Games are copied in seq order, each under its own lock, so a read mid-copy sees a
-     * prefix: the tablet ACKs only what it read and the rest stays for its next pull. The
-     * status lands last. Past RESULTS_MAX un-ACKed games the newer ones wait until older ones
-     * are ACKed. All zero outside tablet mode.
+     * The STATUS / RECORD / END snapshot: `entryAt(i, image, seq, writer)` writes the i-th stored
+     * record (sort order, tombstones included). Copied under one lock with its status, so a read
+     * never sees a half-updated log. Skipped when nothing changed, unless `force` (writers
+     * reset). All zero when no tournament runs.
      */
     template<class EntryAt>
-    void syncTablet(const Garmin::TabletStatus &status, const uint16_t count, EntryAt entryAt) {
-        uint16_t have;
-        {
-            Guard g;
-            const bool append = status.tournamentId == tabletStatus.tournamentId
-                                && status.outboxFrom == tabletStatus.outboxFrom
-                                && status.outboxTo >= tabletStatus.outboxTo && count >= outboxTotal
-                                && count - outboxTotal == status.outboxTo - tabletStatus.outboxTo;
-            if (!append) outboxCount = 0;
-            outboxTotal = count;
-            have = outboxCount;
-        }
-        const uint16_t served = count > Garmin::RESULTS_MAX ? Garmin::RESULTS_MAX : count;
-        for (uint16_t i = have; i < served; i++) {
-            uint16_t seq = 0;
-            uint8_t entry[Garmin::GAME_ENTRY_SIZE];
-            entryAt(i, seq, entry);
-            Guard g;
-            outboxSeqs[i] = seq;
-            memcpy(outbox + static_cast<size_t>(i) * Garmin::GAME_ENTRY_SIZE, entry, sizeof(entry));
-            outboxCount = static_cast<uint16_t>(i + 1);
-        }
+    void syncTournament(const Garmin::TournamentStatus &status, const uint16_t lostTo, uint16_t count,
+                        EntryAt entryAt, const bool force = false) {
+        if (count > SNAPSHOT_MAX) count = SNAPSHOT_MAX;
         Guard g;
-        tabletStatus = status;
+        if (!force && snapSynced && sameStatus(status, snapStatus) && count == snapCount && lostTo == snapLostTo) {
+            return;
+        }
+        for (uint16_t i = 0; i < count; i++) {
+            entryAt(i, snapRecords + static_cast<size_t>(i) * Garmin::RECORD_SIZE, snapSeqs[i], snapWriters[i]);
+        }
+        snapStatus = status;
+        snapCount = count;
+        snapLostTo = lostTo;
+        snapSynced = true;
+    }
+
+    /**
+     * A RECORD write waiting for loop(): the bound tournament id, the writer's pairing slot and
+     * the 18 B image. Stays pending until recordApplied(), so the write's response follows the
+     * merge.
+     */
+    bool takeRecord(uint32_t &tid, uint8_t &writer, uint8_t image[Garmin::RECORD_SIZE]) {
+        Guard g;
+        if (!recordQueued || recordTaken) return false;
+        recordTaken = true;
+        tid = recordTid;
+        writer = recordWriter;
+        memcpy(image, recordImage, Garmin::RECORD_SIZE);
+        return true;
+    }
+
+    void recordApplied() {
+        Guard g;
+        recordQueued = false;
+        recordTaken = false;
+    }
+
+    bool recordPending() const {
+        Guard g;
+        return recordQueued;
+    }
+
+    // Slots paired since the last call, as a bitmask: their change-log writers reset (spec 20.2).
+    uint8_t takeRepairedSlots() {
+        Guard g;
+        const uint8_t slots = repairedSlots;
+        repairedSlots = 0;
+        return slots;
     }
 
     // --- Tournament results (loop; spec 19) ---
@@ -293,24 +298,15 @@ public:
 
     // --- Pairing window (loop) ---
 
-    // A fresh code on every open, also when re-opened while open. `tournament` = spec 9.2's window:
-    // no time limit, advertised as bit 1, keys into the RAM-only TABLET_SLOT.
-    uint16_t openPairing(const uint32_t now, const bool tournament = false) {
+    // A fresh code on every open, also when re-opened while open.
+    uint16_t openPairing(const uint32_t now) {
         const uint16_t code = Garmin::pairingCodeFrom(randomWord());
         Guard g;
-        // A reply issued under the other kind of window must not outlive it.
-        if (pairing && tournamentWindow != tournament) closePairingLocked();
         pairing = true;
-        tournamentWindow = tournament;
         pairingOpenedAt = now;
         pairingCode_ = code;
         advChanged = true;
         return code;
-    }
-
-    bool tournamentPairingOpen() const {
-        Guard g;
-        return pairing && tournamentWindow;
     }
 
     void closePairing() {
@@ -330,7 +326,7 @@ public:
 
     uint32_t pairingRemainingMs(const uint32_t now) const {
         Guard g;
-        if (!pairing || tournamentWindow) return 0;
+        if (!pairing) return 0;
         const uint32_t elapsed = now - pairingOpenedAt;
         return elapsed >= Garmin::PAIRING_WINDOW_MS ? 0 : Garmin::PAIRING_WINDOW_MS - elapsed;
     }
@@ -448,10 +444,8 @@ public:
                     if (c->paired) completedPairings_++;
                     c->authReply = Garmin::buildAuthResultOk(boardMac);
                     c->needPush = true;
-                    if (proof.slotId != Garmin::TABLET_SLOT) {
-                        GarminPairingStore::touch(data, proof.slotId);
-                        dataDirty = true;
-                    }
+                    GarminPairingStore::touch(data, proof.slotId);
+                    dataDirty = true;
                 } else {
                     c->authReply = Garmin::buildAuthResultFail(haveKey ? Garmin::AuthStatus::BadProof
                                                                        : Garmin::AuthStatus::UnknownSlot);
@@ -480,7 +474,7 @@ public:
             Guard g;
             Conn *c = find(handle);
             if (c != nullptr) {
-                if (!pairing || (!tournamentWindow && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS)) {
+                if (!pairing || now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) {
                     c->pairingReply = Garmin::buildPairingFail(Garmin::PairingStatus::WindowClosed);
                 } else if (code != pairingCode_) {
                     c->pairingReply = Garmin::buildPairingFail(Garmin::PairingStatus::BadCode);
@@ -488,15 +482,13 @@ public:
                     // One key per connection: a central must not mint keys and evict every slot.
                     return;
                 } else {
-                    uint8_t slot;
-                    if (tournamentWindow) {
-                        // RAM only: never NVS, never a watch slot (spec 9.2).
-                        slot = Garmin::TABLET_SLOT;
-                        memcpy(tabletKey, key, sizeof(tabletKey));
-                        tabletKeySet = true;
-                    } else {
-                        slot = GarminPairingStore::storeKey(data, key);
-                        dataDirty = true;
+                    const uint8_t slot = GarminPairingStore::storeKey(data, key);
+                    dataDirty = true;
+                    repairedSlots |= static_cast<uint8_t>(1u << slot);
+                    // Until loop() resets the writer, the new device must still get the old
+                    // one's changes: they count as the board's.
+                    for (uint16_t i = 0; i < snapCount; i++) {
+                        if (snapWriters[i] == slot) snapWriters[i] = LOCAL_WRITER;
                     }
                     c->paired = true;
                     c->pairingReply = Garmin::buildPairingOk(slot, key);
@@ -584,26 +576,36 @@ public:
         return f;
     }
 
-    // Spec 20: the stages are shared by every connection; CURSOR is this connection's.
-    void writeTournament(const uint16_t handle, const uint8_t *in, const size_t len) {
+    /**
+     * Spec 20: the roster stage is shared by every connection; CURSOR is this connection's. True
+     * when a RECORD write was queued for loop() (the caller waits for recordPending() to clear).
+     */
+    bool writeTournament(const uint16_t handle, const uint8_t *in, const size_t len) {
         Garmin::TournamentWriteFrame w;
-        if (!Garmin::parseTournamentWrite(in, len, w)) return;
+        if (!Garmin::parseTournamentWrite(in, len, w)) return false;
         Guard g;
         Conn *c = find(handle);
-        if (c == nullptr || !c->authed) return;
+        if (c == nullptr || !c->authed) return false;
         switch (w.type) {
-            case Garmin::TournamentWrite::RosterEntry:
-                memcpy(rosterStage + static_cast<size_t>(w.index) * Garmin::ROSTER_ENTRY_SIZE, w.entry,
+            case Garmin::TournamentFrame::RosterEntry:
+                memcpy(rosterStage + static_cast<size_t>(w.index) * Garmin::ROSTER_ENTRY_SIZE, w.body,
                        Garmin::ROSTER_ENTRY_SIZE);
-                break;
-            case Garmin::TournamentWrite::MirrorEntry:
-                memcpy(mirrorStage + static_cast<size_t>(w.index) * Garmin::GAME_ENTRY_SIZE, w.entry,
-                       Garmin::GAME_ENTRY_SIZE);
-                break;
-            case Garmin::TournamentWrite::Cursor:
-                c->tabletRead = w.which;
-                c->tabletCursor = w.seq;
-                break;
+                return false;
+            case Garmin::TournamentFrame::Record:
+                // A write meant for a tournament the board has left never lands in the next one.
+                if (c->boundTid == 0 || c->boundTid != snapStatus.tid || recordQueued) return false;
+                recordQueued = true;
+                recordTaken = false;
+                recordTid = c->boundTid;
+                recordWriter = static_cast<uint8_t>(c->authSlot);
+                memcpy(recordImage, w.body, Garmin::RECORD_SIZE);
+                return true;
+            case Garmin::TournamentFrame::Cursor:
+                c->tournamentRead = w.which;
+                c->tournamentCursor = w.seq;
+                return false;
+            default:
+                return false;
         }
     }
 
@@ -611,13 +613,27 @@ public:
         Guard g;
         Conn *c = find(handle);
         if (c == nullptr || !c->authed) return Garmin::buildProtoOnly();
-        if (c->tabletRead == Garmin::TournamentRead::Status) return Garmin::buildTournamentStatus(tabletStatus);
-        for (uint16_t i = 0; i < outboxCount; i++) {
-            if (outboxSeqs[i] < c->tabletCursor) continue;
-            c->tabletCursor = static_cast<uint16_t>(outboxSeqs[i] + 1);
-            return Garmin::buildOutboxRead(outboxSeqs[i], outbox + static_cast<size_t>(i) * Garmin::GAME_ENTRY_SIZE);
+        switch (c->tournamentRead) {
+            case Garmin::TournamentCursor::Changes: {
+                const uint8_t reader = static_cast<uint8_t>(c->authSlot);
+                int best = -1;
+                for (uint16_t i = 0; i < snapCount; i++) {
+                    if (snapSeqs[i] < c->tournamentCursor || snapWriters[i] == reader) continue;
+                    if (best < 0 || snapSeqs[i] < snapSeqs[best]) best = i;
+                }
+                if (best < 0) return Garmin::buildTournamentEnd(snapStatus.changesTo, snapLostTo);
+                c->tournamentCursor = static_cast<uint32_t>(snapSeqs[best]) + 1;
+                return Garmin::buildRecordRead(snapRecords + static_cast<size_t>(best) * Garmin::RECORD_SIZE);
+            }
+            case Garmin::TournamentCursor::Records: {
+                if (c->tournamentCursor >= snapCount) return Garmin::buildTournamentEnd(snapCount, snapLostTo);
+                const size_t at = c->tournamentCursor++;
+                return Garmin::buildRecordRead(snapRecords + at * Garmin::RECORD_SIZE);
+            }
+            default:
+                c->boundTid = snapStatus.tid;
+                return Garmin::buildTournamentStatus(snapStatus);
         }
-        return Garmin::buildOutboxEnd(c->tabletCursor);
     }
 
     // Chunk 0 of the last published state, with this connection's ack (spec 11.1).
@@ -634,7 +650,7 @@ public:
 
     void tick(const uint32_t now) {
         Guard g;
-        if (pairing && !tournamentWindow && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) closePairingLocked();
+        if (pairing && now - pairingOpenedAt >= Garmin::PAIRING_WINDOW_MS) closePairingLocked();
     }
 
     // Connections to terminate now: unauthenticated past the timeout, a failed proof's delay
@@ -813,6 +829,8 @@ public:
         }
         queueHead = 0;
         queueCount = 0;
+        recordQueued = false;
+        recordTaken = false;
         closePairingLocked();
     }
 
@@ -841,8 +859,11 @@ private:
         uint8_t lastSeq = 0;
         uint8_t rosterCursor = 0;
         uint16_t resultsCursor = 0;
-        Garmin::TournamentRead tabletRead = Garmin::TournamentRead::Status;
-        uint16_t tabletCursor = 0;
+        Garmin::TournamentCursor tournamentRead = Garmin::TournamentCursor::Status;
+        // 32-bit: past seq 0xFFFF (a full log) it must not wrap back to the start.
+        uint32_t tournamentCursor = 0;
+        // The tournament its last STATUS read reported; RECORD writes need it still running.
+        uint32_t boundTid = 0;
         uint8_t ackSeq = 0;
         Garmin::AckStatus ackStatus = Garmin::AckStatus::Applied;
         uint8_t stateSeq = 0;
@@ -882,8 +903,11 @@ private:
     uint8_t queueHead = 0;
     uint8_t queueCount = 0;
 
-    // Players, Teams, then the tablet's pushed roster (spec 20).
-    enum : uint8_t { ROSTER_SLOTS = 3, TABLET_ROSTER = 2 };
+    // Players, Teams, then the running tournament's roster (spec 12, 20).
+    enum : uint8_t { ROSTER_SLOTS = 3, TOURNAMENT_ROSTER = 2 };
+    enum : uint16_t { SNAPSHOT_MAX = Garmin::RESULTS_MAX + Garmin::TOMBSTONE_MAX };
+    // TournamentLog::BOARD: a change no peer slot wrote.
+    enum : uint8_t { LOCAL_WRITER = 0xFF };
 
     static uint8_t slotOf(const Garmin::RosterKind kind) {
         return kind == Garmin::RosterKind::Teams ? 1 : 0;
@@ -902,19 +926,24 @@ private:
     uint32_t resultsTid = 0;
     uint16_t resultsRev = 0;
 
-    uint8_t rosterStage[Garmin::TABLET_ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
-    uint8_t mirrorStage[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
-    Garmin::TabletStatus tabletStatus = {};
-    uint8_t outbox[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
-    uint16_t outboxSeqs[Garmin::RESULTS_MAX] = {};
-    uint16_t outboxCount = 0;
-    // The caller's un-ACKed count, uncapped: the append check compares it with outboxTo.
-    uint16_t outboxTotal = 0;
+    uint8_t rosterStage[Garmin::TOURNAMENT_ROSTER_MAX * Garmin::ROSTER_ENTRY_SIZE] = {};
+
+    Garmin::TournamentStatus snapStatus = {};
+    uint8_t snapRecords[SNAPSHOT_MAX * Garmin::RECORD_SIZE] = {};
+    uint16_t snapSeqs[SNAPSHOT_MAX] = {};
+    uint8_t snapWriters[SNAPSHOT_MAX] = {};
+    uint16_t snapCount = 0;
+    uint16_t snapLostTo = 0;
+    bool snapSynced = false;
+
+    bool recordQueued = false;
+    bool recordTaken = false;
+    uint32_t recordTid = 0;
+    uint8_t recordWriter = 0;
+    uint8_t recordImage[Garmin::RECORD_SIZE] = {};
+    uint8_t repairedSlots = 0;
 
     bool pairing = false;
-    bool tournamentWindow = false;
-    uint8_t tabletKey[Garmin::KEY_SIZE] = {};
-    bool tabletKeySet = false;
     uint32_t pairingOpenedAt = 0;
     uint16_t pairingCode_ = 0;
     bool advChanged = false;
@@ -952,6 +981,7 @@ private:
         if (queueCount >= QUEUE_DEPTH) return false;
         Queued &q = queue[(queueHead + queueCount) % QUEUE_DEPTH];
         q.handle = handle;
+        q.slot = 0;
         q.cmd = cmd;
         queueCount++;
         return true;
@@ -966,6 +996,7 @@ private:
             const Conn *c = find(q.handle);
             if (c == nullptr || !c->authed) continue;
             out = q;
+            out.slot = static_cast<uint8_t>(c->authSlot);
             return true;
         }
         return false;
@@ -977,26 +1008,22 @@ private:
     }
 
     uint8_t advFlagsLocked() const {
-        if (!pairing) return 0;
-        return tournamentWindow ? Garmin::ADV_FLAG_TOURNAMENT : Garmin::ADV_FLAG_PAIRING;
+        return pairing ? Garmin::ADV_FLAG_PAIRING : 0;
     }
 
     const uint8_t *keyForLocked(const uint8_t slotId) const {
-        if (slotId == Garmin::TABLET_SLOT) return tabletKeySet ? tabletKey : nullptr;
         return GarminPairingStore::keyFor(data, slotId);
     }
 
-    void forgetTabletKeyLocked(const uint32_t now) {
-        if (!tabletKeySet) return;
-        memset(tabletKey, 0, sizeof(tabletKey));
-        tabletKeySet = false;
-        dropHoldersOf(Garmin::TABLET_SLOT, now, nullptr);
+    static bool sameStatus(const Garmin::TournamentStatus &a, const Garmin::TournamentStatus &b) {
+        return a.tid == b.tid && a.sport == b.sport && a.rosterCount == b.rosterCount && a.rosterCrc == b.rosterCrc
+               && a.changesTo == b.changesTo && a.gamesCount == b.gamesCount && a.gamesCrc == b.gamesCrc
+               && a.logEpoch == b.logEpoch;
     }
 
     void closePairingLocked() {
         if (!pairing) return;
         pairing = false;
-        tournamentWindow = false;
         advChanged = true;
         for (uint8_t i = 0; i < Garmin::MAX_CONNECTIONS; i++) {
             if (conns[i].pairingReply.len > 2

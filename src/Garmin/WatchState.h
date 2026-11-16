@@ -59,7 +59,7 @@ public:
         begin(value);
     }
 
-    // Menu-entry ids (a sport id or a MenuEntry); `count` is clamped to what fits.
+    // Menu-entry ids (sport ids); `count` is clamped to what fits.
     void setMenu(const uint8_t cursor, const uint8_t *entries, uint8_t count) {
         begin(Garmin::ScreenId::Menu);
         if (count > MAX_DATA - 2) count = MAX_DATA - 2;

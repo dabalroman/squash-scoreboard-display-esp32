@@ -77,7 +77,7 @@ public:
         // two buttons no longer do the same thing.
         if (remoteInputManager.buttonC.takeActionIfPossible()) {
             remoteInputManager.preventTriggerForMs();
-            // The callback destroys this view; nothing may touch `this` after it.
+            // The callback may destroy this view (or only warn); nothing may touch `this` after it.
             onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
             return;
         }
@@ -113,14 +113,12 @@ public:
         onStateChange(PadelModeState::MatchStartGame);
     }
 
-    void togglePlayer(const uint8_t playerId) {
-        if (tournament.isPlayerIn(*users.at(playerId))) {
-            tournament.removePlayer(*users.at(playerId));
-        } else {
-            tournament.addPlayer(*users.at(playerId));
-        }
-
+    // False when nothing changed: a roster entry stays in (spec 20.3), the picker stops at 16.
+    bool togglePlayer(const uint8_t playerId) {
+        UserProfile &user = *users.at(playerId);
+        const bool changed = tournament.isPlayerIn(user) ? tournament.removePlayer(user) : tournament.addPlayer(user);
         queueRender();
+        return changed;
     }
 
     Garmin::AckStatus handleWatchCommand(const WatchCommand &command) override {
@@ -130,8 +128,8 @@ public:
                 if (index < 0) {
                     return Garmin::AckStatus::Invalid;
                 }
-                togglePlayer(static_cast<uint8_t>(index));
-                return Garmin::AckStatus::Applied;
+                return togglePlayer(static_cast<uint8_t>(index)) ? Garmin::AckStatus::Applied
+                                                                 : Garmin::AckStatus::Invalid;
             }
             case Garmin::CommandId::Focus: {
                 if (command.target == 0) {
@@ -259,7 +257,9 @@ public:
         const uint32_t cursorUid = optionId == startOptionId || optionId > users.size()
                                        ? 0
                                        : users[optionId - 1]->getUid();
-        state.setChoosePlayers(WatchSupport::selectedMask(tournament.getPlayers()), cursorUid);
+        state.setChoosePlayers(WatchSupport::selectedMask(users, [this](const UserProfile &user) {
+            return tournament.isPlayerIn(user);
+        }), cursorUid);
     }
 };
 

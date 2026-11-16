@@ -1,9 +1,12 @@
-// Tournament's finished-game log and id (the watch's RESULTS, docs/garmin-protocol.md 19),
-// and WatchSupport::resultEntry on top of it. Board-agnostic.
+// Tournament (docs/garmin-protocol.md 20): game records, merge, change log, STATUS, roster
+// lifecycle and the RESULTS view (19) with WatchSupport::resultEntry on top. The 16.15 sync_*
+// vectors' model semantics. Board-agnostic.
 #include <unity.h>
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
+#include <vector>
 
 // The Tournament headers log through printLn and leave its include to the caller.
 #define LOGGER_HELPER
@@ -22,6 +25,18 @@ void setUp() {}
 void tearDown() {}
 
 namespace {
+    using Garmin::AckStatus;
+    using Merge = TournamentLog::Merge;
+
+    const uint8_t SQUASH = 1;
+    const uint32_t ANNA = 0x0A0B0C0D;
+    const uint32_t KRYS = 0x11223344;
+    const uint32_t OLA = 0x55667788;
+    const uint32_t TID = 0x7AB1E001;
+    const uint8_t T1 = 0;
+    const uint8_t T2 = 1;
+    const uint8_t BOARD = TournamentLog::BOARD;
+
     // One commit: `winner` ends on winnerPoints, the other side on loserPoints.
     void play(Match &match, const GameSide winner, const int winnerPoints, const int loserPoints) {
         Game *game = match.createGame();
@@ -32,10 +47,22 @@ namespace {
         match.finishGame();
     }
 
+    void expectAck(const AckStatus want, const AckStatus got, const char *what) {
+        CHECK(want == got, "%s: ack %u, expected %u", what, static_cast<unsigned>(got), static_cast<unsigned>(want));
+    }
+
+    void expectMerge(const Merge want, const Merge got, const char *what) {
+        CHECK(want == got, "%s: merge %u, expected %u", what, static_cast<unsigned>(got),
+              static_cast<unsigned>(want));
+    }
+
+    // A RESULTS entry as the wire has it: turn byte with the OFFLINE bit.
     struct Entry {
         uint32_t uidA, uidB;
         uint8_t scoreA, scoreB, turn;
     };
+
+    const uint8_t OFF = Garmin::TURN_OFFLINE;
 
     Entry entry(const Tournament &tournament, const size_t index) {
         uint8_t out[Garmin::RESULT_ENTRY_SIZE];
@@ -46,122 +73,208 @@ namespace {
     void expectEntry(const Entry want, const Entry got, const char *what) {
         CHECK(want.uidA == got.uidA && want.uidB == got.uidB && want.scoreA == got.scoreA
               && want.scoreB == got.scoreB && want.turn == got.turn,
-              "%s: got %08x-%08x %u:%u turn %u, expected %08x-%08x %u:%u turn %u", what,
+              "%s: got %08x-%08x %u:%u turn %02x, expected %08x-%08x %u:%u turn %02x", what,
               static_cast<unsigned>(got.uidA), static_cast<unsigned>(got.uidB), got.scoreA, got.scoreB, got.turn,
               static_cast<unsigned>(want.uidA), static_cast<unsigned>(want.uidB), want.scoreA, want.scoreB, want.turn);
     }
 
-    const uint32_t ANNA = 0x0A0B0C0D;
-    const uint32_t KRYS = 0x11223344;
-    const uint32_t OLA = 0x55667788;
+    struct Image {
+        uint8_t b[GameRecord::SIZE];
+    };
+
+    Image image(const uint32_t id, const uint8_t rev, const uint16_t order, const uint32_t uidA, const uint32_t uidB,
+                const uint8_t scoreA, const uint8_t scoreB, const uint8_t flags = 0) {
+        GameRecord r;
+        r.id = id;
+        r.rev = rev;
+        r.order = order;
+        r.uidA = uidA;
+        r.uidB = uidB;
+        r.scoreA = scoreA;
+        r.scoreB = scoreB;
+        r.flags = flags;
+        Image out = {};
+        r.toBytes(out.b);
+        return out;
+    }
+
+    // Spec 16.15 record bytes (after the RECORD type byte).
+    Image hex(const char *s) {
+        Image out = {};
+        TEST_ASSERT_EQUAL(GameRecord::SIZE * 3 - 1, strlen(s));
+        for (size_t i = 0; i < GameRecord::SIZE; i++) {
+            unsigned v = 0;
+            TEST_ASSERT_EQUAL(1, sscanf(s + i * 3, "%2x", &v));
+            out.b[i] = static_cast<uint8_t>(v);
+        }
+        return out;
+    }
+
+    const char *const READ_1 = "01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00";
+    const char *const READ_2 = "02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00";
+    const char *const READ_3 = "03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02";
+    const char *const EDIT = "01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 08 00";
+    const char *const TIE = "01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00";
+    const char *const READ_4 = "03 00 ed 5e 01 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 03";
+
+    std::vector<uint8_t> rosterWire(const std::vector<UserProfile> &players) {
+        std::vector<uint8_t> out(players.size() * Garmin::ROSTER_ENTRY_SIZE);
+        for (size_t i = 0; i < players.size(); i++) {
+            const UserProfile &p = players[i];
+            const Color c = p.getColor();
+            Garmin::buildRosterEntry(p.getUid(), c.r, c.g, c.b, p.getName(), &out[i * Garmin::ROSTER_ENTRY_SIZE]);
+        }
+        return out;
+    }
+
+    // Spec 16.4's stored players.
+    const UserProfile S_ANNA(0, ANNA, "ANNA", Color(0xff, 0x00, 0x00));
+    const UserProfile S_KRYS(1, KRYS, "KRYSTIAN", Color(0x00, 0x40, 0xff));
+    const UserProfile S_OLA(2, OLA, "OLA", Color(0x00, 0xc0, 0x30));
+
+    bool join(Tournament &t, const std::vector<UserProfile> &players, const uint32_t tid = TID) {
+        const std::vector<uint8_t> w = rosterWire(players);
+        const uint8_t n = static_cast<uint8_t>(players.size());
+        return t.join(tid, SQUASH, n, Garmin::rosterVersion(n, w.data()), w.data());
+    }
+
+    AckStatus grow(Tournament &t, const std::vector<UserProfile> &players, const uint32_t tid = TID,
+                   const uint8_t sport = SQUASH) {
+        const std::vector<uint8_t> w = rosterWire(players);
+        const uint8_t n = static_cast<uint8_t>(players.size());
+        return t.growRoster(tid, sport, n, Garmin::rosterVersion(n, w.data()), w.data());
+    }
+
+    // A board tournament started from the picker: ANNA and KRYSTIAN (+ OLA).
+    struct Fixture {
+        Tournament tournament;
+
+        explicit Fixture(Rules *rules, const bool withOla = false) : tournament(std::unique_ptr<Rules>(rules)) {
+            tournament.addPlayer(S_ANNA);
+            tournament.addPlayer(S_KRYS);
+            if (withOla) tournament.addPlayer(S_OLA);
+            tournament.start(SQUASH);
+        }
+
+        UserProfile &p(const uint32_t uid) {
+            return *tournament.getRoster().committedByUid(uid);
+        }
+
+        uint16_t base() const {
+            return static_cast<uint16_t>(tournament.status().logEpoch << 8);
+        }
+    };
+
+    // Board 1 of 16.15 after sync_join: the tablet's join target, record 0x5EED0001 at seq 1.
+    struct Board {
+        Tournament tournament{std::unique_ptr<Rules>(new SquashRules())};
+
+        Board() {
+            TEST_ASSERT_TRUE(join(tournament, {S_ANNA, S_KRYS, S_OLA}));
+        }
+
+        Merge put(const char *bytes, const uint8_t writer) {
+            return tournament.mergeRecord(hex(bytes).b, writer);
+        }
+
+        Merge put(const Image &i, const uint8_t writer) {
+            return tournament.mergeRecord(i.b, writer);
+        }
+    };
+
+    bool sameImage(const GameRecord &r, const char *bytes) {
+        uint8_t got[GameRecord::SIZE];
+        r.toBytes(got);
+        return memcmp(got, hex(bytes).b, GameRecord::SIZE) == 0;
+    }
 }
+
+// --- RESULTS view, board games, offline games ---
 
 // Chronological across matches, turn per pair, A/B fixed by the pair's first set-up.
 void test_log_order_and_turns() {
-    UserProfile anna(0, ANNA, "ANNA", Colors::Red);
-    UserProfile krys(1, KRYS, "KRYSTIAN", Colors::Blue);
-    UserProfile ola(2, OLA, "OLA", Colors::Green);
-    Tournament tournament(std::unique_ptr<Rules>(new SquashRules()));
-    TEST_ASSERT_EQUAL(0, tournament.getFinishedGameCount());
+    Fixture f(new SquashRules(), true);
+    TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
 
-    play(tournament.chooseMatchBetween(anna, krys), GameSide::a, 11, 7);
-    play(tournament.chooseMatchBetween(krys, ola), GameSide::a, 11, 4);
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 7);
+    play(f.tournament.chooseMatchBetween(f.p(KRYS), f.p(OLA)), GameSide::a, 11, 4);
     // The pair again with sides swapped: KRYSTIAN left wins 11:9, still A = ANNA.
-    play(tournament.chooseMatchBetween(krys, anna), GameSide::a, 11, 9);
+    play(f.tournament.chooseMatchBetween(f.p(KRYS), f.p(ANNA)), GameSide::a, 11, 9);
 
-    TEST_ASSERT_EQUAL(3, tournament.getFinishedGameCount());
-    expectEntry({ANNA, KRYS, 11, 7, 1}, entry(tournament, 0), "game 0");
-    expectEntry({KRYS, OLA, 11, 4, 1}, entry(tournament, 1), "game 1");
-    expectEntry({ANNA, KRYS, 9, 11, 2}, entry(tournament, 2), "game 2 (16.13)");
+    TEST_ASSERT_EQUAL(3, f.tournament.listedCount());
+    expectEntry({ANNA, KRYS, 11, 7, 1}, entry(f.tournament, 0), "game 0");
+    expectEntry({KRYS, OLA, 11, 4, 1}, entry(f.tournament, 1), "game 1");
+    expectEntry({ANNA, KRYS, 9, 11, 2}, entry(f.tournament, 2), "game 2 (16.13)");
+    // Board games: rev 0, orders 1..3, writer BOARD, appends only.
+    for (uint16_t i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL(i + 1, f.tournament.listedRecord(i).order);
+        TEST_ASSERT_EQUAL(0, f.tournament.listedRecord(i).rev);
+        TEST_ASSERT_EQUAL(BOARD, f.tournament.getLog().stored(i).writer);
+    }
+    TEST_ASSERT_EQUAL_HEX16(f.base(), f.tournament.getRev());
+    TEST_ASSERT_EQUAL(3, f.tournament.status().changesTo);
 }
 
 // A game left by UNDO at 0:0 is never finished, so it is not listed.
 void test_abandoned_game_not_listed() {
-    UserProfile anna(0, ANNA, "ANNA", Colors::Red);
-    UserProfile krys(1, KRYS, "KRYSTIAN", Colors::Blue);
-    Tournament tournament(std::unique_ptr<Rules>(new SquashRules()));
-    Match &match = tournament.chooseMatchBetween(anna, krys);
+    Fixture f(new SquashRules());
+    Match &match = f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
 
     Game *game = match.createGame();
     game->scorePoint(GameSide::a);
     game->losePoint(GameSide::a);
-    TEST_ASSERT_EQUAL(0, tournament.getFinishedGameCount());
+    TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
 
     play(match, GameSide::b, 11, 3);
-    TEST_ASSERT_EQUAL(1, tournament.getFinishedGameCount());
-    expectEntry({ANNA, KRYS, 3, 11, 1}, entry(tournament, 0), "the finished game is turn 1");
+    TEST_ASSERT_EQUAL(1, f.tournament.listedCount());
+    expectEntry({ANNA, KRYS, 3, 11, 1}, entry(f.tournament, 0), "the finished game is turn 1");
 }
 
 // Padel: a set's gems, 7-6 after a tiebreak.
 void test_padel_gems() {
-    UserProfile orly(0, 0x21222324, "ORLY", Colors::Red);
-    UserProfile lisy(1, 0x31323334, "LISY", Colors::Blue);
-    Tournament tournament(std::unique_ptr<Rules>(new PadelRules()));
-    play(tournament.chooseMatchBetween(orly, lisy), GameSide::b, 7, 6);
-    expectEntry({0x21222324, 0x31323334, 6, 7, 1}, entry(tournament, 0), "tiebreak set");
+    Fixture f(new PadelRules());
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::b, 7, 6);
+    expectEntry({ANNA, KRYS, 6, 7, 1}, entry(f.tournament, 0), "tiebreak set");
 }
 
-// Never 0 (that is "no tournament" on the wire), and new per instance.
-void test_id() {
-    hostRandomState() = 0x12345678u;
-    Tournament first(std::unique_ptr<Rules>(new SquashRules()));
-    Tournament second(std::unique_ptr<Rules>(new SquashRules()));
-    TEST_ASSERT_NOT_EQUAL(0, first.getId());
-    TEST_ASSERT_NOT_EQUAL(0, second.getId());
-    TEST_ASSERT_NOT_EQUAL(first.getId(), second.getId());
-
-    // The shim's next draw from this state is 0: the id skips it.
+// Drawn at the first START, never 0, kept by a later START; leave() ends it.
+void test_id_and_epoch() {
+    Tournament t(std::unique_ptr<Rules>(new SquashRules()));
+    TEST_ASSERT_FALSE(t.running());
+    TEST_ASSERT_EQUAL(0, t.getId());
+    t.addPlayer(S_ANNA);
+    t.addPlayer(S_KRYS);
+    // The shim's next draw from this state is 0: both the id and the epoch skip it.
     hostRandomState() = 634785765u;
     TEST_ASSERT_EQUAL_HEX32(0, esp_random());
     hostRandomState() = 634785765u;
-    Tournament third(std::unique_ptr<Rules>(new SquashRules()));
-    TEST_ASSERT_NOT_EQUAL(0, third.getId());
+    t.start(SQUASH);
+    TEST_ASSERT_TRUE(t.running());
+    const uint32_t id = t.getId();
+    const uint8_t epoch = t.status().logEpoch;
+    TEST_ASSERT_NOT_EQUAL(0, id);
+    TEST_ASSERT_NOT_EQUAL(0, epoch);
+    TEST_ASSERT_EQUAL_HEX16(epoch << 8, t.getRev());
+
+    // A later START (more players picked) keeps the tournament.
+    t.addPlayer(S_OLA);
+    TEST_ASSERT_EQUAL(2, t.status().rosterCount);
+    t.start(SQUASH);
+    TEST_ASSERT_EQUAL_HEX32(id, t.getId());
+    TEST_ASSERT_EQUAL(epoch, t.status().logEpoch);
+    TEST_ASSERT_EQUAL(3, t.status().rosterCount);
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, t.status().rosterCrc);
+
+    t.leave();
+    TEST_ASSERT_FALSE(t.running());
+    TEST_ASSERT_EQUAL(0, t.getPlayers().size());
+    t.addPlayer(S_ANNA);
+    t.addPlayer(S_KRYS);
+    t.start(SQUASH);
+    TEST_ASSERT_NOT_EQUAL(id, t.getId());
 }
 
-// Offline games (ADD_OFFLINE_GAME / REMOVE_OFFLINE_GAME): the model under the commands.
 namespace {
-    using Garmin::AckStatus;
-
-    struct Listed {
-        uint32_t uidA, uidB;
-        uint8_t scoreA, scoreB;
-        uint16_t turn;
-        bool offline;
-    };
-
-    Listed listed(const Tournament &tournament, const size_t index) {
-        const FinishedGame &entry = tournament.listedGame(index);
-        const GameResult &result = entry.match->getGameResult(entry.game);
-        return {entry.match->getPlayerA().getUid(), entry.match->getPlayerB().getUid(), result.playerAScore,
-                result.playerBScore, tournament.turnOf(index), result.offline};
-    }
-
-    void expectListed(const Listed want, const Listed got, const char *what) {
-        CHECK(want.uidA == got.uidA && want.uidB == got.uidB && want.scoreA == got.scoreA
-              && want.scoreB == got.scoreB && want.turn == got.turn && want.offline == got.offline,
-              "%s: got %08x-%08x %u:%u turn %u offline %d, expected %08x-%08x %u:%u turn %u offline %d", what,
-              static_cast<unsigned>(got.uidA), static_cast<unsigned>(got.uidB), got.scoreA, got.scoreB, got.turn,
-              got.offline, static_cast<unsigned>(want.uidA), static_cast<unsigned>(want.uidB), want.scoreA,
-              want.scoreB, want.turn, want.offline);
-    }
-
-    void expectAck(const AckStatus want, const AckStatus got, const char *what) {
-        CHECK(want == got, "%s: ack %u, expected %u", what, static_cast<unsigned>(got), static_cast<unsigned>(want));
-    }
-
-    // ANNA and KRYSTIAN selected, OLA not.
-    struct Fixture {
-        UserProfile anna{0, ANNA, "ANNA", Colors::Red};
-        UserProfile krys{1, KRYS, "KRYSTIAN", Colors::Blue};
-        UserProfile ola{2, OLA, "OLA", Colors::Green};
-        Tournament tournament;
-
-        explicit Fixture(Rules *rules) : tournament(std::unique_ptr<Rules>(rules)) {
-            tournament.addPlayer(anna);
-            tournament.addPlayer(krys);
-        }
-    };
-
     struct ScoreCase {
         uint8_t a, b;
         bool final;
@@ -191,16 +304,19 @@ void test_final_scores() {
     expectFinalScores("padel", PadelRules(), padel);
 }
 
-// Validation: two distinct selected players and a legal final score.
+// Validation: two distinct roster entries and a legal final score; no tournament, no add.
 void test_add_invalid() {
     Fixture f(new SquashRules());
     expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, ANNA, 11, 3), "uidA == uidB");
-    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, OLA, 11, 3), "OLA not selected");
+    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, OLA, 11, 3), "OLA not in the roster");
     expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(0x99999999, KRYS, 11, 3), "unknown uid");
     expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 15, 3), "15:3 squash");
     expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 10, 8), "unfinished");
+    // Selected but not started: not a roster entry yet.
+    f.tournament.addPlayer(S_OLA);
+    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, OLA, 11, 3), "OLA only selected");
     TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
-    TEST_ASSERT_EQUAL(0, f.tournament.getMatchCount());
+    TEST_ASSERT_EQUAL(0, f.tournament.status().changesTo);
 
     Fixture padel(new PadelRules());
     expectAck(AckStatus::Invalid, padel.tournament.addOfflineGame(ANNA, KRYS, 8, 6), "padel 8:6");
@@ -208,55 +324,60 @@ void test_add_invalid() {
     expectAck(AckStatus::Applied, padel.tournament.addOfflineGame(ANNA, KRYS, 7, 6), "padel 7:6");
     expectAck(AckStatus::Applied, padel.tournament.addOfflineGame(KRYS, ANNA, 7, 5), "padel 7:5");
     TEST_ASSERT_EQUAL(2, padel.tournament.listedCount());
+
+    Tournament idle(std::unique_ptr<Rules>(new SquashRules()));
+    idle.addPlayer(S_ANNA);
+    idle.addPlayer(S_KRYS);
+    expectAck(AckStatus::Invalid, idle.addOfflineGame(ANNA, KRYS, 11, 3), "no tournament");
 }
 
-// A new pair gets its match, but the board's active match stays as it was.
-void test_add_creates_match_without_active() {
+// A record only: no match, the board's active match unchanged; A/B as given.
+void test_add_without_match() {
     Fixture f(new SquashRules());
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(KRYS, ANNA, 12, 10), "add");
     TEST_ASSERT_NULL(f.tournament.getActiveMatch());
-    TEST_ASSERT_EQUAL(1, f.tournament.getMatchCount());
-    TEST_ASSERT_EQUAL(0, f.tournament.getRev());
-    expectListed({KRYS, ANNA, 12, 10, 1, true}, listed(f.tournament, 0), "the add sets A/B");
+    TEST_ASSERT_EQUAL(0, f.tournament.getMatchCount());
+    TEST_ASSERT_EQUAL_HEX16(f.base(), f.tournament.getRev());
+    expectEntry({KRYS, ANNA, 12, 10, 1 | OFF}, entry(f.tournament, 0), "the add sets A/B");
+    TEST_ASSERT_EQUAL(GameRecord::OFFLINE, f.tournament.listedRecord(0).flags);
 
-    Match &active = f.tournament.chooseMatchBetween(f.anna, f.krys);
-    TEST_ASSERT_EQUAL(1, f.tournament.getMatchCount());
-    TEST_ASSERT_EQUAL_PTR(&active, f.tournament.listedGame(0).match);
+    // The pair's match counts it whichever way round.
+    Match &active = f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
+    TEST_ASSERT_EQUAL(1, active.getMatchResult().scoreOf(f.p(KRYS).getId()));
 }
 
-// Either order: the scores land in the match's own A/B order.
+// Either order: the scores land in the pair's match's own A/B order.
 void test_add_swapped_pair() {
     Fixture f(new SquashRules());
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::a, 11, 7);
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 7);
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(KRYS, ANNA, 11, 5), "swapped add");
     TEST_ASSERT_EQUAL(1, f.tournament.getMatchCount());
-    expectListed({ANNA, KRYS, 11, 7, 1, false}, listed(f.tournament, 0), "tracked");
-    expectListed({ANNA, KRYS, 5, 11, 2, true}, listed(f.tournament, 1), "offline, swapped into A/B");
+    expectEntry({ANNA, KRYS, 11, 7, 1}, entry(f.tournament, 0), "tracked");
+    expectEntry({ANNA, KRYS, 5, 11, 2 | OFF}, entry(f.tournament, 1), "offline, swapped into A/B");
 
     const MatchResult standing = f.tournament.getActiveMatch()->getMatchResult();
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.anna.getId()));
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.krys.getId()));
+    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.p(ANNA).getId()));
+    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.p(KRYS).getId()));
 }
 
 // A game on court while an ADD lands finishes after it; GAME_OVER still shows the played game.
 void test_live_game_after_add() {
     Fixture f(new SquashRules());
-    Match &match = f.tournament.chooseMatchBetween(f.anna, f.krys);
+    Match &match = f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
     Game *game = match.createGame();
     for (int i = 0; i < 11; i++) game->scorePoint(GameSide::b);
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 3), "add mid-game");
     TEST_ASSERT_TRUE(game->commit() == GameSide::b);
     match.finishGame();
 
-    expectListed({ANNA, KRYS, 11, 3, 1, true}, listed(f.tournament, 0), "offline");
-    expectListed({ANNA, KRYS, 0, 11, 2, false}, listed(f.tournament, 1), "tracked, next turn");
+    expectEntry({ANNA, KRYS, 11, 3, 1 | OFF}, entry(f.tournament, 0), "offline");
+    expectEntry({ANNA, KRYS, 0, 11, 2}, entry(f.tournament, 1), "tracked, next turn");
 
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(KRYS, ANNA, 11, 4), "add on GAME_OVER");
     GameResult last = {};
     TEST_ASSERT_TRUE(match.lastGameResult(last));
     TEST_ASSERT_EQUAL(0, last.playerAScore);
     TEST_ASSERT_EQUAL(11, last.playerBScore);
-    TEST_ASSERT_FALSE(last.offline);
 }
 
 // Offline games alone give a GAME_OVER view nothing to show.
@@ -264,415 +385,515 @@ void test_last_game_result_none() {
     Fixture f(new SquashRules());
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 3), "add");
     GameResult last = {};
-    TEST_ASSERT_FALSE(f.tournament.chooseMatchBetween(f.anna, f.krys).lastGameResult(last));
+    TEST_ASSERT_FALSE(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)).lastGameResult(last));
 }
 
-// Remove: tombstone, the pair's later turns renumbered, rev bumped, other pairs untouched.
+// Remove: a tombstone, the pair's later turns renumbered, rev bumped, other pairs untouched.
 void test_remove_renumbers_and_bumps_rev() {
-    Fixture f(new SquashRules());
-    f.tournament.addPlayer(f.ola);
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::a, 11, 7);
+    Fixture f(new SquashRules(), true);
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 7);
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 2), "add");
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(KRYS, OLA, 11, 6), "other pair");
-    play(f.tournament.chooseMatchBetween(f.krys, f.anna), GameSide::a, 11, 9);
+    play(f.tournament.chooseMatchBetween(f.p(KRYS), f.p(ANNA)), GameSide::a, 11, 9);
     TEST_ASSERT_EQUAL(4, f.tournament.listedCount());
-    expectListed({ANNA, KRYS, 9, 11, 3, false}, listed(f.tournament, 3), "before remove");
+    expectEntry({ANNA, KRYS, 9, 11, 3}, entry(f.tournament, 3), "before remove");
 
     const uint32_t tid = f.tournament.getId();
-    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, 0, 1), "remove");
-    TEST_ASSERT_EQUAL(1, f.tournament.getRev());
+    const uint16_t rev = f.base();
+    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, rev, 1), "remove");
+    TEST_ASSERT_EQUAL_HEX16(rev + 1, f.tournament.getRev());
     TEST_ASSERT_EQUAL(3, f.tournament.listedCount());
-    TEST_ASSERT_EQUAL(4, f.tournament.getFinishedGameCount());
-    expectListed({ANNA, KRYS, 11, 7, 1, false}, listed(f.tournament, 0), "tracked 1");
-    expectListed({KRYS, OLA, 11, 6, 1, true}, listed(f.tournament, 1), "other pair");
-    expectListed({ANNA, KRYS, 9, 11, 2, false}, listed(f.tournament, 2), "renumbered");
+    TEST_ASSERT_EQUAL(4, f.tournament.getLog().storedCount());
+    expectEntry({ANNA, KRYS, 11, 7, 1}, entry(f.tournament, 0), "tracked 1");
+    expectEntry({KRYS, OLA, 11, 6, 1 | OFF}, entry(f.tournament, 1), "other pair");
+    expectEntry({ANNA, KRYS, 9, 11, 2}, entry(f.tournament, 2), "renumbered");
 
     const MatchResult standing = f.tournament.getActiveMatch()->getMatchResult();
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.anna.getId()));
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.krys.getId()));
+    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.p(ANNA).getId()));
+    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.p(KRYS).getId()));
 
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 0, 1), "stale rev");
-    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, 1, 1), "remove other pair");
-    TEST_ASSERT_EQUAL(2, f.tournament.getRev());
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev, 1), "stale rev");
+    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, rev + 1, 1), "remove other pair");
+    TEST_ASSERT_EQUAL_HEX16(rev + 2, f.tournament.getRev());
     TEST_ASSERT_EQUAL(2, f.tournament.listedCount());
 }
 
 void test_remove_invalid() {
     Fixture f(new SquashRules());
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::a, 11, 7);
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 7);
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 2), "add");
     const uint32_t tid = f.tournament.getId();
+    const uint16_t rev = f.base();
 
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 0, 0), "tracked");
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid + 1, 0, 1), "stale tournament");
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 1, 1), "rev ahead");
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 0, 2), "index == count");
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 0, 0xFFFF), "index far out");
-    TEST_ASSERT_EQUAL(0, f.tournament.getRev());
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev, 0), "tracked");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid + 1, rev, 1), "stale tournament");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev + 1, 1), "rev ahead");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev, 2), "index == count");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev, 0xFFFF), "index far out");
+    TEST_ASSERT_EQUAL_HEX16(rev, f.tournament.getRev());
     TEST_ASSERT_EQUAL(2, f.tournament.listedCount());
 
-    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, 0, 1), "offline");
-    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, 1, 1), "now past the end");
+    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(tid, rev, 1), "offline");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(tid, rev + 1, 1), "now past the end");
 }
 
 // SIDES_SWAPPED keys on the first tracked game; offline games have no court sides.
 void test_offline_only_sides_not_swapped() {
     Fixture f(new SquashRules());
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 3), "add");
-    Match &match = f.tournament.chooseMatchBetween(f.krys, f.anna);
-    TEST_ASSERT_TRUE(match.getPlayersSwappedCourtSides());
+    Match &match = f.tournament.chooseMatchBetween(f.p(KRYS), f.p(ANNA));
+    TEST_ASSERT_FALSE(match.getPlayersSwappedCourtSides());
     TEST_ASSERT_FALSE(match.sidesSwapped());
 
     play(match, GameSide::a, 11, 5);
     TEST_ASSERT_FALSE(match.sidesSwapped());
-    f.tournament.chooseMatchBetween(f.anna, f.krys);
+    f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
     TEST_ASSERT_TRUE(match.sidesSwapped());
 }
 
-// Never more listed games than a RESULTS turn holds; a removal frees a slot.
+// RESULTS_MAX live records; the turn byte caps at 127; a removal frees a slot.
 void test_listed_cap() {
     Fixture f(new SquashRules());
-    for (size_t i = 0; i < Tournament::MAX_LISTED; i++) {
+    for (size_t i = 0; i < Garmin::RESULTS_MAX; i++) {
         expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "fill");
     }
     TEST_ASSERT_EQUAL(128, f.tournament.listedCount());
-    TEST_ASSERT_EQUAL(128, f.tournament.turnOf(127));
+    TEST_ASSERT_EQUAL(127, f.tournament.turnOf(126));
+    TEST_ASSERT_EQUAL(127, f.tournament.turnOf(127));
+    TEST_ASSERT_EQUAL(127 | OFF, entry(f.tournament, 127).turn);
     expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "129th");
 
-    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(f.tournament.getId(), 0, 0), "remove");
+    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(f.tournament.getId(), f.base(), 0), "remove");
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "slot freed");
     TEST_ASSERT_EQUAL(128, f.tournament.listedCount());
 }
 
-// Every stored game, tracked and offline: non-zero and unique, redrawn on a clash.
+// Every created record: non-zero and unique among the stored ones, redrawn on a clash.
 void test_game_ids() {
     Fixture f(new SquashRules());
     const uint32_t before = hostRandomState();
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::a, 11, 7);
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 7);
     // The next draw repeats the tracked game's id: the add must skip it.
     hostRandomState() = before;
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 2), "add after a clash");
-    // Draws 0 next (test_id): skipped too.
+    // Draws 0 next (test_id_and_epoch): skipped too.
     hostRandomState() = 634785765u;
     expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 4), "add after a 0");
 
-    const Match &match = *f.tournament.getActiveMatch();
-    TEST_ASSERT_EQUAL(3, match.getGameCount());
+    TEST_ASSERT_EQUAL(3, f.tournament.listedCount());
     for (size_t i = 0; i < 3; i++) {
-        TEST_ASSERT_NOT_EQUAL(0, match.getGameResult(i).id);
+        TEST_ASSERT_NOT_EQUAL(0, f.tournament.listedRecord(i).id);
         for (size_t j = 0; j < i; j++) {
-            TEST_ASSERT_NOT_EQUAL(match.getGameResult(j).id, match.getGameResult(i).id);
+            TEST_ASSERT_NOT_EQUAL(f.tournament.listedRecord(j).id, f.tournament.listedRecord(i).id);
         }
     }
 }
 
-// Tablet mode (spec 20): outbox, ACK, mirror, SET_SIDE.
-namespace {
-    const uint32_t TID = 0xC0FFEE01;
+// --- 16.15 sync vectors ---
 
-    // ANNA, KRYSTIAN, OLA all in the pushed roster.
-    struct TabletFixture {
-        UserProfile anna{0, ANNA, "ANNA", Colors::Red};
-        UserProfile krys{1, KRYS, "KRYSTIAN", Colors::Blue};
-        UserProfile ola{2, OLA, "OLA", Colors::Green};
-        Tournament tournament;
+// sync_join / sync_begin: STATUS, the empty games_crc, a forwarded record, no echo.
+void test_sync_join_and_begin() {
+    Tournament idle(std::unique_ptr<Rules>(new SquashRules()));
+    const TournamentStatus none = idle.status();
+    TEST_ASSERT_EQUAL_HEX32(0, none.tid);
+    TEST_ASSERT_EQUAL_HEX32(0, none.gamesCrc);
+    TEST_ASSERT_EQUAL(0, none.logEpoch);
 
-        explicit TabletFixture(Rules *rules = new SquashRules()) : tournament(std::unique_ptr<Rules>(rules), TID) {
-            tournament.addPlayer(anna);
-            tournament.addPlayer(krys);
-            tournament.addPlayer(ola);
-        }
-    };
+    Board b;
+    TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL_HEX32(TID, s.tid);
+    TEST_ASSERT_EQUAL(SQUASH, s.sport);
+    TEST_ASSERT_EQUAL(3, s.rosterCount);
+    TEST_ASSERT_EQUAL_HEX32(0x150fe75b, s.rosterCrc);
+    TEST_ASSERT_EQUAL(0, s.changesTo);
+    TEST_ASSERT_EQUAL(0, s.gamesCount);
+    TEST_ASSERT_EQUAL_HEX32(0xd202ef8d, s.gamesCrc);
+    TEST_ASSERT_NOT_EQUAL(0, s.logEpoch);
 
-    struct Mirror {
-        uint8_t count = 0;
-        uint8_t bytes[Garmin::RESULTS_MAX * Garmin::GAME_ENTRY_SIZE] = {};
+    expectMerge(Merge::Stored, b.put(READ_1, T1), "push_1");
+    s = b.tournament.status();
+    TEST_ASSERT_EQUAL(1, s.changesTo);
+    TEST_ASSERT_EQUAL(1, s.gamesCount);
+    TEST_ASSERT_EQUAL_HEX32(0xd015c673, s.gamesCrc);
 
-        Mirror &add(const uint32_t id, const uint32_t uidA, const uint32_t uidB, const uint8_t a, const uint8_t b,
-                    const uint8_t flags = 0) {
-            Garmin::buildGameEntry({id, uidA, uidB, a, b, flags}, bytes + static_cast<size_t>(count) * Garmin::GAME_ENTRY_SIZE);
-            count++;
-            return *this;
-        }
-
-        uint32_t crc() const {
-            return Garmin::mirrorCrc(count, bytes);
-        }
-
-        AckStatus apply(Tournament &t) const {
-            return t.applyMirror(TID, count, crc(), bytes);
-        }
-    };
-
-    const uint8_t PENDING = static_cast<uint8_t>(Garmin::GameFlags::Pending);
-    const uint8_t OFFLINE = static_cast<uint8_t>(Garmin::GameFlags::Offline);
-
-    Garmin::GameEntry outbox(const Tournament &t, const uint16_t index, uint16_t &seq) {
-        uint8_t out[Garmin::GAME_ENTRY_SIZE];
-        TEST_ASSERT_TRUE(t.outboxEntry(index, seq, out));
-        return Garmin::parseGameEntry(out);
-    }
-
-    // The id of the board's latest game.
-    uint32_t lastId(const Tournament &t) {
-        const FinishedGame &f = t.getFinishedGame(t.getFinishedGameCount() - 1);
-        return f.match->getGameResult(f.game).id;
-    }
-
-    // Everything a failed command must leave alone.
-    struct Snapshot {
-        uint16_t rev, from, to, outboxCount;
-        size_t listed, finished, matches;
-        uint32_t mirrorCrc;
-
-        explicit Snapshot(const Tournament &t)
-            : rev(t.getRev()), from(t.outboxFrom()), to(t.outboxTo()), outboxCount(t.outboxCount()),
-              listed(t.listedCount()), finished(t.getFinishedGameCount()), matches(t.getMatchCount()),
-              mirrorCrc(t.getMirrorCrc()) {}
-
-        bool operator==(const Snapshot &o) const {
-            return rev == o.rev && from == o.from && to == o.to && outboxCount == o.outboxCount
-                   && listed == o.listed && finished == o.finished && matches == o.matches
-                   && mirrorCrc == o.mirrorCrc;
-        }
-    };
-}
-
-// The tablet's id; board mode keeps answering WRONG_SCREEN and an all-zero STATUS.
-void test_tablet_id_and_board_mode() {
-    TabletFixture f;
-    TEST_ASSERT_TRUE(f.tournament.isTablet());
-    TEST_ASSERT_EQUAL_HEX32(TID, f.tournament.getId());
-    const Garmin::TabletStatus s = f.tournament.tabletStatus(1, 3, 0xAABBCCDD);
-    TEST_ASSERT_EQUAL_HEX32(TID, s.tournamentId);
-    TEST_ASSERT_EQUAL(1, s.outboxFrom);
-    TEST_ASSERT_EQUAL(0, s.outboxTo);
-    TEST_ASSERT_EQUAL_HEX32(0, s.mirrorCrc);
-
-    Fixture board(new SquashRules());
-    TEST_ASSERT_FALSE(board.tournament.isTablet());
-    const uint32_t id = board.tournament.getId();
-    expectAck(AckStatus::WrongScreen, board.tournament.ackOutbox(id, 0), "board ACK");
-    Mirror empty;
-    expectAck(AckStatus::WrongScreen, board.tournament.applyMirror(id, 0, empty.crc(), empty.bytes), "board mirror");
-    board.tournament.chooseMatchBetween(board.anna, board.krys);
-    expectAck(AckStatus::WrongScreen, board.tournament.reassignSide(0, KRYS), "board SET_SIDE");
-    TEST_ASSERT_EQUAL(0, board.tournament.tabletStatus(1, 2, 1).tournamentId);
-
-    // Board mode: a tracked game is listed at once and never in an outbox.
-    play(*board.tournament.getActiveMatch(), GameSide::a, 11, 3);
-    TEST_ASSERT_EQUAL(1, board.tournament.listedCount());
-    TEST_ASSERT_EQUAL(0, board.tournament.outboxCount());
-    TEST_ASSERT_EQUAL(0, board.tournament.outboxTo());
-}
-
-// A tracked game is pending: in the tally, not listed, first in the outbox.
-void test_tablet_tracked_pending() {
-    TabletFixture f;
-    Match &match = f.tournament.chooseMatchBetween(f.krys, f.anna);
-    play(match, GameSide::a, 11, 4);
-
-    TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
-    TEST_ASSERT_EQUAL(1, f.tournament.getFinishedGameCount());
-    TEST_ASSERT_EQUAL(1, match.getMatchResult().scoreOf(f.krys.getId()));
-    GameResult last = {};
-    TEST_ASSERT_TRUE(match.lastGameResult(last));
-    TEST_ASSERT_TRUE(last.pending);
-
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxFrom());
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxTo());
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxCount());
+    // The pusher's own write is skipped; another reader gets it, unchanged.
+    GameRecord r;
     uint16_t seq = 0;
-    const Garmin::GameEntry g = outbox(f.tournament, 0, seq);
+    TEST_ASSERT_FALSE(b.tournament.getLog().changeAt(1, T1, r, seq));
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(1, T2, r, seq));
     TEST_ASSERT_EQUAL(1, seq);
-    TEST_ASSERT_EQUAL_HEX32(lastId(f.tournament), g.id);
-    // The match's own A/B (KRYSTIAN first set it up), never PENDING on the wire.
-    TEST_ASSERT_EQUAL_HEX32(KRYS, g.uidA);
-    TEST_ASSERT_EQUAL_HEX32(ANNA, g.uidB);
-    TEST_ASSERT_EQUAL(11, g.scoreA);
-    TEST_ASSERT_EQUAL(4, g.scoreB);
-    TEST_ASSERT_EQUAL(0, g.flags);
-    uint8_t out[Garmin::GAME_ENTRY_SIZE];
-    TEST_ASSERT_FALSE(f.tournament.outboxEntry(1, seq, out));
+    TEST_ASSERT_TRUE(sameImage(r, READ_1));
+    TEST_ASSERT_FALSE(b.tournament.getLog().changeAt(2, T2, r, seq));
+    TEST_ASSERT_EQUAL(0, b.tournament.getLog().lostSeq());
+
+    // Join refused while one runs, and on MENU with a bad roster.
+    TEST_ASSERT_FALSE(join(b.tournament, {S_ANNA, S_KRYS}, TID + 1));
+    Tournament other(std::unique_ptr<Rules>(new SquashRules()));
+    const std::vector<uint8_t> w = rosterWire({S_ANNA, S_KRYS});
+    TEST_ASSERT_FALSE(other.join(TID, SQUASH, 2, Garmin::rosterVersion(2, w.data()) ^ 1, w.data()));
+    TEST_ASSERT_FALSE(other.join(0, SQUASH, 2, Garmin::rosterVersion(2, w.data()), w.data()));
+    TEST_ASSERT_FALSE(other.running());
 }
 
-// A watch's offline game: accepted (listed + counted) and in the outbox, flagged OFFLINE.
-void test_tablet_offline_listed_in_outbox() {
-    TabletFixture f;
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::b, 11, 6);
-    expectAck(AckStatus::Applied, f.tournament.addOfflineGame(OLA, ANNA, 11, 9), "add");
-    TEST_ASSERT_EQUAL(1, f.tournament.listedCount());
-    expectListed({OLA, ANNA, 11, 9, 1, true}, listed(f.tournament, 0), "offline listed");
-    TEST_ASSERT_EQUAL(2, f.tournament.outboxCount());
-    TEST_ASSERT_EQUAL(2, f.tournament.outboxTo());
+// sync_pull: resuming re-reads at most what the reader had; a re-merge is a no-op.
+void test_sync_pull() {
+    Board b;
+    expectMerge(Merge::Stored, b.put(READ_1, BOARD), "seq 1");
+    expectMerge(Merge::Stored, b.put(READ_2, BOARD), "seq 2");
+    expectMerge(Merge::Stored, b.put(READ_3, BOARD), "seq 3");
+    const TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL(3, s.changesTo);
+    TEST_ASSERT_EQUAL(3, s.gamesCount);
+    TEST_ASSERT_EQUAL_HEX32(0xef752d79, s.gamesCrc);
+
+    GameRecord r;
     uint16_t seq = 0;
-    const Garmin::GameEntry g = outbox(f.tournament, 1, seq);
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(2, T1, r, seq));
     TEST_ASSERT_EQUAL(2, seq);
-    TEST_ASSERT_EQUAL(OFFLINE, g.flags);
-    // Its pair's turn skips nothing; the pending game of another pair has no turn at all.
-    TEST_ASSERT_EQUAL(1, f.tournament.turnOf(0));
-}
-
-// ACK: cumulative, a repeat is a no-op, a wrong tid or a seq ahead is INVALID.
-void test_tablet_ack() {
-    TabletFixture f;
-    Match &match = f.tournament.chooseMatchBetween(f.anna, f.krys);
-    play(match, GameSide::a, 11, 1);
-    play(match, GameSide::a, 11, 2);
-    play(match, GameSide::a, 11, 3);
-
-    const Snapshot before(f.tournament);
-    expectAck(AckStatus::Invalid, f.tournament.ackOutbox(TID + 1, 1), "other tid");
-    expectAck(AckStatus::Invalid, f.tournament.ackOutbox(TID, 4), "up_to > outbox_to");
-    TEST_ASSERT_TRUE(Snapshot(f.tournament) == before);
-
-    expectAck(AckStatus::Applied, f.tournament.ackOutbox(TID, 2), "ack 2");
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxFrom());
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxTo());
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxCount());
-    uint16_t seq = 0;
-    outbox(f.tournament, 0, seq);
+    TEST_ASSERT_TRUE(sameImage(r, READ_2));
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(seq + 1, T1, r, seq));
     TEST_ASSERT_EQUAL(3, seq);
+    TEST_ASSERT_TRUE(sameImage(r, READ_3));
+    TEST_ASSERT_FALSE(b.tournament.getLog().changeAt(seq + 1, T1, r, seq));
 
-    expectAck(AckStatus::Applied, f.tournament.ackOutbox(TID, 1), "already acked");
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxFrom());
-    expectAck(AckStatus::Applied, f.tournament.ackOutbox(TID, 3), "ack all");
-    TEST_ASSERT_EQUAL(4, f.tournament.outboxFrom());
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxTo());
-    TEST_ASSERT_EQUAL(0, f.tournament.outboxCount());
-    // An ACK only empties the outbox.
-    TEST_ASSERT_EQUAL(3, f.tournament.getFinishedGameCount());
-    TEST_ASSERT_EQUAL(3, match.getMatchResult().scoreOf(f.anna.getId()));
-    TEST_ASSERT_EQUAL(0, f.tournament.getRev());
-
-    play(match, GameSide::b, 11, 5);
-    TEST_ASSERT_EQUAL(4, f.tournament.outboxFrom());
-    TEST_ASSERT_EQUAL(4, f.tournament.outboxTo());
+    expectMerge(Merge::NoOp, b.put(READ_2, T1), "seq 2 again");
+    TEST_ASSERT_EQUAL(3, b.tournament.status().changesTo);
+    // Turns over the pulled records: the offline one is ANNA - OLA's first.
+    expectEntry({ANNA, OLA, 11, 6, 1 | OFF}, entry(b.tournament, 2), "pulled offline game");
 }
 
-// The mirror replaces the games; an un-ACKed board game survives after it, an ACKed one the
-// mirror lacks is gone, one whose id the mirror carries is ACKed.
-void test_tablet_mirror_survivors() {
-    TabletFixture f;
-    Match &match = f.tournament.chooseMatchBetween(f.anna, f.krys);
-    play(match, GameSide::a, 11, 1);
-    const uint32_t first = lastId(f.tournament);
-    play(match, GameSide::a, 11, 2);
-    const uint32_t second = lastId(f.tournament);
-    play(match, GameSide::b, 11, 3);
-    const uint32_t third = lastId(f.tournament);
-    expectAck(AckStatus::Applied, f.tournament.ackOutbox(TID, 1), "ack the first");
+// sync_merge: newer rev replaces, older is a no-op, a same-rev tie goes to the larger image.
+void test_sync_merge() {
+    Board b;
+    expectMerge(Merge::Stored, b.put(READ_1, BOARD), "seq 1");
+    expectMerge(Merge::Replaced, b.put(EDIT, T1), "edit");
+    TEST_ASSERT_EQUAL(2, b.tournament.status().changesTo);
+    expectMerge(Merge::NoOp, b.put(READ_1, T2), "stale");
+    TEST_ASSERT_EQUAL(2, b.tournament.status().changesTo);
+    expectMerge(Merge::Replaced, b.put(TIE, T2), "tie");
+    // The loser of the tie, again: no-op.
+    expectMerge(Merge::NoOp, b.put(EDIT, T1), "tie loser");
+    expectMerge(Merge::NoOp, b.put(TIE, T1), "identical");
 
-    // Another court's accepted game, then the second as a pending card. The first was ACKed
-    // and is absent: the tablet deleted it.
-    Mirror m;
-    m.add(0x0F0F0F0F, KRYS, OLA, 11, 7).add(second, ANNA, KRYS, 11, 2, PENDING);
-    expectAck(AckStatus::Applied, m.apply(f.tournament), "mirror");
+    const TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL(3, s.changesTo);
+    TEST_ASSERT_EQUAL(1, s.gamesCount);
+    TEST_ASSERT_EQUAL_HEX32(0xd3990a8b, s.gamesCrc);
+    TEST_ASSERT_EQUAL(1, b.tournament.getLog().storedCount());
+    TEST_ASSERT_TRUE(sameImage(b.tournament.getLog().stored(0).record, TIE));
+    // An edit renumbers nothing but changes the view: rev bumped twice.
+    TEST_ASSERT_EQUAL_HEX16((s.logEpoch << 8) + 2, b.tournament.getRev());
 
-    TEST_ASSERT_EQUAL(3, f.tournament.getFinishedGameCount());
-    TEST_ASSERT_EQUAL(2, f.tournament.getMatchCount());
-    TEST_ASSERT_EQUAL_HEX32(m.crc(), f.tournament.getMirrorCrc());
-    TEST_ASSERT_EQUAL(1, f.tournament.listedCount());
-    expectListed({KRYS, OLA, 11, 7, 1, false}, listed(f.tournament, 0), "other court");
-    TEST_ASSERT_EQUAL(1, f.tournament.getRev());
-
-    // Log: mirror order, then the survivor.
-    const GameResult &a = f.tournament.getFinishedGame(1).match->getGameResult(f.tournament.getFinishedGame(1).game);
-    const GameResult &b = f.tournament.getFinishedGame(2).match->getGameResult(f.tournament.getFinishedGame(2).game);
-    TEST_ASSERT_EQUAL_HEX32(second, a.id);
-    TEST_ASSERT_TRUE(a.acked && a.local && a.pending);
-    TEST_ASSERT_EQUAL(2, a.outboxSeq);
-    TEST_ASSERT_EQUAL_HEX32(third, b.id);
-    TEST_ASSERT_FALSE(b.acked);
-    TEST_ASSERT_NOT_EQUAL(first, a.id);
-
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxCount());
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxFrom());
-    TEST_ASSERT_EQUAL(3, f.tournament.outboxTo());
-
-    // The court's tally counts the pending card and the un-ACKed game.
-    const MatchResult standing = match.getMatchResult();
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.anna.getId()));
-    TEST_ASSERT_EQUAL(1, standing.scoreOf(f.krys.getId()));
-    TEST_ASSERT_EQUAL_PTR(&match, f.tournament.getActiveMatch());
-
-    // GAME_OVER's last tracked game is still this board's own, not the mirrored one.
-    GameResult last = {};
-    TEST_ASSERT_TRUE(match.lastGameResult(last));
-    TEST_ASSERT_EQUAL_HEX32(third, last.id);
+    // sync_leave/read: seqs 2 and 3 both changed it; one record, latest form, T2's write.
+    GameRecord r;
+    uint16_t seq = 0;
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(2, T1, r, seq));
+    TEST_ASSERT_EQUAL(3, seq);
+    TEST_ASSERT_TRUE(sameImage(r, TIE));
+    TEST_ASSERT_FALSE(b.tournament.getLog().changeAt(seq + 1, T1, r, seq));
+    TEST_ASSERT_FALSE(b.tournament.getLog().changeAt(2, T2, r, seq));
 }
 
-// The tablet accepts the pending card: listed, rev bumps; the same mirror again changes nothing.
-void test_tablet_mirror_rev_only_on_listed_change() {
-    TabletFixture f;
-    Match &match = f.tournament.chooseMatchBetween(f.anna, f.krys);
-    play(match, GameSide::a, 11, 1);
-    const uint32_t id = lastId(f.tournament);
+// sync_tombstone: REMOVE_OFFLINE_GAME on board 1; the tombstone forwarded to another board.
+void test_sync_tombstone() {
+    Board b;
+    b.put(READ_1, BOARD);
+    b.put(READ_2, BOARD);
+    b.put(READ_3, T1);
+    const uint8_t epoch = b.tournament.status().logEpoch;
+    TEST_ASSERT_EQUAL_HEX16(epoch << 8, b.tournament.getRev());
 
-    Mirror pending;
-    pending.add(id, ANNA, KRYS, 11, 1, PENDING);
-    expectAck(AckStatus::Applied, pending.apply(f.tournament), "pending card");
-    TEST_ASSERT_EQUAL(0, f.tournament.getRev());
-    TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
-    TEST_ASSERT_EQUAL(0, f.tournament.outboxCount());
+    expectAck(AckStatus::Applied, b.tournament.removeOfflineGame(TID, static_cast<uint16_t>(epoch << 8), 2, 3),
+              "remove");
+    // RESULTS: count 2, rev log_epoch:01.
+    TEST_ASSERT_EQUAL(2, b.tournament.listedCount());
+    TEST_ASSERT_EQUAL_HEX16((epoch << 8) + 1, b.tournament.getRev());
+    const TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL(4, s.changesTo);
+    TEST_ASSERT_EQUAL(2, s.gamesCount);
+    TEST_ASSERT_EQUAL_HEX32(0xa7806044, s.gamesCrc);
 
-    Mirror accepted;
-    // The tablet fixed the score and swapped the uid order: still the pair's match, A/B kept.
-    accepted.add(id, KRYS, ANNA, 2, 11);
-    expectAck(AckStatus::Applied, accepted.apply(f.tournament), "accept");
-    TEST_ASSERT_EQUAL(1, f.tournament.getRev());
-    expectListed({ANNA, KRYS, 11, 2, 1, false}, listed(f.tournament, 0), "accepted, fixed");
-    expectAck(AckStatus::Applied, accepted.apply(f.tournament), "same again");
-    TEST_ASSERT_EQUAL(1, f.tournament.getRev());
+    GameRecord r;
+    uint16_t seq = 0;
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(4, T1, r, seq));
+    TEST_ASSERT_EQUAL(4, seq);
+    TEST_ASSERT_TRUE(sameImage(r, READ_4));
+    TEST_ASSERT_EQUAL(0, b.tournament.getLog().lostSeq());
 
-    Mirror empty;
-    expectAck(AckStatus::Applied, empty.apply(f.tournament), "deleted");
-    TEST_ASSERT_EQUAL_HEX32(0xD202EF8D, empty.crc());
-    TEST_ASSERT_EQUAL(2, f.tournament.getRev());
-    TEST_ASSERT_EQUAL(0, f.tournament.getFinishedGameCount());
-    TEST_ASSERT_EQUAL(0, match.getMatchResult().scoreOf(f.anna.getId()));
-    expectAck(AckStatus::Applied, empty.apply(f.tournament), "empty again");
-    TEST_ASSERT_EQUAL(2, f.tournament.getRev());
+    // Sticky delete: a live write never revives it, whatever the rev.
+    expectMerge(Merge::NoOp, b.put(image(0x5EED0003, 9, 3, ANNA, OLA, 11, 6, GameRecord::OFFLINE), T1), "revive");
+    expectMerge(Merge::NoOp, b.put(READ_4, T1), "tombstone again");
+    TEST_ASSERT_EQUAL(4, b.tournament.status().changesTo);
+
+    // Board 2 (sync_pull's records): the forwarded tombstone replaces the live record.
+    Board two;
+    two.put(READ_1, T1);
+    two.put(READ_2, T1);
+    two.put(READ_3, T1);
+    const uint16_t rev2 = two.tournament.getRev();
+    expectMerge(Merge::Replaced, two.put(READ_4, T1), "forwarded tombstone");
+    TEST_ASSERT_EQUAL_HEX32(0xa7806044, two.tournament.status().gamesCrc);
+    TEST_ASSERT_EQUAL_HEX16(rev2 + 1, two.tournament.getRev());
+
+    // An unknown id's tombstone is stored too (roster not checked), RESULTS untouched.
+    expectMerge(Merge::Stored, two.put(image(0x77, 1, 9, 0x1, 0x2, 0, 0, GameRecord::DELETED), T1), "new tombstone");
+    TEST_ASSERT_EQUAL_HEX16(rev2 + 1, two.tournament.getRev());
+    TEST_ASSERT_EQUAL(2, two.tournament.listedCount());
 }
 
-// Every INVALID mirror leaves rev, listing, outbox and crc as they were.
-void test_tablet_mirror_invalid() {
-    TabletFixture f;
-    play(f.tournament.chooseMatchBetween(f.anna, f.krys), GameSide::a, 11, 1);
-    expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, OLA, 11, 5), "add");
-    const Snapshot before(f.tournament);
+// Dropped writes take no seq.
+void test_merge_drops() {
+    Board b;
+    b.put(READ_1, BOARD);
+    expectMerge(Merge::Dropped, b.put(image(0, 0, 5, ANNA, KRYS, 11, 3), T1), "id 0");
+    expectMerge(Merge::Dropped, b.put(image(9, 0, 0, ANNA, KRYS, 11, 3), T1), "order 0");
+    expectMerge(Merge::Dropped, b.put(image(9, 0, 5, ANNA, KRYS, 11, 3, 0x04), T1), "reserved flag");
+    expectMerge(Merge::Dropped, b.put(image(0x5EED0001, 1, 2, ANNA, KRYS, 11, 8), T1), "order change");
+    expectMerge(Merge::Dropped, b.put(image(9, 0, 5, ANNA, ANNA, 11, 3), T1), "equal uids");
+    expectMerge(Merge::Dropped, b.put(image(9, 0, 5, ANNA, 0x99, 11, 3), T1), "uid not in the roster");
+    expectMerge(Merge::Dropped, b.put(image(9, 0, 5, ANNA, KRYS, 11, 10), T1), "non-final score");
+    expectMerge(Merge::Dropped, b.put(image(0x5EED0001, 1, 1, ANNA, KRYS, 11, 10), T1), "non-final edit");
+    TEST_ASSERT_EQUAL(1, b.tournament.status().changesTo);
 
-    Mirror good;
-    good.add(1, ANNA, KRYS, 11, 1);
-    expectAck(AckStatus::Invalid, f.tournament.applyMirror(TID + 1, good.count, good.crc(), good.bytes), "tid");
-    expectAck(AckStatus::Invalid, f.tournament.applyMirror(TID, good.count, good.crc() ^ 1, good.bytes), "crc");
-    expectAck(AckStatus::Invalid, f.tournament.applyMirror(TID, 2, good.crc(), good.bytes), "count vs crc");
+    Tournament idle(std::unique_ptr<Rules>(new SquashRules()));
+    expectMerge(Merge::Dropped, idle.mergeRecord(hex(READ_1).b, T1), "no tournament");
+}
 
-    Mirror cases[6];
-    cases[0].add(0, ANNA, KRYS, 11, 1);
-    cases[1].add(1, ANNA, ANNA, 11, 1);
-    cases[2].add(1, ANNA, 0x99999999, 11, 1);
-    cases[3].add(1, ANNA, KRYS, 15, 3);
-    cases[4].add(1, ANNA, KRYS, 11, 1).add(1, KRYS, OLA, 11, 1);
-    cases[5].add(1, ANNA, KRYS, 11, 1).add(2, KRYS, OLA, 10, 8);
-    const char *what[] = {"id 0", "uidA == uidB", "uid not in roster", "15:3", "duplicate id", "unfinished"};
-    for (int i = 0; i < 6; i++) expectAck(AckStatus::Invalid, cases[i].apply(f.tournament), what[i]);
+// rev is serial: 0 follows 255; a distance of 128 is a tie.
+void test_merge_serial_rev() {
+    Board b;
+    b.put(image(0x10, 255, 1, ANNA, KRYS, 11, 3), T1);
+    expectMerge(Merge::Replaced, b.put(image(0x10, 0, 1, ANNA, KRYS, 11, 4), T1), "255 -> 0");
+    expectMerge(Merge::NoOp, b.put(image(0x10, 255, 1, ANNA, KRYS, 11, 5), T1), "255 after 0");
+    // 128 apart: the byte images decide, and the rev byte precedes the scores.
+    expectMerge(Merge::Replaced, b.put(image(0x10, 128, 1, ANNA, KRYS, 11, 2), T1), "128 apart, larger rev byte");
+    expectMerge(Merge::NoOp, b.put(image(0x10, 0, 1, ANNA, KRYS, 11, 9), T1), "128 apart, smaller rev byte");
+    expectMerge(Merge::NoOp, b.put(image(0x10, 128, 1, ANNA, KRYS, 11, 1), T1), "same rev, smaller image");
+    expectMerge(Merge::Replaced, b.put(image(0x10, 128, 1, ANNA, KRYS, 11, 5), T1), "same rev, larger image");
+    TEST_ASSERT_EQUAL(5, b.tournament.getLog().stored(0).record.scoreB);
+}
 
-    Mirror big;
-    for (uint32_t i = 0; i < Garmin::RESULTS_MAX; i++) big.add(i + 1, ANNA, KRYS, 11, 0);
-    // 129 entries do not fit the stage; the count alone is refused.
-    expectAck(AckStatus::Invalid, f.tournament.applyMirror(TID, 129, 0, big.bytes), "129");
-    CHECK(Snapshot(f.tournament) == before, "an INVALID mirror changed the tournament");
+// Order then id, unsigned; a record sorting before the last renumbers turns (rev bump).
+void test_sort_and_rev() {
+    Board b;
+    b.put(image(0x80000000, 0, 2, ANNA, KRYS, 11, 1), T1);
+    const uint16_t rev = b.tournament.getRev();
+    b.put(image(0x00000005, 0, 2, ANNA, KRYS, 11, 2), T1);
+    TEST_ASSERT_EQUAL_HEX16(rev + 1, b.tournament.getRev());
+    b.put(image(0x00000009, 0, 0xFFFF, ANNA, KRYS, 11, 3), T1);
+    TEST_ASSERT_EQUAL_HEX16(rev + 1, b.tournament.getRev());
+    b.put(image(0xFFFFFFFF, 0, 1, ANNA, KRYS, 11, 4), T1);
+    TEST_ASSERT_EQUAL_HEX16(rev + 2, b.tournament.getRev());
 
-    // A full 128-game mirror is fine.
-    expectAck(AckStatus::Applied, big.apply(f.tournament), "128");
-    TEST_ASSERT_EQUAL(128 + 1, f.tournament.listedCount());
+    const uint8_t want[] = {4, 2, 1, 3};
+    for (size_t i = 0; i < 4; i++) TEST_ASSERT_EQUAL(want[i], b.tournament.listedRecord(i).scoreB);
+    TEST_ASSERT_EQUAL(4, entry(b.tournament, 3).turn);
+
+    // A board-made record goes after the top order, capped at 65535.
+    expectAck(AckStatus::Applied, b.tournament.addOfflineGame(KRYS, OLA, 11, 0), "add at the top");
+    TEST_ASSERT_EQUAL(0xFFFF, b.tournament.listedRecord(4).order);
+}
+
+// 33 tombstones: the one with the oldest seq goes, lost_to = its seq.
+void test_tombstone_eviction() {
+    Board b;
+    b.put(READ_1, BOARD);
+    for (uint32_t i = 0; i < TournamentLog::TOMBSTONE_MAX; i++) {
+        expectMerge(Merge::Stored, b.put(image(0x100 + i, 1, 5, ANNA, KRYS, 0, 0, GameRecord::DELETED), T1), "fill");
+    }
+    TEST_ASSERT_EQUAL(33, b.tournament.getLog().storedCount());
+    TEST_ASSERT_EQUAL(0, b.tournament.getLog().lostSeq());
+
+    expectMerge(Merge::Stored, b.put(image(0x200, 1, 5, ANNA, KRYS, 0, 0, GameRecord::DELETED), T1), "33rd");
+    TEST_ASSERT_EQUAL(33, b.tournament.getLog().storedCount());
+    TEST_ASSERT_EQUAL(2, b.tournament.getLog().lostSeq());
+    TEST_ASSERT_LESS_THAN(0, b.tournament.getLog().find(0x100));
+    TEST_ASSERT_EQUAL(34, b.tournament.status().changesTo);
+
+    // A live record deleted later evicts the next-oldest tombstone.
+    expectMerge(Merge::Replaced, b.put(image(0x5EED0001, 1, 1, ANNA, KRYS, 11, 7, GameRecord::DELETED), T1), "del");
+    TEST_ASSERT_EQUAL(3, b.tournament.getLog().lostSeq());
+    TEST_ASSERT_EQUAL(32, b.tournament.getLog().storedCount());
+    TEST_ASSERT_EQUAL(0, b.tournament.listedCount());
+    // The evicted id is unknown again: its tombstone stores anew.
+    expectMerge(Merge::Stored, b.put(image(0x100, 1, 5, ANNA, KRYS, 0, 0, GameRecord::DELETED), T2), "re-sent");
+}
+
+// START_MATCH keeps a slot: 127 live while reserved, the board game's record frees it.
+void test_cap_reservation() {
+    Fixture f(new SquashRules());
+    for (size_t i = 0; i < Garmin::RESULTS_MAX - 1; i++) {
+        expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "fill");
+    }
+    expectAck(AckStatus::Applied, f.tournament.reserveMatchSlot(), "START_MATCH at 127");
+    TEST_ASSERT_TRUE(f.tournament.matchSlotReserved());
+    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "add into the reserved slot");
+    const uint16_t seq = f.tournament.status().changesTo;
+    expectMerge(Merge::Dropped, f.tournament.mergeRecord(image(0x10, 0, 500, ANNA, KRYS, 11, 0).b, T1),
+                "pushed live record into the reserved slot");
+    TEST_ASSERT_EQUAL(seq, f.tournament.status().changesTo);
+    expectMerge(Merge::Stored, f.tournament.mergeRecord(image(0x11, 1, 500, ANNA, KRYS, 0, 0, 1).b, T1),
+                "tombstone takes no slot");
+
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 1);
+    TEST_ASSERT_FALSE(f.tournament.matchSlotReserved());
+    TEST_ASSERT_EQUAL(128, f.tournament.listedCount());
+    expectAck(AckStatus::Invalid, f.tournament.reserveMatchSlot(), "START_MATCH at 128");
+
+    // Back from INTRO: the slot returns.
+    expectAck(AckStatus::Applied, f.tournament.removeOfflineGame(f.tournament.getId(), f.tournament.getRev(), 0),
+              "remove");
+    expectAck(AckStatus::Applied, f.tournament.reserveMatchSlot(), "reserve");
+    f.tournament.releaseMatchSlot();
+    expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "released slot");
+}
+
+// changes_to 65535 is the end: no START_MATCH, no ADD, RECORD writes dropped.
+void test_full_log() {
+    Fixture f(new SquashRules());
+    expectAck(AckStatus::Applied, f.tournament.addOfflineGame(ANNA, KRYS, 11, 0), "seq 1");
+    const GameRecord first = f.tournament.listedRecord(0);
+    uint8_t rev = 0;
+    while (f.tournament.status().changesTo < TournamentLog::SEQ_MAX - 1) {
+        rev++;
+        TEST_ASSERT_EQUAL(static_cast<int>(Merge::Replaced),
+                          static_cast<int>(f.tournament.mergeRecord(
+                              image(first.id, rev, first.order, ANNA, KRYS, 11, rev & 1 ? 1 : 0, 2).b, T1)));
+    }
+    // The last seq is kept for the board game a reservation holds.
+    expectAck(AckStatus::Applied, f.tournament.reserveMatchSlot(), "START_MATCH at 65534");
+    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 11, 2), "add while the seq is kept");
+    expectMerge(Merge::Dropped, f.tournament.mergeRecord(image(first.id, rev + 1, first.order, ANNA, KRYS, 11, 5, 2).b,
+                                                         T1), "edit while the seq is kept");
+    play(f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS)), GameSide::a, 11, 1);
+    TEST_ASSERT_EQUAL(0xFFFF, f.tournament.status().changesTo);
+    TEST_ASSERT_EQUAL(2, f.tournament.listedCount());
+
+    expectAck(AckStatus::Invalid, f.tournament.reserveMatchSlot(), "START_MATCH on a full log");
+    expectAck(AckStatus::Invalid, f.tournament.addOfflineGame(ANNA, KRYS, 11, 2), "ADD on a full log");
+    expectAck(AckStatus::Invalid, f.tournament.removeOfflineGame(f.tournament.getId(), f.tournament.getRev(), 0),
+              "REMOVE on a full log");
+    expectMerge(Merge::Dropped, f.tournament.mergeRecord(image(0x99, 0, 9, ANNA, KRYS, 11, 2).b, T1), "new id");
+    expectMerge(Merge::Dropped, f.tournament.mergeRecord(image(first.id, rev + 1, first.order, ANNA, KRYS, 11, 5,
+                                                               2).b, T1), "edit");
+    expectMerge(Merge::NoOp, f.tournament.mergeRecord(image(first.id, rev - 1, first.order, ANNA, KRYS, 11, 5,
+                                                            2).b, T1), "stale write still a no-op");
+    TEST_ASSERT_EQUAL(0xFFFF, f.tournament.status().changesTo);
+}
+
+// ACK_CHANGES: board-wide acked_to; the guard arms on the first ACK.
+void test_ack_guard() {
+    Board b;
+    b.put(READ_1, BOARD);
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+    TEST_ASSERT_EQUAL(0, b.tournament.unsyncedCount());
+
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, 2), "past changes_to");
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID + 1, 1), "other tournament");
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 0), "ack 0 arms");
+    TEST_ASSERT_TRUE(b.tournament.unsynced());
+    TEST_ASSERT_EQUAL(1, b.tournament.unsyncedCount());
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 1), "ack 1");
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+
+    b.put(READ_2, BOARD);
+    b.put(READ_3, BOARD);
+    TEST_ASSERT_EQUAL(2, b.tournament.unsyncedCount());
+    // Board-wide and monotonic: a lower ACK from another tablet changes nothing.
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 0), "lower ack");
+    TEST_ASSERT_EQUAL(2, b.tournament.unsyncedCount());
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 3), "ack 3");
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+
+    b.tournament.leave();
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, 0), "after leave");
+}
+
+// Re-pairing a slot: its earlier writes are the board's, so the new holder of the slot reads them.
+void test_reset_writer() {
+    Board b;
+    b.put(READ_1, T1);
+    b.put(READ_2, T2);
+    GameRecord r;
+    uint16_t seq = 0;
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(1, T1, r, seq));
+    TEST_ASSERT_EQUAL(2, seq);
+    b.tournament.resetWriter(T1);
+    TEST_ASSERT_TRUE(b.tournament.getLog().changeAt(1, T1, r, seq));
+    TEST_ASSERT_EQUAL(1, seq);
+    TEST_ASSERT_EQUAL(BOARD, b.tournament.getLog().stored(0).writer);
+    TEST_ASSERT_EQUAL(T2, b.tournament.getLog().stored(1).writer);
+}
+
+// BEGIN on a sport screen: growth under the same tid and sport only.
+void test_roster_growth() {
+    Board b;
+    b.put(READ_1, BOARD);
+    UserProfile *anna = b.tournament.getRoster().committedByUid(ANNA);
+    const UserProfile EWA(7, 0x77, "EWA", Color(1, 2, 3));
+
+    expectAck(AckStatus::Invalid, grow(b.tournament, {S_ANNA, S_KRYS, S_OLA, EWA}, TID + 1), "another tid");
+    expectAck(AckStatus::Invalid, grow(b.tournament, {S_ANNA, S_KRYS, S_OLA, EWA}, TID, 2), "another sport");
+    expectAck(AckStatus::Invalid, grow(b.tournament, {S_ANNA, S_KRYS, EWA}), "OLA dropped");
+    TEST_ASSERT_EQUAL(3, b.tournament.status().rosterCount);
+
+    expectAck(AckStatus::Applied, grow(b.tournament, {S_ANNA, S_KRYS, S_OLA, EWA}), "EWA appended");
+    const TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL(4, s.rosterCount);
+    const std::vector<uint8_t> w = rosterWire({S_ANNA, S_KRYS, S_OLA, EWA});
+    TEST_ASSERT_EQUAL_HEX32(Garmin::rosterVersion(4, w.data()), s.rosterCrc);
+    TEST_ASSERT_TRUE(anna == b.tournament.getRoster().committedByUid(ANNA));
+    // Records and log untouched.
+    TEST_ASSERT_EQUAL(1, s.changesTo);
+    TEST_ASSERT_EQUAL_HEX32(0xd015c673, s.gamesCrc);
+    expectAck(AckStatus::Applied, b.tournament.addOfflineGame(0x77, OLA, 11, 2), "EWA plays");
+
+    // The roster only grows: an entry cannot be un-picked.
+    TEST_ASSERT_FALSE(b.tournament.removePlayer(S_ANNA));
+    TEST_ASSERT_TRUE(b.tournament.isRosterEntry(S_ANNA));
+
+    Tournament idle(std::unique_ptr<Rules>(new SquashRules()));
+    expectAck(AckStatus::Invalid, grow(idle, {S_ANNA, S_KRYS}), "nothing running");
+}
+
+// Leaving drops records, roster, log and guard; a join after it is a fresh log.
+void test_leave() {
+    Board b;
+    b.put(READ_1, BOARD);
+    b.tournament.ackChanges(TID, 0);
+    b.tournament.chooseMatchBetween(*b.tournament.getRoster().committedByUid(ANNA),
+                                    *b.tournament.getRoster().committedByUid(KRYS));
+    expectAck(AckStatus::Applied, b.tournament.reserveMatchSlot(), "reserve");
+    const uint8_t epoch = b.tournament.getLog().epoch();
+    b.tournament.leave();
+    const TournamentStatus s = b.tournament.status();
+    TEST_ASSERT_EQUAL(0, s.tid);
+    TEST_ASSERT_EQUAL(0, s.rosterCount);
+    TEST_ASSERT_EQUAL(0, s.changesTo);
+    TEST_ASSERT_EQUAL(0, b.tournament.listedCount());
+    TEST_ASSERT_EQUAL(0, b.tournament.getMatchCount());
+    TEST_ASSERT_NULL(b.tournament.getActiveMatch());
+    TEST_ASSERT_FALSE(b.tournament.matchSlotReserved());
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+
+    TEST_ASSERT_TRUE(join(b.tournament, {S_ANNA, S_KRYS}));
+    TEST_ASSERT_EQUAL_HEX32(0xd202ef8d, b.tournament.status().gamesCrc);
+    TEST_ASSERT_EQUAL(0, b.tournament.status().changesTo);
+    TEST_ASSERT_FALSE(b.tournament.unsynced());
+    TEST_ASSERT_NOT_EQUAL(0, b.tournament.getLog().epoch());
+    TEST_ASSERT_NOT_EQUAL(epoch, b.tournament.getLog().epoch());
 }
 
 // SET_SIDE mid-game: the running Game moves to the new pair, score kept per court side.
-void test_tablet_reassign_running_game() {
-    TabletFixture f;
-    Match &first = f.tournament.chooseMatchBetween(f.krys, f.anna);  // KRYSTIAN left
+void test_reassign_running_game() {
+    Fixture f(new SquashRules(), true);
+    UserProfile &anna = f.p(ANNA);
+    UserProfile &krys = f.p(KRYS);
+    UserProfile &ola = f.p(OLA);
+    Match &first = f.tournament.chooseMatchBetween(krys, anna);  // KRYSTIAN left
     Game *game = first.createGame();
     game->scorePoint(GameSide::a);
     game->scorePoint(GameSide::a);
@@ -692,22 +913,22 @@ void test_tablet_reassign_running_game() {
     TEST_ASSERT_NOT_EQUAL(&first, to);
     TEST_ASSERT_FALSE(first.hasGame());
     TEST_ASSERT_TRUE(to->hasGame());
-    TEST_ASSERT_EQUAL_PTR(&f.krys, &to->getLeftCourtSidePlayer());
-    TEST_ASSERT_EQUAL_PTR(&f.ola, &to->getRightCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&krys, &to->getLeftCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&ola, &to->getRightCourtSidePlayer());
     TEST_ASSERT_EQUAL(2, game->getRealScore(GameSide::a));
     TEST_ASSERT_EQUAL(1, game->getRealScore(GameSide::b));
 
     // The left side to ANNA: a new pair ANNA-OLA.
     expectAck(AckStatus::Applied, f.tournament.reassignSide(0, ANNA), "swap left");
     Match *third = f.tournament.getActiveMatch();
-    TEST_ASSERT_EQUAL_PTR(&f.anna, &third->getLeftCourtSidePlayer());
-    TEST_ASSERT_EQUAL_PTR(&f.ola, &third->getRightCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&anna, &third->getLeftCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&ola, &third->getRightCourtSidePlayer());
 
     // KRYSTIAN on the right: back to the first pair's match, now swapped (A = KRYSTIAN).
     expectAck(AckStatus::Applied, f.tournament.reassignSide(1, KRYS), "KRYS right");
     TEST_ASSERT_EQUAL_PTR(&first, f.tournament.getActiveMatch());
     TEST_ASSERT_TRUE(first.getPlayersSwappedCourtSides());
-    TEST_ASSERT_EQUAL_PTR(&f.anna, &first.getLeftCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&anna, &first.getLeftCourtSidePlayer());
     TEST_ASSERT_TRUE(first.hasGame());
     TEST_ASSERT_FALSE(to->hasGame());
     TEST_ASSERT_FALSE(third->hasGame());
@@ -720,48 +941,41 @@ void test_tablet_reassign_running_game() {
     TEST_ASSERT_TRUE(first.lastGameResult(last));
     TEST_ASSERT_EQUAL(1, last.playerAScore);
     TEST_ASSERT_EQUAL(11, last.playerBScore);
-    TEST_ASSERT_EQUAL(f.anna.getId(), last.winnerPlayerId);
-    TEST_ASSERT_EQUAL(0, to->getGameCount());
+    TEST_ASSERT_EQUAL(anna.getId(), last.winnerPlayerId);
+    TEST_ASSERT_EQUAL(1, f.tournament.listedCount());
+    expectEntry({KRYS, ANNA, 1, 11, 1}, entry(f.tournament, 0), "KRYSTIAN - ANNA");
 }
 
 // SET_SIDE after a finished game: the finished game stays, the next game's pair changes.
-void test_tablet_reassign_after_game() {
-    TabletFixture f;
-    Match &first = f.tournament.chooseMatchBetween(f.anna, f.krys);
+void test_reassign_after_game() {
+    Fixture f(new SquashRules(), true);
+    Match &first = f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
     play(first, GameSide::a, 11, 4);
     expectAck(AckStatus::Applied, f.tournament.reassignSide(0, OLA), "next pair");
     Match *next = f.tournament.getActiveMatch();
     TEST_ASSERT_NOT_EQUAL(&first, next);
     TEST_ASSERT_FALSE(next->hasGame());
-    TEST_ASSERT_EQUAL(1, first.getGameCount());
-    TEST_ASSERT_EQUAL(1, first.getMatchResult().scoreOf(f.anna.getId()));
-    TEST_ASSERT_EQUAL_PTR(&f.ola, &next->getLeftCourtSidePlayer());
-    TEST_ASSERT_EQUAL_PTR(&f.krys, &next->getRightCourtSidePlayer());
+    TEST_ASSERT_EQUAL(1, first.getMatchResult().scoreOf(f.p(ANNA).getId()));
+    TEST_ASSERT_EQUAL_PTR(&f.p(OLA), &next->getLeftCourtSidePlayer());
+    TEST_ASSERT_EQUAL_PTR(&f.p(KRYS), &next->getRightCourtSidePlayer());
 }
 
-// The mirror keeps the running Game, activeMatch and the side latches.
-void test_tablet_mirror_keeps_running_game() {
-    TabletFixture f;
-    Match &match = f.tournament.chooseMatchBetween(f.krys, f.anna);
+// A peer's edit changes the standing; GAME_OVER keeps what was played.
+void test_peer_edit_and_game_over() {
+    Fixture f(new SquashRules());
+    Match &match = f.tournament.chooseMatchBetween(f.p(ANNA), f.p(KRYS));
     play(match, GameSide::a, 11, 4);
-    f.tournament.chooseMatchBetween(f.anna, f.krys);
-    TEST_ASSERT_TRUE(match.sidesSwapped());
-    Game *game = match.createGame();
-    game->scorePoint(GameSide::b);
-    game->commit();
-
-    Mirror m;
-    m.add(0x12345678, OLA, ANNA, 11, 0);
-    expectAck(AckStatus::Applied, m.apply(f.tournament), "mirror");
-    TEST_ASSERT_EQUAL_PTR(&match, f.tournament.getActiveMatch());
-    TEST_ASSERT_TRUE(match.hasGame());
-    TEST_ASSERT_TRUE(match.sidesSwapped());
-    TEST_ASSERT_EQUAL(1, game->getRealScore(GameSide::b));
-    // A pair the mirror creates takes uid_a as A.
-    expectListed({OLA, ANNA, 11, 0, 1, false}, listed(f.tournament, 0), "new pair");
-    // The un-ACKed tracked game survived.
-    TEST_ASSERT_EQUAL(1, match.getGameCount());
-    TEST_ASSERT_EQUAL(1, f.tournament.outboxCount());
+    GameRecord r = f.tournament.listedRecord(0);
+    expectMerge(Merge::Replaced, f.tournament.mergeRecord(image(r.id, 1, r.order, ANNA, KRYS, 4, 11).b, T1), "edit");
+    TEST_ASSERT_EQUAL(1, match.getMatchResult().scoreOf(f.p(KRYS).getId()));
+    TEST_ASSERT_EQUAL(0, match.getMatchResult().scoreOf(f.p(ANNA).getId()));
+    GameResult last = {};
+    TEST_ASSERT_TRUE(match.lastGameResult(last));
+    TEST_ASSERT_EQUAL(11, last.playerAScore);
+    // A peer's delete of a board game.
+    expectMerge(Merge::Replaced, f.tournament.mergeRecord(image(r.id, 2, r.order, ANNA, KRYS, 4, 11, 1).b, T1), "del");
+    TEST_ASSERT_EQUAL(0, match.getMatchResult().scoreOf(f.p(KRYS).getId()));
+    TEST_ASSERT_EQUAL(0, f.tournament.listedCount());
 }
 
 int main() {
@@ -769,10 +983,10 @@ int main() {
     RUN_TEST(test_log_order_and_turns);
     RUN_TEST(test_abandoned_game_not_listed);
     RUN_TEST(test_padel_gems);
-    RUN_TEST(test_id);
+    RUN_TEST(test_id_and_epoch);
     RUN_TEST(test_final_scores);
     RUN_TEST(test_add_invalid);
-    RUN_TEST(test_add_creates_match_without_active);
+    RUN_TEST(test_add_without_match);
     RUN_TEST(test_add_swapped_pair);
     RUN_TEST(test_live_game_after_add);
     RUN_TEST(test_last_game_result_none);
@@ -781,15 +995,22 @@ int main() {
     RUN_TEST(test_offline_only_sides_not_swapped);
     RUN_TEST(test_listed_cap);
     RUN_TEST(test_game_ids);
-    RUN_TEST(test_tablet_id_and_board_mode);
-    RUN_TEST(test_tablet_tracked_pending);
-    RUN_TEST(test_tablet_offline_listed_in_outbox);
-    RUN_TEST(test_tablet_ack);
-    RUN_TEST(test_tablet_mirror_survivors);
-    RUN_TEST(test_tablet_mirror_rev_only_on_listed_change);
-    RUN_TEST(test_tablet_mirror_invalid);
-    RUN_TEST(test_tablet_reassign_running_game);
-    RUN_TEST(test_tablet_reassign_after_game);
-    RUN_TEST(test_tablet_mirror_keeps_running_game);
+    RUN_TEST(test_sync_join_and_begin);
+    RUN_TEST(test_sync_pull);
+    RUN_TEST(test_sync_merge);
+    RUN_TEST(test_sync_tombstone);
+    RUN_TEST(test_merge_drops);
+    RUN_TEST(test_merge_serial_rev);
+    RUN_TEST(test_sort_and_rev);
+    RUN_TEST(test_tombstone_eviction);
+    RUN_TEST(test_cap_reservation);
+    RUN_TEST(test_full_log);
+    RUN_TEST(test_ack_guard);
+    RUN_TEST(test_reset_writer);
+    RUN_TEST(test_roster_growth);
+    RUN_TEST(test_leave);
+    RUN_TEST(test_reassign_running_game);
+    RUN_TEST(test_reassign_after_game);
+    RUN_TEST(test_peer_edit_and_game_over);
     return UNITY_END();
 }

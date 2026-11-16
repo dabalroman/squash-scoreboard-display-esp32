@@ -167,7 +167,7 @@ public:
         shouldRenderBack = false;
     }
 
-    // Listed rows (sports and TABLET_MODE) in menu order; the cursor is 0 on PROFILE / CONFIG.
+    // Listed rows (the sports) in menu order; the cursor is 0 on PROFILE / CONFIG.
     void describeForWatch(WatchState &state) const override {
         uint8_t ids[MAX_ENTRIES];
         uint8_t count = 0;
@@ -197,8 +197,6 @@ private:
              DeviceModeState::VolleyballMode, Colors::Yellow, true},
             {Str::MODE_OPTION_SHORT_VOLLEYBALL_OLED, Str::MODE_OPTION_SHORT_VOLLEYBALL,
              Str::LED_MODE_SHORT_VOLLEYBALL, DeviceModeState::ShortVolleyballMode, Colors::Orange, true},
-            {Str::MODE_OPTION_TOURNAMENT_OLED, Str::MODE_OPTION_TOURNAMENT, Str::LED_MODE_TOURNAMENT,
-             DeviceModeState::TournamentMode, Colors::Pink, true},
             {Str::MODE_OPTION_PLAYERS_OLED, Str::MODE_OPTION_PLAYERS, Str::LED_MODE_PLAYERS,
              DeviceModeState::PlayerSetupMode, Colors::Aqua, Board::HAS_PLAYER_SETUP},
             {Str::MODE_OPTION_CONFIG_OLED, Str::MODE_OPTION_CONFIG, Str::LED_MODE_CONFIG,
@@ -243,11 +241,8 @@ private:
         return entries[entryIds[index < entryIds.size() ? index : 0]];
     }
 
-    // The row's id on the watch's MENU: its sport id, TABLET_MODE for TOURNAMENT, 0 when unlisted.
+    // The row's id on the watch's MENU: its sport id, 0 when unlisted.
     static uint8_t menuEntryId(const ModeMenuEntry &entry) {
-        if (entry.target == DeviceModeState::TournamentMode) {
-            return static_cast<uint8_t>(Garmin::MenuEntry::TabletMode);
-        }
         return static_cast<uint8_t>(WatchSport::fromModeState(entry.target).sport);
     }
 

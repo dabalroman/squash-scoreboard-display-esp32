@@ -7,111 +7,27 @@
 #include "Garmin/GarminProtocol.h"
 #include "Match/Match.h"
 #include "Match/MatchOrderKeeper.h"
+#include "TournamentLog.h"
+#include "TournamentRoster.h"
 #include "Utils.h"
 
+using TournamentStatus = Garmin::TournamentStatus;
+
 /**
- * Multiple players play against each other in many rounds.
- * Lives as long as the selected device mode.
+ * A sport session's tournament (docs/garmin-protocol.md 20): id, sport, roster, game records and
+ * change log. Lives as long as the selected device mode; runs from start() or join() to leave().
  */
 class Tournament {
     std::deque<Match> matches;
-    std::vector<UserProfile *> players;
+    TournamentRoster roster;
     std::unique_ptr<Rules> rules;
-    // Every match's finished games in finish order, removed ones included so indices stay valid.
     TournamentLog log;
-    // Lets a watch tell a new tournament from games appended to the one it cached.
-    uint32_t id;
-    // The last applied COMMIT_MIRROR's crc; 0 = none (tablet mode, spec 20).
-    uint32_t mirrorCrc = 0;
+    // 0 = no tournament running.
+    uint32_t id = 0;
+    uint8_t sport = 0;
+    bool joined = false;
 
     Match *activeMatch = nullptr;
-
-    UserProfile *selectedByUid(const uint32_t uid) const {
-        for (UserProfile *player: players) {
-            if (player->getUid() == uid) return player;
-        }
-        return nullptr;
-    }
-
-    static bool isOutbox(const GameResult &r) {
-        return r.local && r.outboxSeq != 0 && !r.acked;
-    }
-
-    // An un-ACKed board game's seq order is its log order: seqs are handed out on append, and
-    // a mirror re-appends the survivors in seq order after every other game.
-    template<class F>
-    void forEachOutbox(F f) const {
-        for (const auto &entry: log.finished) {
-            const GameResult &r = entry.match->getGameResult(entry.game);
-            if (isOutbox(r) && !f(entry, r)) return;
-        }
-    }
-
-    // A game to append in the mirror rebuild.
-    struct Placed {
-        Match *match;
-        GameResult result;
-    };
-
-    // What RESULTS shows of a listed game, plus its id.
-    struct ListedKey {
-        const Match *match;
-        uint32_t id;
-        uint8_t scoreA;
-        uint8_t scoreB;
-        bool offline;
-
-        bool operator==(const ListedKey &o) const {
-            return match == o.match && id == o.id && scoreA == o.scoreA && scoreB == o.scoreB
-                   && offline == o.offline;
-        }
-    };
-
-    std::vector<ListedKey> listedKeys() const {
-        std::vector<ListedKey> keys;
-        keys.reserve(log.finished.size());
-        for (const auto &entry: log.finished) {
-            const GameResult &r = entry.match->getGameResult(entry.game);
-            if (Match::isListed(r)) keys.push_back({entry.match, r.id, r.playerAScore, r.playerBScore, r.offline});
-        }
-        return keys;
-    }
-
-    const GameResult *findGame(const uint32_t gameId) const {
-        for (const auto &entry: log.finished) {
-            const GameResult &r = entry.match->getGameResult(entry.game);
-            if (r.id == gameId) return &r;
-        }
-        return nullptr;
-    }
-
-    static const uint8_t *mirrorEntry(const uint8_t *entries, const uint8_t index) {
-        return entries + static_cast<size_t>(index) * Garmin::GAME_ENTRY_SIZE;
-    }
-
-    static bool mirrorHasId(const uint8_t count, const uint8_t *entries, const uint32_t gameId) {
-        for (uint8_t i = 0; i < count; i++) {
-            if (Garmin::getU32(mirrorEntry(entries, i)) == gameId) return true;
-        }
-        return false;
-    }
-
-    // count <= 128, crc, non-zero unique ids, two different roster uids, a final score.
-    bool validMirror(const uint8_t count, const uint32_t crc, const uint8_t *entries) const {
-        if (count > MAX_LISTED || (count > 0 && entries == nullptr)) return false;
-        if (Garmin::mirrorCrc(count, entries) != crc) return false;
-        for (uint8_t i = 0; i < count; i++) {
-            const Garmin::GameEntry g = Garmin::parseGameEntry(mirrorEntry(entries, i));
-            if (g.id == 0 || g.uidA == g.uidB || selectedByUid(g.uidA) == nullptr
-                || selectedByUid(g.uidB) == nullptr || !rules->isFinalScore(g.scoreA, g.scoreB)) {
-                return false;
-            }
-            for (uint8_t j = 0; j < i; j++) {
-                if (Garmin::getU32(mirrorEntry(entries, j)) == g.id) return false;
-            }
-        }
-        return true;
-    }
 
     static uint32_t newId() {
         uint32_t v = 0;
@@ -119,57 +35,148 @@ class Tournament {
         return v;
     }
 
-public:
-    // Every listed game must fit a RESULTS turn (bits 0-6) and stay visible.
-    static constexpr size_t MAX_LISTED = 128;
+    static uint8_t newEpoch() {
+        uint8_t v = 0;
+        while (v == 0) v = static_cast<uint8_t>(esp_random());
+        return v;
+    }
 
+    // A live record's roster and score checks (20.2 dropped writes).
+    bool validLive(const uint32_t uidA, const uint32_t uidB, const uint8_t scoreA, const uint8_t scoreB) const {
+        return uidA != uidB && roster.committedByUid(uidA) != nullptr && roster.committedByUid(uidB) != nullptr
+               && rules->isFinalScore(scoreA, scoreB);
+    }
+
+    void playersChanged() {
+        matchOrderKeeper->setPlayers(roster.profiles());
+    }
+
+public:
     Tournament(const Tournament &) = delete;
     Tournament &operator=(const Tournament &) = delete;
 
     std::unique_ptr<MatchOrderKeeper> matchOrderKeeper;
 
-    explicit Tournament(std::unique_ptr<Rules> r) : rules(std::move(r)), id(newId()),
-                                                    matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
+    explicit Tournament(std::unique_ptr<Rules> r)
+        : rules(std::move(r)), matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
     }
 
-    // Tablet mode (spec 20) under the tablet's tournament id; 0 = board mode, as the one-argument form.
-    Tournament(std::unique_ptr<Rules> r, const uint32_t tabletTid)
-        : rules(std::move(r)), id(tabletTid != 0 ? tabletTid : newId()),
-          matchOrderKeeper(std::make_unique<MatchOrderKeeper>()) {
-        log.tablet = tabletTid != 0;
+    // --- Lifecycle (20.3, 20.6) ---
+
+    bool running() const {
+        return id != 0;
     }
+
+    bool isJoined() const {
+        return joined;
+    }
+
+    uint32_t getId() const {
+        return id;
+    }
+
+    uint8_t getSport() const {
+        return sport;
+    }
+
+    // START on CHOOSE_PLAYERS: the first one draws the id and log_epoch; every START makes the
+    // selection the roster.
+    void start(const uint8_t sportId) {
+        if (!running()) {
+            id = newId();
+            sport = sportId;
+            log.start(newEpoch());
+        }
+        roster.commit();
+        playersChanged();
+    }
+
+    // BEGIN_TOURNAMENT on MENU: the peer's tournament with no records, every entry selected.
+    bool join(const uint32_t tournamentId, const uint8_t sportId, const uint8_t count, const uint32_t rosterCrc,
+              const uint8_t *entries) {
+        if (running() || tournamentId == 0 || sportId == 0 || roster.size() != 0) return false;
+        if (!roster.adopt(count, rosterCrc, entries)) return false;
+        id = tournamentId;
+        sport = sportId;
+        joined = true;
+        log.start(newEpoch());
+        playersChanged();
+        return true;
+    }
+
+    // BEGIN_TOURNAMENT on a sport screen: roster growth under the same id and sport.
+    Garmin::AckStatus growRoster(const uint32_t tournamentId, const uint8_t sportId, const uint8_t count,
+                                 const uint32_t rosterCrc, const uint8_t *entries) {
+        if (!running() || tournamentId != id || sportId != sport) return Garmin::AckStatus::Invalid;
+        if (!roster.adopt(count, rosterCrc, entries)) return Garmin::AckStatus::Invalid;
+        playersChanged();
+        return Garmin::AckStatus::Applied;
+    }
+
+    // Records, roster, change log and guard go; Match references die with the matches.
+    void leave() {
+        activeMatch = nullptr;
+        matches.clear();
+        roster.clear();
+        log.clear();
+        id = 0;
+        sport = 0;
+        joined = false;
+        playersChanged();
+    }
+
+    TournamentStatus status() const {
+        if (!running()) return TournamentStatus{};
+        return {id,
+                sport,
+                roster.committedCount(),
+                roster.crc(),
+                log.lastSeq(),
+                static_cast<uint8_t>(log.liveCount()),
+                log.gamesCrc(),
+                log.epoch()};
+    }
+
+    // --- Roster and picker ---
+
+    const TournamentRoster &getRoster() const {
+        return roster;
+    }
+
+    // The picker: false at 16 selected.
+    bool addPlayer(const UserProfile &userProfile) {
+        const bool added = roster.select(userProfile);
+        playersChanged();
+        return added;
+    }
+
+    // False for a roster entry: the roster only grows (TOGGLE_PLAYER INVALID).
+    bool removePlayer(const UserProfile &userProfile) {
+        const bool removed = roster.unselect(userProfile.getUid());
+        playersChanged();
+        return removed;
+    }
+
+    bool isPlayerIn(const UserProfile &userProfile) const {
+        return roster.byUid(userProfile.getUid()) != nullptr;
+    }
+
+    bool isRosterEntry(const UserProfile &userProfile) const {
+        return roster.committedByUid(userProfile.getUid()) != nullptr;
+    }
+
+    // The tournament's own copies: roster order, then the selection not started yet.
+    std::vector<UserProfile *> &getPlayers() {
+        return roster.profiles();
+    }
+
+    // --- Matches ---
 
     Match &createMatch(UserProfile &userProfileA, UserProfile &userProfileB) {
         printLn("Creating new match between %s and %s", userProfileA.getName(), userProfileB.getName());
         const auto newMatchId = matches.size();
         matches.emplace_back(newMatchId, userProfileA, userProfileB, rules.get(), &log);
         return matches.back();
-    }
-
-    void addPlayer(UserProfile &userProfile) {
-        if (isPlayerIn(userProfile)) {
-            return;
-        }
-
-        players.push_back(&userProfile);
-        matchOrderKeeper->setPlayers(players);
-    }
-
-    void removePlayer(UserProfile &userProfile) {
-        if (!isPlayerIn(userProfile)) {
-            return;
-        }
-
-        players.erase(std::remove(players.begin(), players.end(), &userProfile), players.end());
-        matchOrderKeeper->setPlayers(players);
-    }
-
-    bool isPlayerIn(const UserProfile &userProfile) {
-        return std::find(players.begin(), players.end(), &userProfile) != players.end();
-    }
-
-    std::vector<UserProfile *> &getPlayers() {
-        return players;
     }
 
     Match *getActiveMatch() const {
@@ -179,15 +186,13 @@ public:
     // The pair's match in either order; `swapped` when it has them as B/A.
     Match *findMatch(const UserProfile &userProfileA, const UserProfile &userProfileB, bool &swapped) {
         for (auto &match: matches) {
-            const auto &matchPlayerA = match.getPlayerA();
-            const auto &matchPlayerB = match.getPlayerB();
-
-            if (matchPlayerA.getId() == userProfileA.getId() && matchPlayerB.getId() == userProfileB.getId()) {
+            const uint32_t a = match.getPlayerA().getUid();
+            const uint32_t b = match.getPlayerB().getUid();
+            if (a == userProfileA.getUid() && b == userProfileB.getUid()) {
                 swapped = false;
                 return &match;
             }
-
-            if (matchPlayerA.getId() == userProfileB.getId() && matchPlayerB.getId() == userProfileA.getId()) {
+            if (a == userProfileB.getUid() && b == userProfileA.getUid()) {
                 swapped = true;
                 return &match;
             }
@@ -209,230 +214,148 @@ public:
         return match;
     }
 
-    /**
-     * ADD_OFFLINE_GAME: a finished game between two selected players, played off the board.
-     * Stored in the pair's match (created if needed, activeMatch untouched) as its next turn.
-     */
-    Garmin::AckStatus addOfflineGame(const uint32_t uidA, const uint32_t uidB, const uint8_t scoreA,
-                                     const uint8_t scoreB) {
-        if (uidA == uidB) return Garmin::AckStatus::Invalid;
-
-        UserProfile *profileA = selectedByUid(uidA);
-        UserProfile *profileB = selectedByUid(uidB);
-        if (profileA == nullptr || profileB == nullptr) return Garmin::AckStatus::Invalid;
-        if (!rules->isFinalScore(scoreA, scoreB)) return Garmin::AckStatus::Invalid;
-        if (listedCount() >= MAX_LISTED) return Garmin::AckStatus::Invalid;
-
-        bool swapped = false;
-        Match *match = findMatch(*profileA, *profileB, swapped);
-        if (match == nullptr) {
-            match = &createMatch(*profileA, *profileB);
-        }
-        match->recordGame(swapped ? scoreB : scoreA, swapped ? scoreA : scoreB);
-        return Garmin::AckStatus::Applied;
-    }
-
-    // REMOVE_OFFLINE_GAME: `index` is a listed index under (tournamentId, rev); tracked games stay.
-    // Tablet mode: the tablet is the only editor (spec 20.6).
-    Garmin::AckStatus removeOfflineGame(const uint32_t tournamentId, const uint16_t rev, const uint16_t index) {
-        if (log.tablet) return Garmin::AckStatus::WrongScreen;
-        if (tournamentId != id || rev != log.rev || index >= listedCount()) return Garmin::AckStatus::Invalid;
-
-        const FinishedGame &entry = listedGame(index);
-        for (auto &match: matches) {
-            if (&match != entry.match) continue;
-            if (!match.markRemoved(entry.game)) return Garmin::AckStatus::Invalid;
-            log.rev++;
-            return Garmin::AckStatus::Applied;
-        }
-        return Garmin::AckStatus::Invalid;
-    }
-
     size_t getMatchCount() const {
         return matches.size();
     }
 
-    uint32_t getId() const {
-        return id;
-    }
-
-    // --- Tablet mode (spec 20); the commands answer WRONG_SCREEN in board mode ---
-
-    bool isTablet() const {
-        return log.tablet;
-    }
-
-    // Newest seq handed out; 0 = none yet.
-    uint16_t outboxTo() const {
-        return log.outboxTo;
-    }
-
-    // Oldest un-ACKed seq; outboxTo() + 1 when nothing is un-ACKed.
-    uint16_t outboxFrom() const {
-        uint16_t from = static_cast<uint16_t>(log.outboxTo + 1);
-        forEachOutbox([&from](const FinishedGame &, const GameResult &r) -> bool {
-            from = r.outboxSeq;
-            return false;
-        });
-        return from;
-    }
-
-    uint16_t outboxCount() const {
-        uint16_t n = 0;
-        forEachOutbox([&n](const FinishedGame &, const GameResult &) -> bool {
-            n++;
-            return true;
-        });
-        return n;
-    }
-
-    // The `index`-th un-ACKed board game in seq order (< outboxCount()) as an OUTBOX entry:
-    // the match's own A/B, OFFLINE for a watch's game, never PENDING.
-    bool outboxEntry(const uint16_t index, uint16_t &seq, uint8_t out[Garmin::GAME_ENTRY_SIZE]) const {
-        uint16_t i = 0;
-        bool found = false;
-        forEachOutbox([&](const FinishedGame &entry, const GameResult &r) -> bool {
-            if (i++ != index) return true;
-            seq = r.outboxSeq;
-            const Garmin::GameEntry g = {r.id, entry.match->getPlayerA().getUid(), entry.match->getPlayerB().getUid(),
-                                         r.playerAScore, r.playerBScore,
-                                         r.offline ? static_cast<uint8_t>(Garmin::GameFlags::Offline) : uint8_t{0}};
-            Garmin::buildGameEntry(g, out);
-            found = true;
-            return false;
-        });
-        return found;
-    }
-
-    uint32_t getMirrorCrc() const {
-        return mirrorCrc;
-    }
-
-    // STATUS with the session's sport and roster; all zero in board mode.
-    Garmin::TabletStatus tabletStatus(const uint8_t sport, const uint8_t rosterCount, const uint32_t rosterCrc) const {
-        if (!log.tablet) return Garmin::TabletStatus{};
-        return {id, sport, rosterCount, rosterCrc, outboxFrom(), outboxTo(), mirrorCrc};
-    }
-
-    // ACK_OUTBOX: every seq <= upTo is stored on the tablet. Games, tally and RESULTS stay.
-    Garmin::AckStatus ackOutbox(const uint32_t tournamentId, const uint16_t upTo) {
-        if (!log.tablet) return Garmin::AckStatus::WrongScreen;
-        if (tournamentId != id || upTo > log.outboxTo) return Garmin::AckStatus::Invalid;
-        for (auto &match: matches) match.ackUpTo(upTo);
-        return Garmin::AckStatus::Applied;
-    }
-
     /**
-     * COMMIT_MIRROR: `entries` = count * 15 B staged games. INVALID changes nothing. Else the
-     * games become the mirror's in index order, then the un-ACKed board games it lacks in seq
-     * order; Match objects, activeMatch, the running Game and the side latches stay. rev
-     * bumps only when the listed sequence changed.
+     * START_MATCH: keeps a live slot and a change seq for the game until its record exists
+     * (Match::finishGame) or releaseMatchSlot(). INVALID at the live cap or with the log full.
      */
-    Garmin::AckStatus applyMirror(const uint32_t tournamentId, const uint8_t count, const uint32_t crc,
-                                  const uint8_t *entries) {
-        if (!log.tablet) return Garmin::AckStatus::WrongScreen;
-        if (tournamentId != id || !validMirror(count, crc, entries)) return Garmin::AckStatus::Invalid;
-
-        const std::vector<ListedKey> before = listedKeys();
-        std::vector<Placed> placed;
-        placed.reserve(static_cast<size_t>(count) + outboxCount());
-        for (uint8_t i = 0; i < count; i++) {
-            const Garmin::GameEntry g = Garmin::parseGameEntry(mirrorEntry(entries, i));
-            UserProfile &a = *selectedByUid(g.uidA);
-            UserProfile &b = *selectedByUid(g.uidB);
-            bool swapped = false;
-            Match *match = findMatch(a, b, swapped);
-            if (match == nullptr) match = &createMatch(a, b);
-            const uint8_t scoreA = swapped ? g.scoreB : g.scoreA;
-            const uint8_t scoreB = swapped ? g.scoreA : g.scoreB;
-            const uint8_t winner = rules->checkWinner(scoreA, scoreB) == GameSide::a
-                                       ? match->getPlayerA().getId()
-                                       : match->getPlayerB().getId();
-            GameResult r = {match->getPlayerA().getId(), scoreA, match->getPlayerB().getId(), scoreB, winner};
-            r.id = g.id;
-            r.offline = (g.flags & static_cast<uint8_t>(Garmin::GameFlags::Offline)) != 0;
-            r.pending = (g.flags & static_cast<uint8_t>(Garmin::GameFlags::Pending)) != 0;
-            const GameResult *own = findGame(g.id);
-            if (own != nullptr && own->local) {
-                // A board game's id in the mirror acks it.
-                r.local = true;
-                r.outboxSeq = own->outboxSeq;
-                r.acked = true;
-            }
-            placed.push_back({match, r});
+    Garmin::AckStatus reserveMatchSlot() {
+        if (log.isReserved()) return Garmin::AckStatus::Applied;
+        if (!running() || log.full() || log.liveCount() >= TournamentLog::LIVE_MAX) {
+            return Garmin::AckStatus::Invalid;
         }
-        // Never dropped, even past MAX_LISTED: RESULTS serves the first 128 until the tablet ACKs.
-        forEachOutbox([&](const FinishedGame &entry, const GameResult &r) -> bool {
-            if (!mirrorHasId(count, entries, r.id)) placed.push_back({const_cast<Match *>(entry.match), r});
-            return true;
-        });
-
-        // Hard-rule exception: in tablet mode the mirror commit is a third writer of the game
-        // set; ACKed board games the tablet dropped are gone.
-        log.finished.clear();
-        for (auto &match: matches) match.clearForMirror();
-        for (const Placed &p: placed) p.match->appendMirrored(p.result);
-        mirrorCrc = crc;
-        if (!(listedKeys() == before)) log.rev++;
+        log.setReserved(true);
         return Garmin::AckStatus::Applied;
     }
 
+    // The game left without a record (back from INTRO, a leave).
+    void releaseMatchSlot() {
+        log.setReserved(false);
+    }
+
+    bool matchSlotReserved() const {
+        return log.isReserved();
+    }
+
     /**
-     * SET_SIDE: court side 0 left / 1 right becomes `uid`, the other side's player stays on
-     * their side. activeMatch moves to that pair (the next game's pair on CELEBRATION /
+     * SET_SIDE (20.7): court side 0 left / 1 right becomes `uid`, the other side's player stays
+     * on their side. activeMatch moves to that pair (the next game's pair on CELEBRATION /
      * GAME_OVER, where no Game runs) and a running Game moves with it, score kept per court side.
      */
     Garmin::AckStatus reassignSide(const uint8_t side, const uint32_t uid) {
-        if (!log.tablet) return Garmin::AckStatus::WrongScreen;
-        UserProfile *profile = selectedByUid(uid);
+        UserProfile *profile = roster.committedByUid(uid);
         if (side > 1 || activeMatch == nullptr || profile == nullptr) return Garmin::AckStatus::Invalid;
         UserProfile &kept = side == 0 ? activeMatch->getRightCourtSidePlayer() : activeMatch->getLeftCourtSidePlayer();
         UserProfile &current = side == 0 ? activeMatch->getLeftCourtSidePlayer() : activeMatch->getRightCourtSidePlayer();
-        if (profile == &kept) return Garmin::AckStatus::Invalid;
-        if (profile == &current) return Garmin::AckStatus::Applied;
+        if (uid == kept.getUid()) return Garmin::AckStatus::Invalid;
+        if (uid == current.getUid()) return Garmin::AckStatus::Applied;
 
         std::unique_ptr<Game> running = activeMatch->releaseGame();
         Match &to = side == 0 ? chooseMatchBetween(*profile, kept) : chooseMatchBetween(kept, *profile);
-        to.adoptGame(std::move(running));
+        if (running) to.adoptGame(std::move(running));
         return Garmin::AckStatus::Applied;
     }
 
-    // The raw log, removed games included.
-    size_t getFinishedGameCount() const {
-        return log.finished.size();
-    }
+    // --- Records (20.2) ---
 
-    const FinishedGame &getFinishedGame(const size_t index) const {
-        return log.finished[index];
-    }
+    /**
+     * ADD_OFFLINE_GAME: an OFFLINE record between two roster entries, in the pair's match's own
+     * A/B order when the board has one. `writer` = the command's pairing slot.
+     */
+    Garmin::AckStatus addOfflineGame(const uint32_t uidA, const uint32_t uidB, const uint8_t scoreA,
+                                     const uint8_t scoreB, const uint8_t writer = TournamentLog::BOARD) {
+        if (!running() || !validLive(uidA, uidB, scoreA, scoreB)) return Garmin::AckStatus::Invalid;
+        if (log.full() || log.liveCount() >= log.liveCap()) return Garmin::AckStatus::Invalid;
 
-    // The RESULTS view: the log without removed and pending games.
-    size_t listedCount() const {
-        size_t count = 0;
-        for (const auto &entry: log.finished) {
-            if (Match::isListed(entry.match->getGameResult(entry.game))) count++;
+        bool swapped = false;
+        const Match *match = findMatch(*roster.committedByUid(uidA), *roster.committedByUid(uidB), swapped);
+        if (match != nullptr && swapped) {
+            log.create(uidB, uidA, scoreB, scoreA, GameRecord::OFFLINE, writer);
+        } else {
+            log.create(uidA, uidB, scoreA, scoreB, GameRecord::OFFLINE, writer);
         }
-        return count;
+        return Garmin::AckStatus::Applied;
+    }
+
+    // REMOVE_OFFLINE_GAME: tombstones the OFFLINE record at RESULTS `index` under (tid, rev).
+    Garmin::AckStatus removeOfflineGame(const uint32_t tournamentId, const uint16_t rev, const uint16_t index,
+                                        const uint8_t writer = TournamentLog::BOARD) {
+        if (!running() || tournamentId != id || rev != log.resultsRev() || index >= listedCount()) {
+            return Garmin::AckStatus::Invalid;
+        }
+        const size_t at = log.liveAt(index);
+        GameRecord r = log.stored(at).record;
+        if (!r.offline() || log.full()) return Garmin::AckStatus::Invalid;
+        r.flags |= GameRecord::DELETED;
+        log.rewrite(at, r, writer);
+        return Garmin::AckStatus::Applied;
+    }
+
+    // A RECORD write: `writer` = the connection's pairing slot. Writes on a connection not bound
+    // to this tournament are the caller's to drop.
+    TournamentLog::Merge mergeRecord(const uint8_t image[GameRecord::SIZE], const uint8_t writer) {
+        if (!running()) return TournamentLog::Merge::Dropped;
+        const GameRecord r = GameRecord::fromBytes(image);
+        if (!r.deleted() && !validLive(r.uidA, r.uidB, r.scoreA, r.scoreB)) return TournamentLog::Merge::Dropped;
+        return log.merge(r, writer);
+    }
+
+    // ACK_CHANGES' model part; the screen check is the caller's.
+    Garmin::AckStatus ackChanges(const uint32_t tournamentId, const uint16_t upTo) {
+        if (!running() || tournamentId != id || !log.ack(upTo)) return Garmin::AckStatus::Invalid;
+        return Garmin::AckStatus::Applied;
+    }
+
+    // The unsynced guard (20.6): armed by the first ACK, holds while changes_to > acked_to.
+    bool unsynced() const {
+        return log.unsynced();
+    }
+
+    uint16_t unsyncedCount() const {
+        return log.unsyncedCount();
+    }
+
+    // Pairing a slot again.
+    void resetWriter(const uint8_t slot) {
+        log.resetWriter(slot);
+    }
+
+    // CHANGES / RECORDS walks and END's fields.
+    const TournamentLog &getLog() const {
+        return log;
+    }
+
+    // --- The RESULTS view (section 19): live records by (order, id) ---
+
+    size_t listedCount() const {
+        return log.liveCount();
     }
 
     // `index` < listedCount().
-    const FinishedGame &listedGame(const size_t index) const {
-        size_t listed = 0;
-        for (const auto &entry: log.finished) {
-            if (!Match::isListed(entry.match->getGameResult(entry.game))) continue;
-            if (listed++ == index) return entry;
-        }
-        return log.finished.back();
+    const GameRecord &listedRecord(const size_t index) const {
+        return log.stored(log.liveAt(index)).record;
     }
 
-    // The pair's turn of a listed game, 1-based, counting listed games only.
-    uint16_t turnOf(const size_t index) const {
-        const FinishedGame &entry = listedGame(index);
-        return entry.match->turnOf(entry.game);
+    // The pair's k-th listed game, either A/B order, 1-based, capped at 127.
+    uint8_t turnOf(const size_t index) const {
+        const size_t at = log.liveAt(index);
+        const GameRecord &game = log.stored(at).record;
+        uint8_t turn = 0;
+        for (size_t i = 0; i <= at; i++) {
+            const GameRecord &r = log.stored(i).record;
+            if (r.deleted()) continue;
+            const bool samePair = (r.uidA == game.uidA && r.uidB == game.uidB)
+                                  || (r.uidA == game.uidB && r.uidB == game.uidA);
+            if (samePair && turn < Garmin::TURN_MASK) turn++;
+        }
+        return turn;
     }
 
     uint16_t getRev() const {
-        return log.rev;
+        return log.resultsRev();
     }
 };
 

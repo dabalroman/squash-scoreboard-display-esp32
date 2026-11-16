@@ -33,26 +33,24 @@ public:
     // Every mode build (spec 12): the roster the new mode's uids belong to. Cheap, no CRC.
     void useRoster(Garmin::RosterKind kind);
 
-    // --- Tablet tournament (spec 20), loop() only ---
+    // --- Tournament sync (spec 20), loop() only ---
 
-    // The pushed roster (count * 16 wire bytes) in its own slot; the stored ones stay. Returns its CRC.
-    uint32_t setTabletRoster(const uint8_t *entries, uint8_t count);
+    // The running tournament's roster (count * 16 wire bytes) in its own slot; the stored ones stay.
+    void setTournamentRoster(const uint8_t *entries, uint8_t count);
     // Like useRoster(): effective with the next published state.
-    void useTabletRoster();
-    // On BEGIN_TOURNAMENT / COMMIT_MIRROR answering APPLIED or INVALID: copies entries
-    // 0..count-1 (16 B / 15 B each) into `out` and clears that stage.
+    void useTournamentRoster();
+    // BEGIN answering APPLIED or INVALID: entries 0..count-1 (16 B each) into `out`, stage cleared.
     void takeRosterStage(uint8_t count, uint8_t *out);
-    void takeMirrorStage(uint8_t count, uint8_t *out);
-    // Tablet mode ended: stages, pushed roster and snapshot cleared; the tablet key forgotten and its holders dropped.
-    void endTablet();
-    // Every loop() pass (spec 9.2): `wanted` = on TOURNAMENT_WAIT. Turns GARMIN on if it is off,
-    // opens the tournament window once BLE runs and keeps it open; closes it when no longer wanted.
-    void keepTournamentPairing(bool wanted);
-
-    // Writes the i-th un-ACKed board game (seq order) as a 15 B game entry, and its seq.
-    typedef void (*OutboxAt)(const void *context, uint16_t i, uint16_t &seq, uint8_t *out);
-    // Every publish: the STATUS / OUTBOX snapshot (all zero, count 0 outside tablet mode). Never pushes.
-    void publishTablet(const Garmin::TabletStatus &status, uint16_t outboxCount, OutboxAt at, const void *context);
+    // Leaving the tournament.
+    void clearRosterStage();
+    // Every publish: the STATUS / RECORD snapshot (all zero without a tournament). Never pushes;
+    // cheap when nothing changed. `force` after a writer reset.
+    void publishTournament(const Tournament *tournament, bool force = false);
+    // A RECORD write waiting for loop(); recordApplied() releases its write response.
+    bool takeRecord(uint32_t &tid, uint8_t &writer, uint8_t *image);
+    void recordApplied();
+    // Pairing slots written since the last call, as a bitmask.
+    uint8_t takeRepairedSlots();
 
     bool isEnabled() const;
 

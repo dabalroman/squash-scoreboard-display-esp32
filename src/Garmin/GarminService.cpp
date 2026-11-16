@@ -73,6 +73,8 @@ namespace {
     constexpr uint32_t INIT_STALL_MS = 5000;
     constexpr uint32_t PERSIST_RETRY_MS = 5000;
     constexpr uint32_t FAILURE_LOG_MS = 10000;
+    // Host-task wait for loop() to merge a RECORD write.
+    constexpr uint32_t RECORD_WAIT_MS = 200;
 
     enum InitError : uint8_t { InitOk = 0, InitAdvertising = 1 };
 
@@ -167,7 +169,13 @@ namespace {
                     gLink.writeResults(handle, value.data(), value.size());
                     break;
                 case Chr::Tournament:
-                    gLink.writeTournament(handle, value.data(), value.size());
+                    // The write response follows the merge (spec 20.3): loop() takes the record
+                    // within a pass; past the bound it is answered anyway and the peer's next
+                    // STATUS shows whether it landed.
+                    if (gLink.writeTournament(handle, value.data(), value.size())) {
+                        const TickType_t waitTicks = pdMS_TO_TICKS(RECORD_WAIT_MS);
+                        for (TickType_t t = 0; t < waitTicks && gLink.recordPending(); t++) vTaskDelay(1);
+                    }
                     break;
                 default:
                     break;
@@ -321,44 +329,48 @@ void GarminService::useRoster(const Garmin::RosterKind kind) {
     gLink.useRoster(kind);
 }
 
-uint32_t GarminService::setTabletRoster(const uint8_t *entries, const uint8_t count) {
-    return gLink.setTabletRoster(count, entries);
+void GarminService::setTournamentRoster(const uint8_t *entries, const uint8_t count) {
+    gLink.setTournamentRoster(count, entries);
 }
 
-void GarminService::useTabletRoster() {
-    gLink.useTabletRoster();
+void GarminService::useTournamentRoster() {
+    gLink.useTournamentRoster();
 }
 
 void GarminService::takeRosterStage(const uint8_t count, uint8_t *out) {
     gLink.takeRosterStage(count, out);
 }
 
-void GarminService::takeMirrorStage(const uint8_t count, uint8_t *out) {
-    gLink.takeMirrorStage(count, out);
+void GarminService::clearRosterStage() {
+    gLink.clearRosterStage();
 }
 
-void GarminService::endTablet() {
-    gLink.endTablet(millis());
-}
-
-void GarminService::keepTournamentPairing(const bool wanted) {
-    if (!wanted) {
-        if (gLink.tournamentPairingOpen()) gLink.closePairing();
+void GarminService::publishTournament(const Tournament *tournament, const bool force) {
+    if (tournament == nullptr || !tournament->running()) {
+        gLink.syncTournament(Garmin::TournamentStatus{}, 0, 0,
+                             [](uint16_t, uint8_t *, uint16_t &, uint8_t &) {}, force);
         return;
     }
-    if (failed()) return;
-    if (!gLink.enabled()) {
-        setEnabled(true); // stays on afterwards, as after PARUJ
-        return;
-    }
-    if (running() && !gLink.tournamentPairingOpen()) gLink.openPairing(millis(), true);
+    const TournamentLog &log = tournament->getLog();
+    gLink.syncTournament(tournament->status(), log.lostSeq(), static_cast<uint16_t>(log.storedCount()),
+                         [&log](const uint16_t i, uint8_t *image, uint16_t &seq, uint8_t &writer) {
+                             const TournamentLog::Entry &e = log.stored(i);
+                             e.record.toBytes(image);
+                             seq = e.seq;
+                             writer = e.writer;
+                         }, force);
 }
 
-void GarminService::publishTablet(const Garmin::TabletStatus &status, const uint16_t outboxCount, const OutboxAt at,
-                                  const void *context) {
-    gLink.syncTablet(status, outboxCount, [at, context](const uint16_t i, uint16_t &seq, uint8_t *out) {
-        at(context, i, seq, out);
-    });
+bool GarminService::takeRecord(uint32_t &tid, uint8_t &writer, uint8_t *image) {
+    return gLink.takeRecord(tid, writer, image);
+}
+
+void GarminService::recordApplied() {
+    gLink.recordApplied();
+}
+
+uint8_t GarminService::takeRepairedSlots() {
+    return gLink.takeRepairedSlots();
 }
 
 bool GarminService::isEnabled() const {
@@ -559,6 +571,7 @@ bool GarminService::takeCommand(uint16_t &handle, WatchCommand &command) {
     }
     handle = queued.handle;
     command = queued.cmd;
+    command.writer = queued.slot;
     return true;
 }
 

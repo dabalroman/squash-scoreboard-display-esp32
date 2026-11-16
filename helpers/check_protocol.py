@@ -852,27 +852,24 @@ REPO_DIRS = {
 }
 
 # YAML enum name -> the C++ `enum class` that carries it in src/Garmin/GarminProtocol.h. Enums
-# with no firmware counterpart (e.g. `side`, which is a left/right bool there) are simply not
-# listed, so they are not required.
+# with no firmware counterpart there (`side`, a left/right bool; `record_flags`, checked against
+# GameRecord's constants below) are simply not listed, so they are not required.
 FIRMWARE_ENUMS = {
     "ack_status": "AckStatus",
     "screen": "ScreenId",
     "sport": "SportId",
-    "menu_entry": "MenuEntry",
     "auth_type": "AuthType",
     "auth_status": "AuthStatus",
     "pairing_type": "PairingType",
     "pairing_status": "PairingStatus",
-    "tournament_write": "TournamentWrite",
-    "tournament_read": "TournamentRead",
-    "game_flags": "GameFlags",
+    "tournament_frame": "TournamentFrame",
+    "tournament_cursor": "TournamentCursor",
 }
 
 # The scenario steps the client (helpers/garmin_client.py) must carry, tagged in
 # helpers/test_garmin_client.py. The client encodes commands and decodes state/heart/results,
 # plus the auth/pairing MACs, so it carries the steps those functions touch; the firmware (the
-# reference) carries every step. Advertising and roster are firmware-only: parse_adv is
-# BLE-stack-dependent and read_roster is GATT-async, so neither has a pure client function.
+# reference) carries every step. Advertising and roster reads are firmware-only.
 CLIENT_STEPS = frozenset({
     "auth/challenge", "auth/proof", "auth/result_ok", "auth/result_bad_proof",
     "pairing/request", "pairing/result_ok", "pairing/result_bad_code",
@@ -880,9 +877,6 @@ CLIENT_STEPS = frozenset({
     "padel_playing/tiebreak", "padel_playing/ladder",
     "focus/focus_squash", "focus/menu_state", "focus/focus_krystian", "focus/choose_players_state",
     "focus/focus_start", "focus/focus_unknown_uid",
-    "tablet_mode_entry/menu", "tablet_mode_entry/focus_tablet", "tablet_mode_entry/focus_tablet_ack",
-    "tablet_mode_entry/select_tablet", "tablet_mode_entry/select_tablet_ack",
-    "tablet_mode_entry/back_on_wait", "tablet_mode_entry/back_on_wait_ack",
     "heart/write_a", "heart/write_c", "heart/write_c_clear", "heart/notify_a", "heart/notify_b",
     "heart/notify_c", "heart/notify_a_empty", "heart/discard_v0", "heart/discard_short",
     "sides_swapped/playing", "last_known/score_right", "last_known/state",
@@ -890,27 +884,27 @@ CLIENT_STEPS = frozenset({
     "results/read_no_tournament", "results/unauth_read", "results/discard_short", "results/discard_v0",
     "offline_games/add", "offline_games/add_illegal", "offline_games/remove", "offline_games/read_offline",
     "offline_games/read_end_rev",
-    # 16.15 tablet tournament: the client builds/decodes every frame of it.
-    "tablet_begin/begin", "tablet_begin/begin_ack", "tablet_begin/roster_anna",
-    "tablet_begin/roster_krystian", "tablet_begin/status_begun", "tablet_begin/status_none",
-    "tablet_begin/wait_state", "tablet_mirror/commit", "tablet_mirror/commit_ack",
-    "tablet_mirror/mirror_0", "tablet_mirror/mirror_1", "tablet_mirror/mirror_2",
-    "tablet_mirror/results_2", "tablet_mirror/results_end", "tablet_mirror/status_mirrored",
-    "tablet_outbox/ack", "tablet_outbox/ack_ack", "tablet_outbox/cursor_outbox",
-    "tablet_outbox/cursor_status", "tablet_outbox/read_1", "tablet_outbox/read_2",
-    "tablet_outbox/read_end", "tablet_outbox/status", "tablet_outbox/status_acked",
-    "tablet_refusals/back", "tablet_refusals/back_ack", "tablet_refusals/begin_on_menu",
-    "tablet_refusals/begin_on_menu_ack", "tablet_refusals/begin_other_tid",
-    "tablet_refusals/begin_other_tid_ack", "tablet_refusals/commit_bad_crc",
-    "tablet_refusals/commit_bad_crc_ack", "tablet_refusals/remove", "tablet_refusals/remove_ack",
-    "tablet_repush/repush", "tablet_repush/repush_ack", "tablet_repush/roster_anna",
-    "tablet_repush/roster_krystian", "tablet_repush/roster_ola", "tablet_set_side/set_side",
-    "tablet_set_side/set_side_ack",
+    # 16.15 tournament sync: the client builds/decodes every frame of it.
+    "sync_join/status", "sync_join/cursor_changes", "sync_join/read_1", "sync_join/read_end",
+    "sync_join/ack", "sync_join/ack_ack",
+    "sync_begin/status_none", "sync_begin/roster_anna", "sync_begin/roster_krystian",
+    "sync_begin/roster_ola", "sync_begin/begin", "sync_begin/begin_ack", "sync_begin/status_joined",
+    "sync_begin/push_1", "sync_begin/status_synced", "sync_begin/cursor_changes", "sync_begin/read_end",
+    "sync_pull/status", "sync_pull/cursor_changes", "sync_pull/read_2", "sync_pull/read_3",
+    "sync_pull/read_end", "sync_pull/ack", "sync_pull/ack_ack",
+    "sync_merge/status", "sync_merge/edit", "sync_merge/stale", "sync_merge/tie",
+    "sync_merge/status_after", "sync_merge/cursor_records", "sync_merge/read_0", "sync_merge/read_end",
+    "sync_tombstone/remove", "sync_tombstone/remove_ack", "sync_tombstone/results_end",
+    "sync_tombstone/status", "sync_tombstone/cursor_changes", "sync_tombstone/read_4",
+    "sync_tombstone/read_end",
+    "sync_leave/back_1", "sync_leave/back_1_ack", "sync_leave/back_2", "sync_leave/back_2_ack",
+    "sync_leave/cursor_changes", "sync_leave/read", "sync_leave/read_end", "sync_leave/ack",
+    "sync_leave/ack_ack", "sync_leave/back_3", "sync_leave/back_3_ack", "sync_leave/status_none",
 })
 
 
 # Steps the board never produces as its own literal: too_old/too_new are a foreign PROTO in the
-# advertisement, refused by the watch (the board always advertises PROTO 0x01), so those two belong
+# advertisement, refused by the watch (the board always advertises PROTO 0x02), so those two belong
 # to the watch app (#567). The firmware is otherwise the reference and carries every board-side step.
 FIRMWARE_EXCLUDE = frozenset({
     "board_version/too_old", "board_version/too_new",
@@ -918,11 +912,11 @@ FIRMWARE_EXCLUDE = frozenset({
 
 
 # The scenario steps the watch app (squash-scoreboard-display-garmin-app) must carry, tagged in its
-# test/*.mc. The watch is a board-king client without tablet tournaments or offline-game entry: it
+# test/*.mc. The watch is a board-king client without tournament sync or offline-game entry: it
 # carries the frames it builds (commands, auth, pairing, heart, cursors) and every board frame it
-# parses, including the MENU / RESULTS forms newer boards send (a 0x80 menu entry, an OFFLINE game,
-# the 11 B end frame). It owns too_old/too_new, which the firmware never produces. The discard_* steps
-# are the board dropping malformed writes the watch never builds, so they stay the firmware's.
+# parses, including the RESULTS forms newer boards send (an OFFLINE game, the 11 B end frame). It
+# owns too_old/too_new, which the firmware never produces. The discard_* steps are the board
+# dropping malformed writes the watch never builds, so they stay the firmware's.
 WATCH_STEPS = frozenset({
     "advertising/adv_normal", "advertising/adv_pairing", "advertising/scan_rsp", "advertising/version",
     "auth/challenge", "auth/proof", "auth/result_ok", "auth/result_bad_proof",
@@ -942,7 +936,6 @@ WATCH_STEPS = frozenset({
     "results/write", "results/read_1", "results/read_2", "results/read_3", "results/read_past_end",
     "results/read_no_tournament", "results/unauth_read",
     "offline_games/read_offline", "offline_games/read_end_rev",
-    "tablet_mode_entry/menu", "tablet_mode_entry/focus_tablet_ack", "tablet_mode_entry/back_on_wait_ack",
 })
 
 # YAML names the watch's source/protocol/Proto.mc must define (same name, same value). Any other YAML
@@ -955,16 +948,15 @@ WATCH_CONSTANTS = frozenset({
 WATCH_UUIDS_EXCLUDE = frozenset({"TOURNAMENT_UUID"})
 
 # YAML enum -> the Proto.mc prefix of its values (`SCREEN_` + `PLAYING`; lower-case names upper-cased).
-# Enums the watch has no use for (menu_entry, game_flags, the tournament ones) are not listed.
+# Enums the watch has no use for (record_flags, the tournament ones) are not listed.
 WATCH_ENUMS = {
     "screen": "SCREEN_", "sport": "SPORT_", "side": "SIDE_", "ack_status": "ACK_",
     "auth_type": "AUTH_", "auth_status": "AUTH_", "pairing_type": "PAIRING_", "pairing_status": "PAIRING_",
 }
-# Values / commands of the tablet tournament and offline-game entry, which the watch does not implement.
+# Commands of tournament sync and offline-game entry, which the watch does not implement.
 WATCH_EXCLUDE = frozenset({
-    "SCREEN_TOURNAMENT_WAIT",
-    "CMD_ADD_OFFLINE_GAME", "CMD_REMOVE_OFFLINE_GAME", "CMD_BEGIN_TOURNAMENT", "CMD_COMMIT_MIRROR",
-    "CMD_ACK_OUTBOX", "CMD_SET_SIDE",
+    "CMD_ADD_OFFLINE_GAME", "CMD_REMOVE_OFFLINE_GAME", "CMD_BEGIN_TOURNAMENT", "CMD_ACK_CHANGES",
+    "CMD_SET_SIDE",
 })
 
 
@@ -1039,6 +1031,16 @@ def scan_firmware(spec, root):
                 errors.append(f"firmware: `{ctype}` has no member `{member}` (`{v['name']}`)")
             elif enums[ctype][member] != want:
                 errors.append(f"firmware: `{ctype}.{member}` = {enums[ctype][member]} but the YAML says {want}")
+
+    # record_flags are GameRecord's bit constants, outside the protocol header.
+    rec = root / "src" / "Tournament" / "Game" / "GameRecord.h"
+    rec_text = rec.read_text(encoding="utf-8")
+    for v in spec.enums["record_flags"]["values"]:
+        m = re.search(r"\b" + re.escape(v["name"]) + r"\s*=\s*(0x[0-9A-Fa-f]+|\d+)", rec_text)
+        if m is None:
+            errors.append(f"firmware: GameRecord has no flag `{v['name']}` in {rec.name}")
+        elif parse_int(m.group(1)) != (1 << v["bit"]):
+            errors.append(f"firmware: GameRecord `{v['name']}` = {m.group(1)} but the YAML says bit {v['bit']}")
 
     # CommandId is derived from commands.yaml, not constants.yaml, so check it separately.
     cmd_ids = enums.get("CommandId", {})

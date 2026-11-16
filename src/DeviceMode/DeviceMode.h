@@ -56,9 +56,10 @@ public:
         return false;
     }
 
-    // The watch's BACK: goBack(), unless a screen leaves something only a person may leave.
-    virtual bool goBackFromWatch() {
-        return goBack();
+    // The watch's BACK: goBack(), unless a screen refuses it (INVALID) or leaves something only
+    // a person may leave.
+    virtual Garmin::AckStatus goBackFromWatch() {
+        return goBack() ? Garmin::AckStatus::Applied : Garmin::AckStatus::WrongScreen;
     }
 
     /**
@@ -85,17 +86,16 @@ public:
                 return status;
             },
             [this, &command] {
-                const Garmin::AckStatus status = handleTabletCommand(command);
+                const Garmin::AckStatus status = handleTournamentCommand(command);
                 if (status != Garmin::AckStatus::Applied) return status;
                 // The view's cached match lost its Game to the new pair's match.
                 if (command.id == Garmin::CommandId::SetSide) {
                     if (activeView->refreshPair()) restoreView();
                     return status;
                 }
-                // A re-push renames or adds entries, a mirror changes the standings.
-                if (command.id != Garmin::CommandId::AckOutbox) {
-                    activeView->onTournamentEdited();
-                    activeView->queueRender();
+                // A roster growth renames or adds entries.
+                if (command.id == Garmin::CommandId::BeginTournament) {
+                    tournamentEdited();
                 }
                 return status;
             },
@@ -109,15 +109,28 @@ public:
         return Garmin::AckStatus::WrongScreen;
     }
 
-    // BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX, SET_SIDE (spec 20): TOURNAMENT_WAIT and the
-    // sport modes in tablet mode take them (TabletSupport); everywhere else WRONG_SCREEN.
-    virtual Garmin::AckStatus handleTabletCommand(const WatchCommand &) {
+    // BEGIN_TOURNAMENT (roster growth), ACK_CHANGES, SET_SIDE (spec 20): the sport modes take
+    // them (TournamentSync); everywhere else WRONG_SCREEN. BEGIN on MENU is main.cpp's.
+    virtual Garmin::AckStatus handleTournamentCommand(const WatchCommand &) {
         return Garmin::AckStatus::WrongScreen;
     }
 
-    // The sport modes' tournament, for the watch's RESULTS (spec 19); null elsewhere.
+    // The sport modes' tournament, for RESULTS and TOURNAMENT (spec 19, 20); null elsewhere.
     virtual const Tournament *getTournament() const {
         return nullptr;
+    }
+
+    // The same, for a RECORD write's merge and a writer reset (main.cpp); null elsewhere.
+    virtual Tournament *editTournament() {
+        return nullptr;
+    }
+
+    // Records or roster changed outside the view: standings and names are drawn again.
+    void tournamentEdited() {
+        if (activeView) {
+            activeView->onTournamentEdited();
+            activeView->queueRender();
+        }
     }
 
     virtual void describeForWatch(WatchState &state) const {

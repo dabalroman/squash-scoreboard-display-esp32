@@ -3,12 +3,14 @@
 #include <unity.h>
 
 #include <cstring>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
 #include "Garmin/GarminProtocol.h"
 #include "Garmin/WatchCommand.h"
 #include "Garmin/WatchState.h"
+#include "Tournament/Game/GameRecord.h"
 #include "../common/check.h"
 #include "../common/host_globals.h"
 
@@ -94,16 +96,13 @@ void test_crc32_check_value() {
 
 void test_advertising() {
     // spec: advertising/adv_normal
-    expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06",
+    expectBuf("0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06",
               buildAdvertising(BOARD_ID, 0, 0), "16.1 normal");
     // spec: advertising/adv_pairing
-    expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06",
+    expectBuf("0f ff ff ff 53 43 42 44 02 78 56 34 12 01 af 10 02 01 06",
               buildAdvertising(BOARD_ID, ADV_FLAG_PAIRING, 4271), "16.1 pairing");
-    // spec: advertising/adv_tournament
-    expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06",
-              buildAdvertising(BOARD_ID, ADV_FLAG_TOURNAMENT, 4271), "16.1 tournament");
     // The code field is zero outside the window whatever the caller passes.
-    expectBuf("0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06",
+    expectBuf("0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06",
               buildAdvertising(BOARD_ID, 0, 4271), "code ignored when not pairing");
 }
 
@@ -117,7 +116,7 @@ void test_scan_response() {
 
 void test_version() {
     // spec: advertising/version
-    expectBuf("01 30 2e 36 2e 31 38 37", buildVersion("0.6.187"), "16.1 version");
+    expectBuf("02 30 2e 36 2e 31 38 37", buildVersion("0.6.187"), "16.1 version");
     const Frame longest = buildVersion("0123456789012345678901234");
     TEST_ASSERT_EQUAL_UINT8(MAX_FRAME, longest.len);
     TEST_ASSERT_EQUAL_MEMORY("0123456789012345678", longest.data + 1, 19);
@@ -126,10 +125,10 @@ void test_version() {
 void test_auth_frames() {
     const std::vector<uint8_t> nb = hex("a0 a1 a2 a3 a4 a5 a6 a7");
     // spec: auth/challenge
-    expectBuf("01 00 a0 a1 a2 a3 a4 a5 a6 a7", buildAuthChallenge(nb.data()), "16.2 challenge");
+    expectBuf("02 00 a0 a1 a2 a3 a4 a5 a6 a7", buildAuthChallenge(nb.data()), "16.2 challenge");
 
     // spec: auth/proof
-    const std::vector<uint8_t> proof = hex("01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae");
+    const std::vector<uint8_t> proof = hex("02 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae");
     AuthProof p{};
     TEST_ASSERT_TRUE(parseAuthProof(proof.data(), proof.size(), p));
     TEST_ASSERT_EQUAL_UINT8(2, p.slotId);
@@ -138,7 +137,7 @@ void test_auth_frames() {
 
     TEST_ASSERT_FALSE_MESSAGE(parseAuthProof(proof.data(), 18, p), "short proof");
     std::vector<uint8_t> foreign = proof;
-    foreign[0] = 0x00;
+    foreign[0] = 0x01;   // a v1 peer
     TEST_ASSERT_FALSE_MESSAGE(parseAuthProof(foreign.data(), foreign.size(), p), "foreign PROTO");
     std::vector<uint8_t> wrongType = proof;
     wrongType[1] = 0x00;
@@ -146,15 +145,15 @@ void test_auth_frames() {
 
     const std::vector<uint8_t> boardMac = hex("18 57 e1 b4 a9 6e bf 5a");
     // spec: auth/result_ok
-    expectBuf("01 02 00 18 57 e1 b4 a9 6e bf 5a", buildAuthResultOk(boardMac.data()), "16.2 result");
+    expectBuf("02 02 00 18 57 e1 b4 a9 6e bf 5a", buildAuthResultOk(boardMac.data()), "16.2 result");
     // spec: auth/result_bad_proof
-    expectBuf("01 02 01", buildAuthResultFail(AuthStatus::BadProof), "16.2 failure");
-    expectBuf("01 02 02", buildAuthResultFail(AuthStatus::UnknownSlot), "unknown slot");
+    expectBuf("02 02 01", buildAuthResultFail(AuthStatus::BadProof), "16.2 failure");
+    expectBuf("02 02 02", buildAuthResultFail(AuthStatus::UnknownSlot), "unknown slot");
 }
 
 void test_pairing_frames() {
     // spec: pairing/request
-    const std::vector<uint8_t> request = hex("01 01 af 10");
+    const std::vector<uint8_t> request = hex("02 01 af 10");
     uint16_t code = 0;
     TEST_ASSERT_TRUE(parsePairingRequest(request.data(), request.size(), code));
     TEST_ASSERT_EQUAL_UINT16(4271, code);
@@ -162,12 +161,12 @@ void test_pairing_frames() {
 
     const std::vector<uint8_t> key = hex("00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f");
     // spec: pairing/result_ok
-    expectBuf("01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f", buildPairingOk(2, key.data()),
+    expectBuf("02 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f", buildPairingOk(2, key.data()),
               "16.3 result");
     // spec: pairing/result_bad_code
-    expectBuf("01 02 02", buildPairingFail(PairingStatus::BadCode), "16.3 wrong code");
-    expectBuf("01 02 01", buildPairingFail(PairingStatus::WindowClosed), "window closed");
-    expectBuf("01 00", buildPairingNone(), "before any request");
+    expectBuf("02 02 02", buildPairingFail(PairingStatus::BadCode), "16.3 wrong code");
+    expectBuf("02 02 01", buildPairingFail(PairingStatus::WindowClosed), "window closed");
+    expectBuf("02 00", buildPairingNone(), "before any request");
 
     TEST_ASSERT_EQUAL_UINT16(4271, pairingCodeFrom(14271));
     TEST_ASSERT_EQUAL_UINT16(9999, pairingCodeFrom(9999));
@@ -186,23 +185,23 @@ void test_roster() {
     uint8_t cursor = 0xff;
     // spec: roster_read/write
     // spec: roster_read_teams/write
-    const std::vector<uint8_t> write = hex("01 00");
+    const std::vector<uint8_t> write = hex("02 00");
     TEST_ASSERT_TRUE(parseRosterCursor(write.data(), write.size(), cursor));
     TEST_ASSERT_EQUAL_UINT8(0, cursor);
     TEST_ASSERT_FALSE_MESSAGE(parseRosterCursor(write.data(), 1, cursor), "short cursor write");
 
     // spec: roster_read/read_anna
-    expectBuf("01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00", buildRosterRead(0, 3, entries.data()),
+    expectBuf("02 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00", buildRosterRead(0, 3, entries.data()),
               "16.4 read 0");
     // spec: roster_read/read_krystian
-    expectBuf("01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00", buildRosterRead(1, 3, entries.data()),
+    expectBuf("02 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00", buildRosterRead(1, 3, entries.data()),
               "16.4 read 1");
     // spec: roster_read/read_ola
-    expectBuf("01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00", buildRosterRead(2, 3, entries.data()),
+    expectBuf("02 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00", buildRosterRead(2, 3, entries.data()),
               "16.4 read 2");
     // spec: roster_read/read_past_end
-    expectBuf("01 03 03", buildRosterRead(3, 3, entries.data()), "16.4 past the end");
-    expectBuf("01 c8 03", buildRosterRead(200, 3, entries.data()), "far past the end");
+    expectBuf("02 03 03", buildRosterRead(3, 3, entries.data()), "16.4 past the end");
+    expectBuf("02 c8 03", buildRosterRead(200, 3, entries.data()), "far past the end");
 
     // 16.4 teams roster.
     uint8_t teams[2 * ROSTER_ENTRY_SIZE];
@@ -215,13 +214,13 @@ void test_roster() {
                 teamInput.data(), teamInput.size(), "16.4 teams rosterVersion input");
     TEST_ASSERT_EQUAL_HEX32(0xdb5f702c, rosterVersion(2, teams));
     // spec: roster_read_teams/read_orly
-    expectBuf("01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00", buildRosterRead(0, 2, teams),
+    expectBuf("02 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00", buildRosterRead(0, 2, teams),
               "16.4 teams read 0");
     // spec: roster_read_teams/read_lisy
-    expectBuf("01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00", buildRosterRead(1, 2, teams),
+    expectBuf("02 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00", buildRosterRead(1, 2, teams),
               "16.4 teams read 1");
     // spec: roster_read_teams/read_past_end
-    expectBuf("01 02 02", buildRosterRead(2, 2, teams), "16.4 teams past the end");
+    expectBuf("02 02 02", buildRosterRead(2, 2, teams), "16.4 teams past the end");
 
     // A 9-character name fills the field with no NUL; a longer one is cut.
     uint8_t e[ROSTER_ENTRY_SIZE];
@@ -232,18 +231,18 @@ void test_roster() {
 void test_unauthenticated_read() {
     // spec: board_version/unauth_read
     // spec: results/unauth_read
-    expectBuf("01", buildProtoOnly(), "16.8 unauthenticated read");
+    expectBuf("02", buildProtoOnly(), "16.8 unauthenticated read");
 }
 
 void test_menu_state() {
     WatchState s;
-    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
-    s.setMenu(0x04, entries, 5);
-    TEST_ASSERT_EQUAL_UINT8(15, s.bodySize());
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03};
+    s.setMenu(0x04, entries, 4);
+    TEST_ASSERT_EQUAL_UINT8(14, s.bodySize());
     const std::vector<Frame> c = chunks(1, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: menu_state/menu
-    expectBuf("01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80", c[0], "16.5 MENU");
+    expectBuf("02 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03", c[0], "16.5 MENU");
 }
 
 void test_squash_playing_state() {
@@ -261,7 +260,7 @@ void test_squash_playing_state() {
     TEST_ASSERT_EQUAL_UINT8(21, s.bodySize());
 
     // spec: score_confirm/score
-    const std::vector<uint8_t> command = hex("01 08 07 00");
+    const std::vector<uint8_t> command = hex("02 08 07 00");
     WatchCommand cmd{};
     TEST_ASSERT_EQUAL(static_cast<int>(CommandParse::Ok),
                       static_cast<int>(parseCommand(command.data(), command.size(), cmd)));
@@ -272,8 +271,8 @@ void test_squash_playing_state() {
     const std::vector<Frame> c = chunks(0x2a, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: score_confirm/state
-    expectBuf("01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11", c[0], "16.6 chunk 0");
-    expectBuf("01 2a 12 01 00 05 03", c[1], "16.6 chunk 1");
+    expectBuf("02 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11", c[0], "16.6 chunk 0");
+    expectBuf("02 2a 12 01 00 05 03", c[1], "16.6 chunk 1");
 }
 
 void test_padel_playing_state() {
@@ -292,8 +291,8 @@ void test_padel_playing_state() {
     std::vector<Frame> c = chunks(0x2b, s, 12, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: padel_playing/tiebreak
-    expectBuf("01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12", c[0], "16.7 tiebreak chunk 0");
-    expectBuf("01 2b 12 01 00 06 06 03 02", c[1], "16.7 tiebreak chunk 1");
+    expectBuf("02 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12", c[0], "16.7 tiebreak chunk 0");
+    expectBuf("02 2b 12 01 00 06 06 03 02", c[1], "16.7 tiebreak chunk 1");
 
     p = WatchState::Playing{};
     p.leftUid = ANNA;
@@ -306,8 +305,8 @@ void test_padel_playing_state() {
     s.setPadelPlaying(p, 3, 4);
     c = chunks(0x2c, s, 13, AckStatus::Applied);
     // spec: padel_playing/ladder
-    expectBuf("01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.7 ladder chunk 0");
-    expectBuf("01 2c 12 00 00 02 01 03 04", c[1], "16.7 ladder chunk 1");
+    expectBuf("02 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.7 ladder chunk 0");
+    expectBuf("02 2c 12 00 00 02 01 03 04", c[1], "16.7 ladder chunk 1");
 }
 
 void test_other_screens() {
@@ -372,7 +371,7 @@ void test_sides_swapped_state() {
     std::vector<Frame> c = chunks(0x30, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: sides_swapped/intro
-    expectBuf("01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40", c[0], "16.11 INTRO");
+    expectBuf("02 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40", c[0], "16.11 INTRO");
 
     WatchState::Playing p{};
     p.leftUid = ANNA;
@@ -387,8 +386,8 @@ void test_sides_swapped_state() {
     c = chunks(0x31, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: sides_swapped/playing
-    expectBuf("01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50", c[0], "16.11 PLAYING chunk 0");
-    expectBuf("01 31 12 00 01 02 01", c[1], "16.11 PLAYING chunk 1");
+    expectBuf("02 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50", c[0], "16.11 PLAYING chunk 0");
+    expectBuf("02 31 12 00 01 02 01", c[1], "16.11 PLAYING chunk 1");
 
     // Bit 6 sits beside the other flags.
     p.uncommitted = true;
@@ -417,8 +416,8 @@ void test_sides_swapped_state() {
     c = chunks(0x32, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: sides_swapped/game_over
-    expectBuf("01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00", c[0], "16.11 GAME_OVER chunk 0");
-    expectBuf("01 32 12 0b 07 01 01 00 40", c[1], "16.11 GAME_OVER chunk 1");
+    expectBuf("02 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00", c[0], "16.11 GAME_OVER chunk 0");
+    expectBuf("02 32 12 0b 07 01 01 00 40", c[1], "16.11 GAME_OVER chunk 1");
 
     // spec: sides_swapped/match_start
     s.setSport(SportId::Squash);
@@ -426,13 +425,13 @@ void test_sides_swapped_state() {
     TEST_ASSERT_EQUAL_UINT8(21, s.bodySize());
     c = chunks(0x33, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
-    expectBuf("01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.11 MATCH_START chunk 0");
-    expectBuf("01 33 12 33 22 11 40", c[1], "16.11 MATCH_START chunk 1");
+    expectBuf("02 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.11 MATCH_START chunk 0");
+    expectBuf("02 33 12 33 22 11 40", c[1], "16.11 MATCH_START chunk 1");
 
     s.setCelebration(r);
     c = chunks(0x33, s, 0, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
-    expectBuf("01 33 12 0b 07 01 01 00 40", c[1], "CELEBRATION chunk 1");
+    expectBuf("02 33 12 0b 07 01 01 00 40", c[1], "CELEBRATION chunk 1");
 }
 
 // Spec 16.12: the newest point's side, as the board's own history has it.
@@ -450,8 +449,8 @@ void test_last_point_state() {
     std::vector<Frame> c = chunks(0x40, s, 1, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: last_known/state
-    expectBuf("01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.12 chunk 0");
-    expectBuf("01 40 12 00 00 00 01", c[1], "16.12 chunk 1");
+    expectBuf("02 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31", c[0], "16.12 chunk 0");
+    expectBuf("02 40 12 00 00 00 01", c[1], "16.12 chunk 1");
 
     // The flags of the walk in 16.12.
     struct Step { bool uncommitted, known, right; uint8_t flags; };
@@ -554,7 +553,7 @@ void test_command_sizes() {
     const Case cases[] = {
         {0x01, 4}, {0x02, 3}, {0x03, 7}, {0x04, 3}, {0x05, 11}, {0x06, 3},
         {0x07, 3}, {0x08, 4}, {0x09, 4}, {0x0A, 3}, {0x0B, 3}, {0x0D, 3}, {0x0E, 7},
-        {0x0F, 13}, {0x10, 11}, {0x11, 13}, {0x12, 12}, {0x13, 9}, {0x14, 8},
+        {0x0F, 13}, {0x10, 11}, {0x11, 13}, {0x13, 9}, {0x14, 8},
     };
     for (size_t k = 0; k < sizeof(cases) / sizeof(cases[0]); k++) {
         uint8_t frame[MAX_FRAME] = {PROTO, cases[k].id, 42};
@@ -577,7 +576,7 @@ void test_command_sizes() {
 
 void test_command_unknown_and_dropped() {
     WatchCommand cmd{};
-    const uint8_t unknownIds[] = {0x00, 0x0C, 0x15, 0x7F, 0xFF};
+    const uint8_t unknownIds[] = {0x00, 0x0C, 0x12, 0x15, 0x7F, 0xFF};
     for (size_t k = 0; k < sizeof(unknownIds); k++) {
         const uint8_t frame[] = {PROTO, unknownIds[k], 9, 0, 0, 0, 0, 0, 0, 0, 0};
         const CommandParse r = parseCommand(frame, sizeof(frame), cmd);
@@ -588,7 +587,7 @@ void test_command_unknown_and_dropped() {
     const uint8_t endMatch[] = {PROTO, 0x0C, 3};
     TEST_ASSERT_TRUE(parseCommand(endMatch, 3, cmd) == CommandParse::UnknownCmd);
 
-    const uint8_t foreign[] = {0x00, 0x02, 5};
+    const uint8_t foreign[] = {0x01, 0x02, 5};   // a v1 watch
     TEST_ASSERT_TRUE_MESSAGE(parseCommand(foreign, 3, cmd) == CommandParse::Drop, "foreign PROTO");
     const uint8_t noSeq[] = {PROTO, 0x02};
     TEST_ASSERT_TRUE_MESSAGE(parseCommand(noSeq, 2, cmd) == CommandParse::Drop, "no seq");
@@ -597,36 +596,36 @@ void test_command_unknown_and_dropped() {
 
 void test_command_arguments() {
     WatchCommand cmd{};
-    const std::vector<uint8_t> setPair = hex("01 05 11 0d 0c 0b 0a 44 33 22 11");
+    const std::vector<uint8_t> setPair = hex("02 05 11 0d 0c 0b 0a 44 33 22 11");
     TEST_ASSERT_TRUE(parseCommand(setPair.data(), setPair.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_HEX32(ANNA, cmd.leftUid);
     TEST_ASSERT_EQUAL_HEX32(KRYSTIAN, cmd.rightUid);
     TEST_ASSERT_EQUAL_UINT8(0x11, cmd.seq);
 
-    const std::vector<uint8_t> toggle = hex("01 03 01 88 77 66 55");
+    const std::vector<uint8_t> toggle = hex("02 03 01 88 77 66 55");
     TEST_ASSERT_TRUE(parseCommand(toggle.data(), toggle.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_HEX32(0x55667788, cmd.uid);
 
-    const std::vector<uint8_t> sport = hex("01 01 02 04");
+    const std::vector<uint8_t> sport = hex("02 01 02 04");
     TEST_ASSERT_TRUE(parseCommand(sport.data(), sport.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(SportId::Padel), cmd.sport);
 
-    const std::vector<uint8_t> undo = hex("01 09 03 01");
+    const std::vector<uint8_t> undo = hex("02 09 03 01");
     TEST_ASSERT_TRUE(parseCommand(undo.data(), undo.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.id == CommandId::Undo && cmd.side == 1 && cmd.hasValidSide());
 
     // Side is range-checked by the view (-> INVALID), not by the parser.
-    const std::vector<uint8_t> badSide = hex("01 08 04 02");
+    const std::vector<uint8_t> badSide = hex("02 08 04 02");
     TEST_ASSERT_TRUE(parseCommand(badSide.data(), badSide.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_FALSE(cmd.hasValidSide());
 
     // spec: last_known/score_right
-    const std::vector<uint8_t> scoreRight = hex("01 08 01 01");
+    const std::vector<uint8_t> scoreRight = hex("02 08 01 01");
     TEST_ASSERT_TRUE(parseCommand(scoreRight.data(), scoreRight.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.id == CommandId::Score && cmd.seq == 1 && cmd.side == 1 && cmd.hasValidSide());
 
     // A previous parse never leaks into the next.
-    const std::vector<uint8_t> sync = hex("01 0d 05");
+    const std::vector<uint8_t> sync = hex("02 0d 05");
     TEST_ASSERT_TRUE(parseCommand(sync.data(), sync.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.side == 0 && cmd.uid == 0 && cmd.leftUid == 0 && cmd.target == 0);
 }
@@ -636,7 +635,7 @@ void test_focus() {
 
     // 16.9 MENU: focus squash, the state echoes the cursor.
     // spec: focus/focus_squash
-    const std::vector<uint8_t> menuFocus = hex("01 0e 03 01 00 00 00");
+    const std::vector<uint8_t> menuFocus = hex("02 0e 03 01 00 00 00");
     TEST_ASSERT_TRUE(parseCommand(menuFocus.data(), menuFocus.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.id == CommandId::Focus);
     TEST_ASSERT_EQUAL_UINT8(3, cmd.seq);
@@ -644,16 +643,16 @@ void test_focus() {
     TEST_ASSERT_EQUAL_HEX32(0, cmd.uid);
 
     WatchState s;
-    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
-    s.setMenu(0x01, entries, 5);
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03};
+    s.setMenu(0x01, entries, 4);
     std::vector<Frame> c = chunks(2, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: focus/menu_state
-    expectBuf("01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80", c[0], "16.9 MENU");
+    expectBuf("02 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03", c[0], "16.9 MENU");
 
     // 16.9 CHOOSE_PLAYERS: focus KRYSTIAN with ANNA and OLA selected.
     // spec: focus/focus_krystian
-    const std::vector<uint8_t> playerFocus = hex("01 0e 04 44 33 22 11");
+    const std::vector<uint8_t> playerFocus = hex("02 0e 04 44 33 22 11");
     TEST_ASSERT_TRUE(parseCommand(playerFocus.data(), playerFocus.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_HEX32(KRYSTIAN, cmd.target);
 
@@ -663,21 +662,21 @@ void test_focus() {
     c = chunks(0x10, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(1, c.size());
     // spec: focus/choose_players_state
-    expectBuf("01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11", c[0], "16.9 CHOOSE_PLAYERS");
+    expectBuf("02 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11", c[0], "16.9 CHOOSE_PLAYERS");
 
     // spec: focus/focus_start
-    const std::vector<uint8_t> startFocus = hex("01 0e 05 00 00 00 00");
+    const std::vector<uint8_t> startFocus = hex("02 0e 05 00 00 00 00");
     TEST_ASSERT_TRUE(parseCommand(startFocus.data(), startFocus.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_HEX32(0, cmd.target);
 
     // An unknown uid parses; the view answers INVALID.
     // spec: focus/focus_unknown_uid
-    const std::vector<uint8_t> nobody = hex("01 0e 06 78 56 34 12");
+    const std::vector<uint8_t> nobody = hex("02 0e 06 78 56 34 12");
     TEST_ASSERT_TRUE(parseCommand(nobody.data(), nobody.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_EQUAL_HEX32(0x12345678, cmd.target);
 
     // spec: focus/focus_malformed
-    const std::vector<uint8_t> shortFocus = hex("01 0e 07 01");
+    const std::vector<uint8_t> shortFocus = hex("02 0e 07 01");
     const CommandParse r = parseCommand(shortFocus.data(), shortFocus.size(), cmd);
     TEST_ASSERT_TRUE(r == CommandParse::Malformed);
     TEST_ASSERT_TRUE(cmd.seq == 7 && ackFor(r) == AckStatus::Malformed);
@@ -694,39 +693,41 @@ void test_service_uuid_bytes() {
 void test_heart_frames() {
     uint8_t bpm = 0xff;
     // spec: heart/write_a
-    const std::vector<uint8_t> write = hex("01 92");
+    const std::vector<uint8_t> write = hex("02 92");
     TEST_ASSERT_TRUE(parseHeartWrite(write.data(), write.size(), bpm));
     TEST_ASSERT_EQUAL_UINT8(146, bpm);
     // spec: heart/write_c
-    const std::vector<uint8_t> writeC = hex("01 7c");
+    const std::vector<uint8_t> writeC = hex("02 7c");
     TEST_ASSERT_TRUE(parseHeartWrite(writeC.data(), writeC.size(), bpm));
     TEST_ASSERT_EQUAL_UINT8(124, bpm);
     // spec: heart/write_c_clear
-    const std::vector<uint8_t> clear = hex("01 00");
+    const std::vector<uint8_t> clear = hex("02 00");
     TEST_ASSERT_TRUE(parseHeartWrite(clear.data(), clear.size(), bpm));
     TEST_ASSERT_EQUAL_UINT8(0, bpm);
     // spec: heart/discard_short
-    const std::vector<uint8_t> oneByte = hex("01");
+    const std::vector<uint8_t> oneByte = hex("02");
     TEST_ASSERT_FALSE_MESSAGE(parseHeartWrite(oneByte.data(), oneByte.size(), bpm), "1-byte write");
     TEST_ASSERT_FALSE_MESSAGE(parseHeartWrite(write.data(), 1, bpm), "short");
     // spec: heart/discard_v0
     const std::vector<uint8_t> foreign = hex("00 92");
     TEST_ASSERT_FALSE_MESSAGE(parseHeartWrite(foreign.data(), foreign.size(), bpm), "foreign PROTO");
-    const std::vector<uint8_t> longer = hex("01 92 ff");
+    const std::vector<uint8_t> v1 = hex("01 92");
+    TEST_ASSERT_FALSE_MESSAGE(parseHeartWrite(v1.data(), v1.size(), bpm), "a v1 peer");
+    const std::vector<uint8_t> longer = hex("02 92 ff");
     TEST_ASSERT_TRUE_MESSAGE(parseHeartWrite(longer.data(), longer.size(), bpm) && bpm == 146, "trailing byte");
 
     // spec: heart/notify_a
     const uint8_t oneA[HEART_LIST] = {0x7c, 0, 0};
-    expectBuf("01 7c 00 00", buildHeart(oneA), "16.10 A's notify");
+    expectBuf("02 7c 00 00", buildHeart(oneA), "16.10 A's notify");
     // spec: heart/notify_b
     const uint8_t both[HEART_LIST] = {0x92, 0x7c, 0};
-    expectBuf("01 92 7c 00", buildHeart(both), "16.10 B's notify");
+    expectBuf("02 92 7c 00", buildHeart(both), "16.10 B's notify");
     // spec: heart/notify_c
     const uint8_t one[HEART_LIST] = {0x92, 0, 0};
-    expectBuf("01 92 00 00", buildHeart(one), "16.10 C's notify");
+    expectBuf("02 92 00 00", buildHeart(one), "16.10 C's notify");
     // spec: heart/notify_a_empty
     const uint8_t none[HEART_LIST] = {0, 0, 0};
-    expectBuf("01 00 00 00", buildHeart(none), "16.10 none");
+    expectBuf("02 00 00 00", buildHeart(none), "16.10 none");
     TEST_ASSERT_EQUAL_STRING("0d780008-2f44-4f31-93b7-b78dc9e29735", HEART_UUID);
 }
 
@@ -738,33 +739,35 @@ void test_results_frames() {
     buildResultEntry(0x0A0B0C0D, 0x11223344, 9, 11, 2, entries + 2 * RESULT_ENTRY_SIZE);
     const uint32_t tid = 0xC0FFEE01;
     // spec: results/read_1
-    expectBuf("01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", buildResultsRead(0, 3, tid, 0, entries), "game 0");
+    expectBuf("02 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01", buildResultsRead(0, 3, tid, 0, entries), "game 0");
     // spec: results/read_2
-    expectBuf("01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01", buildResultsRead(1, 3, tid, 0, entries), "game 1");
+    expectBuf("02 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01", buildResultsRead(1, 3, tid, 0, entries), "game 1");
     // spec: results/read_3
-    expectBuf("01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02", buildResultsRead(2, 3, tid, 0, entries), "game 2");
+    expectBuf("02 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02", buildResultsRead(2, 3, tid, 0, entries), "game 2");
     // spec: results/read_past_end
-    expectBuf("01 03 00 03 00 01 ee ff c0 00 00", buildResultsRead(3, 3, tid, 0, entries), "past the end");
+    expectBuf("02 03 00 03 00 01 ee ff c0 00 00", buildResultsRead(3, 3, tid, 0, entries), "past the end");
     // spec: results/read_no_tournament
-    expectBuf("01 03 00 00 00 00 00 00 00 00 00", buildResultsRead(3, 0, 0, 0, nullptr), "no tournament");
+    expectBuf("02 03 00 00 00 00 00 00 00 00 00", buildResultsRead(3, 0, 0, 0, nullptr), "no tournament");
     TEST_ASSERT_EQUAL_UINT8(RESULTS_END_FRAME, buildResultsRead(3, 3, tid, 0, entries).len);
 
     uint16_t index = 0xffff;
     // spec: results/write
-    const std::vector<uint8_t> writeZero = hex("01 00 00");
+    const std::vector<uint8_t> writeZero = hex("02 00 00");
     TEST_ASSERT_TRUE(parseResultsCursor(writeZero.data(), writeZero.size(), index));
     TEST_ASSERT_EQUAL_UINT16(0, index);
-    const std::vector<uint8_t> write = hex("01 03 00");
+    const std::vector<uint8_t> write = hex("02 03 00");
     TEST_ASSERT_TRUE(parseResultsCursor(write.data(), write.size(), index));
     TEST_ASSERT_EQUAL_UINT16(3, index);
-    const std::vector<uint8_t> wide = hex("01 34 12 ff");
+    const std::vector<uint8_t> wide = hex("02 34 12 ff");
     TEST_ASSERT_TRUE_MESSAGE(parseResultsCursor(wide.data(), wide.size(), index) && index == 0x1234, "u16, trailing byte");
     // spec: results/discard_short
-    const std::vector<uint8_t> shortWrite = hex("01 02");
+    const std::vector<uint8_t> shortWrite = hex("02 02");
     TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(shortWrite.data(), shortWrite.size(), index), "short");
     // spec: results/discard_v0
     const std::vector<uint8_t> foreign = hex("00 00 00");
     TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(foreign.data(), foreign.size(), index), "foreign PROTO");
+    const std::vector<uint8_t> v1 = hex("01 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseResultsCursor(v1.data(), v1.size(), index), "a v1 peer");
     TEST_ASSERT_EQUAL_STRING("0d780009-2f44-4f31-93b7-b78dc9e29735", RESULTS_UUID);
 }
 
@@ -776,7 +779,7 @@ void test_offline_games() {
     s.setMatchStart(0x3, ANNA, KRYSTIAN, false);
 
     // spec: offline_games/add
-    const std::vector<uint8_t> add = hex("01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07");
+    const std::vector<uint8_t> add = hex("02 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07");
     TEST_ASSERT_TRUE(parseCommand(add.data(), add.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.id == CommandId::AddOfflineGame && cmd.seq == 5);
     TEST_ASSERT_EQUAL_HEX32(ANNA, cmd.uidA);
@@ -785,27 +788,27 @@ void test_offline_games() {
     std::vector<Frame> c = chunks(0x50, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: offline_games/add_ack
-    expectBuf("01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 add ack chunk 0");
-    expectBuf("01 50 12 33 22 11 00", c[1], "16.14 add ack chunk 1");
+    expectBuf("02 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 add ack chunk 0");
+    expectBuf("02 50 12 33 22 11 00", c[1], "16.14 add ack chunk 1");
 
     // spec: offline_games/add_illegal
-    const std::vector<uint8_t> illegal = hex("01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03");
+    const std::vector<uint8_t> illegal = hex("02 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03");
     TEST_ASSERT_TRUE(parseCommand(illegal.data(), illegal.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.seq == 6 && cmd.scoreA == 15 && cmd.scoreB == 3);
     c = chunks(0x51, s, cmd.seq, AckStatus::Invalid);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: offline_games/add_illegal_ack
-    expectBuf("01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 illegal ack chunk 0");
-    expectBuf("01 51 12 33 22 11 00", c[1], "16.14 illegal ack chunk 1");
+    expectBuf("02 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 illegal ack chunk 0");
+    expectBuf("02 51 12 33 22 11 00", c[1], "16.14 illegal ack chunk 1");
 
     uint8_t entry[RESULT_ENTRY_SIZE];
     buildResultEntry(ANNA, KRYSTIAN, 11, 7, 1 | TURN_OFFLINE, entry);
     // spec: offline_games/read_offline
-    expectBuf("01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81", buildResultsRead(0, 1, 0xC0FFEE01, 0, entry),
+    expectBuf("02 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81", buildResultsRead(0, 1, 0xC0FFEE01, 0, entry),
               "16.14 offline game");
 
     // spec: offline_games/remove
-    const std::vector<uint8_t> remove = hex("01 10 07 01 ee ff c0 00 00 00 00");
+    const std::vector<uint8_t> remove = hex("02 10 07 01 ee ff c0 00 00 00 00");
     TEST_ASSERT_TRUE(parseCommand(remove.data(), remove.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.id == CommandId::RemoveOfflineGame && cmd.seq == 7);
     TEST_ASSERT_EQUAL_HEX32(0xC0FFEE01, cmd.tournamentId);
@@ -813,14 +816,14 @@ void test_offline_games() {
     c = chunks(0x52, s, cmd.seq, AckStatus::Applied);
     TEST_ASSERT_EQUAL(2, c.size());
     // spec: offline_games/remove_ack
-    expectBuf("01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 remove ack chunk 0");
-    expectBuf("01 52 12 33 22 11 00", c[1], "16.14 remove ack chunk 1");
+    expectBuf("02 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44", c[0], "16.14 remove ack chunk 0");
+    expectBuf("02 52 12 33 22 11 00", c[1], "16.14 remove ack chunk 1");
 
     // spec: offline_games/read_end_rev
-    expectBuf("01 00 00 00 00 01 ee ff c0 01 00", buildResultsRead(0, 0, 0xC0FFEE01, 1, nullptr), "16.14 end with rev");
+    expectBuf("02 00 00 00 00 01 ee ff c0 01 00", buildResultsRead(0, 0, 0xC0FFEE01, 1, nullptr), "16.14 end with rev");
 
     // rev and index are u16 little-endian.
-    const std::vector<uint8_t> wide = hex("01 10 08 01 ee ff c0 34 12 02 01");
+    const std::vector<uint8_t> wide = hex("02 10 08 01 ee ff c0 34 12 02 01");
     TEST_ASSERT_TRUE(parseCommand(wide.data(), wide.size(), cmd) == CommandParse::Ok);
     TEST_ASSERT_TRUE(cmd.rev == 0x1234 && cmd.index == 0x0102);
 
@@ -831,18 +834,10 @@ void test_offline_games() {
 
 namespace {
     const uint32_t OLA = 0x55667788;
-    const uint32_t TABLET_TID = 0x7AB1E001;
-    // 16.15: rosterVersion of ANNA + KRYSTIAN, the first push.
-    const uint32_t TWO_ENTRY_CRC = 0xC694F1D4;
-
-    std::vector<Frame> chunksAt(const uint8_t stateSeq, const WatchState &state, const uint8_t ackSeq,
-                                const AckStatus ack, const uint32_t version) {
-        uint8_t body[STATE_HEADER + WatchState::MAX_DATA];
-        const uint8_t len = state.build(ackSeq, ack, version, body);
-        std::vector<Frame> out;
-        for (uint8_t i = 0; i < chunkCount(len); i++) out.push_back(buildStateChunk(stateSeq, body, len, i));
-        return out;
-    }
+    const uint32_t TID = 0x7AB1E001;
+    const uint32_t GAME_1 = 0x5EED0001;
+    const uint32_t GAME_2 = 0x5EED0002;
+    const uint32_t GAME_3 = 0x5EED0003;
 
     WatchCommand parsed(const char *frameHex) {
         const std::vector<uint8_t> f = hex(frameHex);
@@ -857,290 +852,310 @@ namespace {
         expectBuf(second, c[1], what);
     }
 
-    WatchState tabletMatchStart(const uint32_t selected, const uint32_t right) {
+    void expectOneChunk(const std::vector<Frame> &c, const char *only, const char *what) {
+        TEST_ASSERT_EQUAL(1, c.size());
+        expectBuf(only, c[0], what);
+    }
+
+    WatchState matchStart() {
         WatchState s;
         s.setSport(SportId::Squash);
-        s.setMatchStart(selected, ANNA, right, false);
+        s.setMatchStart(0x7, ANNA, KRYSTIAN, false);
         return s;
     }
+
+    WatchState choosePlayers() {
+        WatchState s;
+        s.setSport(SportId::Squash);
+        s.setChoosePlayers(0x7, 0);
+        return s;
+    }
+
+    GameRecord record(const uint32_t id, const uint8_t rev, const uint16_t order, const uint32_t uidA,
+                      const uint32_t uidB, const uint8_t scoreA, const uint8_t scoreB, const uint8_t flags) {
+        GameRecord r;
+        r.id = id;
+        r.rev = rev;
+        r.order = order;
+        r.uidA = uidA;
+        r.uidB = uidB;
+        r.scoreA = scoreA;
+        r.scoreB = scoreB;
+        r.flags = flags;
+        return r;
+    }
+
+    Frame recordRead(const GameRecord &r) {
+        uint8_t image[GameRecord::SIZE];
+        r.toBytes(image);
+        return buildRecordRead(image);
+    }
+
+    // A peer's RECORD write: parsed, and its 18 bytes decode to `expected`.
+    void expectRecordWrite(const char *frameHex, const GameRecord &expected) {
+        const std::vector<uint8_t> f = hex(frameHex);
+        TournamentWriteFrame w;
+        TEST_ASSERT_TRUE(parseTournamentWrite(f.data(), f.size(), w) && w.type == TournamentFrame::Record);
+        uint8_t want[GameRecord::SIZE];
+        expected.toBytes(want);
+        TEST_ASSERT_EQUAL_MEMORY(want, w.body, GameRecord::SIZE);
+    }
+
+    void expectCursor(const char *frameHex, const TournamentCursor which, const uint16_t seq) {
+        const std::vector<uint8_t> f = hex(frameHex);
+        TournamentWriteFrame w;
+        TEST_ASSERT_TRUE(parseTournamentWrite(f.data(), f.size(), w) && w.type == TournamentFrame::Cursor);
+        TEST_ASSERT_TRUE(w.which == which && w.seq == seq);
+    }
+
+    // games_crc (20.1): CRC-32 over the live count byte and their 18-byte images in sort order.
+    uint32_t gamesCrc(std::initializer_list<GameRecord> live) {
+        uint32_t crc = 0;
+        const uint8_t count = static_cast<uint8_t>(live.size());
+        crc = crc32(&count, 1, crc);
+        for (const GameRecord &r : live) {
+            uint8_t image[GameRecord::SIZE];
+            r.toBytes(image);
+            crc = crc32(image, GameRecord::SIZE, crc);
+        }
+        return crc;
+    }
+
+    TournamentStatus status(const uint16_t changesTo, const uint8_t gamesCount, const uint32_t crc,
+                            const uint8_t epoch) {
+        return TournamentStatus{TID, static_cast<uint8_t>(SportId::Squash), 3, rosterVersion3(), changesTo,
+                                gamesCount, crc, epoch};
+    }
+
+    const GameRecord ANNA_KRYSTIAN = record(GAME_1, 0, 1, ANNA, KRYSTIAN, 11, 7, 0);
+    const GameRecord KRYSTIAN_OLA = record(GAME_2, 0, 2, KRYSTIAN, OLA, 11, 5, 0);
+    const GameRecord ANNA_OLA = record(GAME_3, 0, 3, ANNA, OLA, 11, 6, GameRecord::OFFLINE);
 }
 
-// Spec 16.15: the TOURNAMENT characteristic's frames, the four tablet commands and their acks.
-void test_tablet_frames() {
-    TEST_ASSERT_EQUAL_STRING("0d78000a-2f44-4f31-93b7-b78dc9e29735", TOURNAMENT_UUID);
+// 16.15 sync_join: a tablet joins a board's tournament and pulls its log.
+void test_sync_join() {
+    // spec: sync_join/status
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 5a",
+              buildTournamentStatus(status(1, 1, gamesCrc({ANNA_KRYSTIAN}), 0x5A)), "join status");
+    // spec: sync_join/cursor_changes
+    expectCursor("02 03 01 01 00", TournamentCursor::Changes, 1);
+    // spec: sync_join/read_1
+    expectBuf("02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00", recordRead(ANNA_KRYSTIAN), "join read 1");
+    // spec: sync_join/read_end
+    expectBuf("02 04 01 00 00 00", buildTournamentEnd(1, 0), "join end");
+    // spec: sync_join/ack
+    const WatchCommand ack = parsed("02 13 01 01 e0 b1 7a 01 00");
+    TEST_ASSERT_TRUE(ack.id == CommandId::AckChanges && ack.seq == 1 && ack.tournamentId == TID && ack.upTo == 1);
+    // spec: sync_join/ack_ack
+    expectChunks(chunks(0x60, matchStart(), 1, AckStatus::Applied),
+                 "02 60 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "02 60 12 33 22 11 00", "join ack");
+}
 
-    WatchState wait;
-    wait.setBusy(ScreenId::TournamentWait);
-    const std::vector<Frame> w = chunks(0x60, wait, 0, AckStatus::Applied);
-    TEST_ASSERT_EQUAL(1, w.size());
-    // spec: tablet_begin/wait_state
-    expectBuf("01 60 01 04 00 00 00 5b e7 0f 15", w[0], "TOURNAMENT_WAIT");
-
-    // spec: tablet_begin/status_none
-    expectBuf("01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", buildTournamentStatus(TabletStatus{}),
+// 16.15 sync_begin: a tablet pushes its roster and BEGINs, then forwards a record.
+void test_sync_begin() {
+    // spec: sync_begin/status_none
+    expectBuf("02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", buildTournamentStatus(TournamentStatus{}),
               "no tournament");
 
-    // ROSTER_ENTRY carries the ROSTER read's 16-byte entry.
     const std::vector<uint8_t> r = roster();
-    // spec: tablet_begin/roster_anna
-    // spec: tablet_repush/roster_anna
-    const std::vector<uint8_t> anna = hex("01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
-    // spec: tablet_begin/roster_krystian
-    // spec: tablet_repush/roster_krystian
-    const std::vector<uint8_t> krystian = hex("01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00");
-    // spec: tablet_repush/roster_ola
-    const std::vector<uint8_t> ola = hex("01 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00");
+    // spec: sync_begin/roster_anna
+    const std::vector<uint8_t> anna = hex("02 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    // spec: sync_begin/roster_krystian
+    const std::vector<uint8_t> krystian = hex("02 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00");
+    // spec: sync_begin/roster_ola
+    const std::vector<uint8_t> ola = hex("02 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00");
     const std::vector<uint8_t> *writes[] = {&anna, &krystian, &ola};
     for (uint8_t i = 0; i < 3; i++) {
         TournamentWriteFrame f;
         TEST_ASSERT_TRUE(parseTournamentWrite(writes[i]->data(), writes[i]->size(), f));
-        TEST_ASSERT_TRUE(f.type == TournamentWrite::RosterEntry && f.index == i);
-        TEST_ASSERT_EQUAL_MEMORY(&r[i * ROSTER_ENTRY_SIZE], f.entry, ROSTER_ENTRY_SIZE);
+        TEST_ASSERT_TRUE(f.type == TournamentFrame::RosterEntry && f.index == i);
+        TEST_ASSERT_EQUAL_MEMORY(&r[i * ROSTER_ENTRY_SIZE], f.body, ROSTER_ENTRY_SIZE);
     }
-    TEST_ASSERT_EQUAL_HEX32(TWO_ENTRY_CRC, rosterVersion(2, r.data()));
 
-    // spec: tablet_begin/begin
-    // spec: tablet_refusals/begin_on_menu
-    WatchCommand cmd = parsed("01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::BeginTournament && cmd.seq == 1);
-    TEST_ASSERT_EQUAL_HEX32(TABLET_TID, cmd.tournamentId);
-    TEST_ASSERT_TRUE(cmd.sport == static_cast<uint8_t>(SportId::Squash) && cmd.count == 2);
-    TEST_ASSERT_EQUAL_HEX32(TWO_ENTRY_CRC, cmd.crc);
+    // spec: sync_begin/begin
+    const WatchCommand begin = parsed("02 11 01 01 e0 b1 7a 01 03 5b e7 0f 15");
+    TEST_ASSERT_TRUE(begin.id == CommandId::BeginTournament && begin.seq == 1 && begin.tournamentId == TID);
+    TEST_ASSERT_TRUE(begin.sport == static_cast<uint8_t>(SportId::Squash) && begin.count == 3);
+    TEST_ASSERT_EQUAL_HEX32(rosterVersion3(), begin.crc);
+    // spec: sync_begin/begin_ack
+    expectChunks(chunks(0x70, matchStart(), 1, AckStatus::Applied),
+                 "02 70 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "02 70 12 33 22 11 00", "begin ack");
 
-    // spec: tablet_begin/begin_ack
-    expectChunks(chunksAt(0x61, tabletMatchStart(0x3, KRYSTIAN), 1, AckStatus::Applied, TWO_ENTRY_CRC),
-                 "01 61 02 11 01 01 00 d4 f1 94 c6 03 00 00 00 0d 0c 0b 0a 44",
-                 "01 61 12 33 22 11 00", "begin ack");
-
-    TabletStatus st{};
-    st.tournamentId = TABLET_TID;
-    st.sport = static_cast<uint8_t>(SportId::Squash);
-    st.rosterCount = 2;
-    st.rosterCrc = TWO_ENTRY_CRC;
-    st.outboxFrom = 1;
-    // spec: tablet_begin/status_begun
-    expectBuf("01 00 01 e0 b1 7a 01 02 d4 f1 94 c6 01 00 00 00 00 00 00 00", buildTournamentStatus(st), "begun");
-
-    // spec: tablet_repush/repush
-    cmd = parsed("01 11 02 01 e0 b1 7a 01 03 5b e7 0f 15");
-    TEST_ASSERT_TRUE(cmd.count == 3 && cmd.crc == rosterVersion3());
-    // spec: tablet_repush/repush_ack
-    expectChunks(chunks(0x62, tabletMatchStart(0x7, KRYSTIAN), 2, AckStatus::Applied),
-                 "01 62 02 11 01 02 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
-                 "01 62 12 33 22 11 00", "repush ack");
-
-    // Outbox.
-    st.rosterCount = 3;
-    st.rosterCrc = rosterVersion3();
-    st.outboxTo = 2;
-    // spec: tablet_outbox/status
-    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 02 00 00 00 00 00", buildTournamentStatus(st), "outbox");
-
-    TournamentWriteFrame f;
-    // spec: tablet_outbox/cursor_outbox
-    const std::vector<uint8_t> toOutbox = hex("01 03 01 01 00");
-    TEST_ASSERT_TRUE(parseTournamentWrite(toOutbox.data(), toOutbox.size(), f));
-    TEST_ASSERT_TRUE(f.type == TournamentWrite::Cursor && f.which == TournamentRead::Outbox && f.seq == 1);
-
-    const GameEntry tracked = {0x5EED0001, ANNA, KRYSTIAN, 11, 7, 0};
-    const GameEntry offline = {0x5EED0002, KRYSTIAN, OLA, 11, 4, static_cast<uint8_t>(GameFlags::Offline)};
-    uint8_t e[GAME_ENTRY_SIZE];
-    buildGameEntry(tracked, e);
-    // spec: tablet_outbox/read_1
-    expectBuf("01 01 01 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 00", buildOutboxRead(1, e), "outbox 1");
-    buildGameEntry(offline, e);
-    // spec: tablet_outbox/read_2
-    expectBuf("01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02", buildOutboxRead(2, e), "outbox 2");
-    // spec: tablet_outbox/read_end
-    expectBuf("01 02 03 00", buildOutboxEnd(3), "outbox end");
-
-    // spec: tablet_outbox/ack
-    cmd = parsed("01 13 03 01 e0 b1 7a 02 00");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::AckOutbox && cmd.tournamentId == TABLET_TID && cmd.upTo == 2);
-    // spec: tablet_outbox/ack_ack
-    expectChunks(chunks(0x63, tabletMatchStart(0x7, KRYSTIAN), 3, AckStatus::Applied),
-                 "01 63 02 11 01 03 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
-                 "01 63 12 33 22 11 00", "ack ack");
-
-    // spec: tablet_outbox/cursor_status
-    const std::vector<uint8_t> toStatus = hex("01 03 00 00 00");
-    TEST_ASSERT_TRUE(parseTournamentWrite(toStatus.data(), toStatus.size(), f));
-    TEST_ASSERT_TRUE(f.type == TournamentWrite::Cursor && f.which == TournamentRead::Status);
-    st.outboxFrom = 3;
-    // spec: tablet_outbox/status_acked
-    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 00 00 00 00", buildTournamentStatus(st), "acked");
-
-    // Mirror.
-    // spec: tablet_mirror/mirror_0
-    const std::vector<uint8_t> m0 = hex("01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
-    // spec: tablet_mirror/mirror_1
-    const std::vector<uint8_t> m1 = hex("01 02 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02");
-    // spec: tablet_mirror/mirror_2
-    const std::vector<uint8_t> m2 = hex("01 02 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00");
-    const std::vector<uint8_t> *mirror[] = {&m0, &m1, &m2};
-    uint8_t staged[3 * GAME_ENTRY_SIZE];
-    for (uint8_t i = 0; i < 3; i++) {
-        TEST_ASSERT_TRUE(parseTournamentWrite(mirror[i]->data(), mirror[i]->size(), f));
-        TEST_ASSERT_TRUE(f.type == TournamentWrite::MirrorEntry && f.index == i);
-        memcpy(staged + i * GAME_ENTRY_SIZE, f.entry, GAME_ENTRY_SIZE);
-    }
-    const GameEntry pending = parseGameEntry(staged);
-    TEST_ASSERT_TRUE(pending.id == 0x5EED0001 && pending.uidA == ANNA && pending.uidB == KRYSTIAN);
-    TEST_ASSERT_TRUE(pending.scoreA == 11 && pending.scoreB == 7
-                     && pending.flags == static_cast<uint8_t>(GameFlags::Pending));
-    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(GameFlags::Offline), parseGameEntry(staged + 15).flags);
-    TEST_ASSERT_EQUAL_HEX32(0x7AB10003, parseGameEntry(staged + 30).id);
-    TEST_ASSERT_EQUAL_HEX32(0x8050D643, mirrorCrc(3, staged));
-    TEST_ASSERT_EQUAL_HEX32(0xD202EF8D, mirrorCrc(0, nullptr));
-
-    // spec: tablet_mirror/commit
-    cmd = parsed("01 12 04 01 e0 b1 7a 03 43 d6 50 80");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::CommitMirror && cmd.tournamentId == TABLET_TID && cmd.count == 3);
-    TEST_ASSERT_EQUAL_HEX32(0x8050D643, cmd.crc);
-    // spec: tablet_mirror/commit_ack
-    expectChunks(chunks(0x64, tabletMatchStart(0x7, KRYSTIAN), 4, AckStatus::Applied),
-                 "01 64 02 11 01 04 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
-                 "01 64 12 33 22 11 00", "commit ack");
-
-    // RESULTS after the commit: the offline game, then the (+) game; the PENDING one is not listed.
-    uint8_t listed[2 * RESULT_ENTRY_SIZE];
-    buildResultEntry(KRYSTIAN, OLA, 11, 4, 1 | TURN_OFFLINE, listed);
-    buildResultEntry(ANNA, OLA, 11, 9, 1, listed + RESULT_ENTRY_SIZE);
-    // spec: tablet_mirror/results_2
-    expectBuf("01 01 00 02 00 01 e0 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 01", buildResultsRead(1, 2, TABLET_TID, 1, listed),
-              "mirrored game");
-    // spec: tablet_mirror/results_end
-    expectBuf("01 02 00 02 00 01 e0 b1 7a 01 00", buildResultsRead(2, 2, TABLET_TID, 1, listed), "mirror rev");
-    st.mirrorCrc = 0x8050D643;
-    // spec: tablet_mirror/status_mirrored
-    expectBuf("01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 43 d6 50 80", buildTournamentStatus(st), "mirrored");
-
-    // spec: tablet_set_side/set_side
-    cmd = parsed("01 14 05 01 88 77 66 55");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::SetSide && cmd.side == 1 && cmd.uid == OLA && cmd.hasValidSide());
-    // spec: tablet_set_side/set_side_ack
-    expectChunks(chunks(0x65, tabletMatchStart(0x7, OLA), 5, AckStatus::Applied),
-                 "01 65 02 11 01 05 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
-                 "01 65 12 77 66 55 00", "set side ack");
-
-    // spec: tablet_refusals/begin_other_tid
-    cmd = parsed("01 11 06 02 e0 b1 7a 01 03 5b e7 0f 15");
-    TEST_ASSERT_EQUAL_HEX32(0x7AB1E002, cmd.tournamentId);
-    // spec: tablet_refusals/begin_other_tid_ack
-    expectChunks(chunks(0x66, tabletMatchStart(0x7, OLA), 6, AckStatus::Invalid),
-                 "01 66 02 11 01 06 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
-                 "01 66 12 77 66 55 00", "other tid ack");
-    // spec: tablet_refusals/commit_bad_crc
-    cmd = parsed("01 12 07 01 e0 b1 7a 00 00 00 00 00");
-    TEST_ASSERT_TRUE(cmd.count == 0 && cmd.crc == 0 && cmd.crc != mirrorCrc(0, nullptr));
-    // spec: tablet_refusals/commit_bad_crc_ack
-    expectChunks(chunks(0x67, tabletMatchStart(0x7, OLA), 7, AckStatus::Invalid),
-                 "01 67 02 11 01 07 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
-                 "01 67 12 77 66 55 00", "bad crc ack");
-    // spec: tablet_refusals/remove
-    cmd = parsed("01 10 08 01 e0 b1 7a 01 00 00 00");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::RemoveOfflineGame && cmd.tournamentId == TABLET_TID && cmd.rev == 1);
-    // spec: tablet_refusals/remove_ack
-    expectChunks(chunks(0x68, tabletMatchStart(0x7, OLA), 8, AckStatus::WrongScreen),
-                 "01 68 02 11 01 08 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
-                 "01 68 12 77 66 55 00", "remove ack");
-    // spec: tablet_refusals/back
-    cmd = parsed("01 02 09");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::Back && cmd.seq == 9);
-    // spec: tablet_refusals/back_ack
-    expectChunks(chunks(0x69, tabletMatchStart(0x7, OLA), 9, AckStatus::WrongScreen),
-                 "01 69 02 11 01 09 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88",
-                 "01 69 12 77 66 55 00", "back ack");
-
-    WatchState menu;
-    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
-    menu.setMenu(0x04, entries, 5);
-    const std::vector<Frame> mc = chunks(0x02, menu, 1, AckStatus::WrongScreen);
-    TEST_ASSERT_EQUAL(1, mc.size());
-    // spec: tablet_refusals/begin_on_menu_ack
-    expectBuf("01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80", mc[0], "begin on MENU");
+    // The empty list's games_crc is the CRC of the count byte 0.
+    TEST_ASSERT_EQUAL_HEX32(0xD202EF8D, gamesCrc({}));
+    // spec: sync_begin/status_joined
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 00 00 00 8d ef 02 d2 c3",
+              buildTournamentStatus(status(0, 0, gamesCrc({}), 0xC3)), "joined");
+    // spec: sync_begin/push_1
+    expectRecordWrite("02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00", ANNA_KRYSTIAN);
+    // spec: sync_begin/status_synced
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3",
+              buildTournamentStatus(status(1, 1, gamesCrc({ANNA_KRYSTIAN}), 0xC3)), "synced");
+    // spec: sync_begin/cursor_changes
+    expectCursor("02 03 01 01 00", TournamentCursor::Changes, 1);
+    // spec: sync_begin/read_end
+    expectBuf("02 04 01 00 00 00", buildTournamentEnd(1, 0), "own push skipped");
 }
 
-// 16.16: a client enters tablet mode with FOCUS / SELECT_SPORT on the menu entry 0x80 and leaves with BACK.
-void test_tablet_mode_entry() {
-    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03, 0x80};
-    WatchState menu;
-    menu.setMenu(0x04, entries, 5);
-    // spec: tablet_mode_entry/menu
-    expectBuf("01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80",
-                 chunks(0x70, menu, 0, AckStatus::Applied)[0], "menu");
-
-    // spec: tablet_mode_entry/focus_tablet
-    WatchCommand cmd = parsed("01 0e 01 80 00 00 00");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::Focus && cmd.seq == 1);
-    TEST_ASSERT_EQUAL_HEX32(0x80, cmd.target);
-    menu.setMenu(0x80, entries, 5);
-    // spec: tablet_mode_entry/focus_tablet_ack
-    expectBuf("01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80",
-                 chunks(0x71, menu, 1, AckStatus::Applied)[0], "focus ack");
-
-    // spec: tablet_mode_entry/select_tablet
-    cmd = parsed("01 01 02 80");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::SelectSport && cmd.seq == 2);
-    TEST_ASSERT_EQUAL_HEX8(static_cast<uint8_t>(MenuEntry::TabletMode), cmd.sport);
-
-    WatchState wait;
-    wait.setBusy(ScreenId::TournamentWait);
-    // spec: tablet_mode_entry/select_tablet_ack
-    expectBuf("01 72 01 04 00 02 00 5b e7 0f 15",
-                 chunks(0x72, wait, 2, AckStatus::Applied)[0], "select ack");
-
-    // spec: tablet_mode_entry/back_on_wait
-    cmd = parsed("01 02 03");
-    TEST_ASSERT_TRUE(cmd.id == CommandId::Back && cmd.seq == 3);
-
-    menu.setMenu(0x04, entries, 5);
-    // spec: tablet_mode_entry/back_on_wait_ack
-    expectBuf("01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80",
-                 chunks(0x73, menu, 3, AckStatus::Applied)[0], "back ack");
+// 16.15 sync_pull: a resumed pull after a drop.
+void test_sync_pull() {
+    // spec: sync_pull/status
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 03 79 2d 75 ef 5a",
+              buildTournamentStatus(status(3, 3, gamesCrc({ANNA_KRYSTIAN, KRYSTIAN_OLA, ANNA_OLA}), 0x5A)), "pull");
+    // spec: sync_pull/cursor_changes
+    expectCursor("02 03 01 02 00", TournamentCursor::Changes, 2);
+    // spec: sync_pull/read_2
+    expectBuf("02 02 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00", recordRead(KRYSTIAN_OLA), "read 2");
+    // spec: sync_pull/read_3
+    expectBuf("02 02 03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02", recordRead(ANNA_OLA), "read 3");
+    // spec: sync_pull/read_end
+    expectBuf("02 04 03 00 00 00", buildTournamentEnd(3, 0), "pull end");
+    // spec: sync_pull/ack
+    const WatchCommand ack = parsed("02 13 01 01 e0 b1 7a 03 00");
+    TEST_ASSERT_TRUE(ack.id == CommandId::AckChanges && ack.tournamentId == TID && ack.upTo == 3);
+    // spec: sync_pull/ack_ack
+    expectChunks(chunks(0x61, matchStart(), 1, AckStatus::Applied),
+                 "02 61 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "02 61 12 33 22 11 00", "pull ack");
 }
 
-// Discards and lengths of the TOURNAMENT writes and the tablet commands.
-void test_tablet_frame_edges() {
+// 16.15 sync_merge: rev order and the byte tie-break of two edits.
+void test_sync_merge() {
+    const GameRecord edit = record(GAME_1, 1, 1, ANNA, KRYSTIAN, 11, 8, 0);
+    const GameRecord tie = record(GAME_1, 1, 1, ANNA, KRYSTIAN, 11, 9, 0);
+    // spec: sync_merge/status
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3",
+              buildTournamentStatus(status(1, 1, gamesCrc({ANNA_KRYSTIAN}), 0xC3)), "merge status");
+    // spec: sync_merge/edit
+    expectRecordWrite("02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 08 00", edit);
+    // spec: sync_merge/stale
+    expectRecordWrite("02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00", ANNA_KRYSTIAN);
+    // spec: sync_merge/tie
+    expectRecordWrite("02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00", tie);
+    TEST_ASSERT_TRUE(edit.beats(ANNA_KRYSTIAN) && !ANNA_KRYSTIAN.beats(edit));
+    TEST_ASSERT_TRUE(tie.beats(edit) && !edit.beats(tie));
+    // spec: sync_merge/status_after
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 01 8b 0a 99 d3 c3",
+              buildTournamentStatus(status(3, 1, gamesCrc({tie}), 0xC3)), "after merge");
+    // spec: sync_merge/cursor_records
+    expectCursor("02 03 02 00 00", TournamentCursor::Records, 0);
+    // spec: sync_merge/read_0
+    expectBuf("02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00", recordRead(tie), "records 0");
+    // spec: sync_merge/read_end
+    expectBuf("02 04 01 00 00 00", buildTournamentEnd(1, 0), "records end");
+}
+
+// 16.15 sync_tombstone: REMOVE_OFFLINE_GAME turns a record into a tombstone.
+void test_sync_tombstone() {
+    // spec: sync_tombstone/remove
+    const WatchCommand remove = parsed("02 10 01 01 e0 b1 7a 00 5a 02 00");
+    TEST_ASSERT_TRUE(remove.id == CommandId::RemoveOfflineGame && remove.tournamentId == TID);
+    TEST_ASSERT_TRUE(remove.rev == 0x5A00 && remove.index == 2);
+    // spec: sync_tombstone/remove_ack
+    expectChunks(chunks(0x62, matchStart(), 1, AckStatus::Applied),
+                 "02 62 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44",
+                 "02 62 12 33 22 11 00", "remove ack");
+    // spec: sync_tombstone/results_end
+    expectBuf("02 02 00 02 00 01 e0 b1 7a 01 5a", buildResultsRead(2, 2, TID, 0x5A01, nullptr), "results end");
+    // spec: sync_tombstone/status
+    expectBuf("02 00 01 e0 b1 7a 01 03 5b e7 0f 15 04 00 02 44 60 80 a7 5a",
+              buildTournamentStatus(status(4, 2, gamesCrc({ANNA_KRYSTIAN, KRYSTIAN_OLA}), 0x5A)), "tombstone status");
+    // spec: sync_tombstone/cursor_changes
+    expectCursor("02 03 01 04 00", TournamentCursor::Changes, 4);
+    GameRecord tombstone = ANNA_OLA;
+    tombstone.rev = 1;
+    tombstone.flags |= GameRecord::DELETED;
+    // spec: sync_tombstone/read_4
+    expectBuf("02 02 03 00 ed 5e 01 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 03", recordRead(tombstone), "tombstone");
+    // spec: sync_tombstone/read_end
+    expectBuf("02 04 04 00 00 00", buildTournamentEnd(4, 0), "tombstone end");
+}
+
+// 16.15 sync_leave: BACK out of the tournament, refused while unsynced.
+void test_sync_leave() {
+    // spec: sync_leave/back_1
+    TEST_ASSERT_TRUE(parsed("02 02 03").id == CommandId::Back);
+    // spec: sync_leave/back_1_ack
+    expectOneChunk(chunks(0x71, choosePlayers(), 3, AckStatus::Applied),
+                   "02 71 01 10 01 03 00 5b e7 0f 15 07 00 00 00 00 00 00 00", "back to picker");
+    // spec: sync_leave/back_2
+    TEST_ASSERT_TRUE(parsed("02 02 04").seq == 4);
+    // spec: sync_leave/back_2_ack
+    expectOneChunk(chunks(0x72, choosePlayers(), 4, AckStatus::Invalid),
+                   "02 72 01 10 01 04 02 5b e7 0f 15 07 00 00 00 00 00 00 00", "unsynced refusal");
+    // spec: sync_leave/cursor_changes
+    expectCursor("02 03 01 02 00", TournamentCursor::Changes, 2);
+    // spec: sync_leave/read
+    expectBuf("02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00",
+              recordRead(record(GAME_1, 1, 1, ANNA, KRYSTIAN, 11, 9, 0)), "latest form");
+    // spec: sync_leave/read_end
+    expectBuf("02 04 03 00 00 00", buildTournamentEnd(3, 0), "leave end");
+    // spec: sync_leave/ack
+    const WatchCommand ack = parsed("02 13 05 01 e0 b1 7a 03 00");
+    TEST_ASSERT_TRUE(ack.id == CommandId::AckChanges && ack.seq == 5 && ack.upTo == 3);
+    // spec: sync_leave/ack_ack
+    expectOneChunk(chunks(0x73, choosePlayers(), 5, AckStatus::Applied),
+                   "02 73 01 10 01 05 00 5b e7 0f 15 07 00 00 00 00 00 00 00", "leave ack");
+    // spec: sync_leave/back_3
+    TEST_ASSERT_TRUE(parsed("02 02 06").seq == 6);
+    WatchState menu;
+    const uint8_t entries[] = {0x04, 0x01, 0x02, 0x03};
+    menu.setMenu(0x04, entries, 4);
+    // spec: sync_leave/back_3_ack
+    expectOneChunk(chunks(0x74, menu, 6, AckStatus::Applied),
+                   "02 74 01 01 00 06 00 5b e7 0f 15 04 04 04 01 02 03", "left to MENU");
+    // spec: sync_leave/status_none
+    expectBuf("02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00", buildTournamentStatus(TournamentStatus{}),
+              "left");
+}
+
+// Discards and lengths of the TOURNAMENT writes and the sync commands.
+void test_sync_frame_edges() {
     TournamentWriteFrame f;
-    const std::vector<uint8_t> anna = hex("01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
+    const std::vector<uint8_t> anna = hex("02 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00");
     TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(anna.data(), anna.size() - 1, f), "short roster entry");
     std::vector<uint8_t> v = anna;
-    v[0] = 0x00;
+    v[0] = 0x01;
     TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "foreign PROTO");
     v = anna;
-    v[2] = TABLET_ROSTER_MAX;
+    v[2] = TOURNAMENT_ROSTER_MAX;
     TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "roster index past the stage");
-    v[2] = TABLET_ROSTER_MAX - 1;
-    TEST_ASSERT_TRUE(parseTournamentWrite(v.data(), v.size(), f) && f.index == TABLET_ROSTER_MAX - 1);
+    v[2] = TOURNAMENT_ROSTER_MAX - 1;
+    TEST_ASSERT_TRUE(parseTournamentWrite(v.data(), v.size(), f) && f.index == TOURNAMENT_ROSTER_MAX - 1);
     v.push_back(0xEE);
     TEST_ASSERT_TRUE_MESSAGE(parseTournamentWrite(v.data(), v.size(), f), "trailing bytes ignored");
 
-    std::vector<uint8_t> game = hex("01 02 7f 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01");
-    TEST_ASSERT_TRUE(parseTournamentWrite(game.data(), game.size(), f) && f.index == 127);
-    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(game.data(), game.size() - 1, f), "short game");
-    game[2] = 128;
-    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(game.data(), game.size(), f), "game index past the stage");
+    const std::vector<uint8_t> rec = hex("02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(rec.data(), rec.size() - 1, f), "short record");
 
-    const std::vector<uint8_t> end = hex("01 03 02 00 00");
-    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(end.data(), end.size(), f), "cursor OUTBOX_END");
-    const std::vector<uint8_t> cursor = hex("01 03 01 34 12");
+    const std::vector<uint8_t> cursor = hex("02 03 01 34 12");
     TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(cursor.data(), 4, f), "short cursor");
     TEST_ASSERT_TRUE(parseTournamentWrite(cursor.data(), cursor.size(), f) && f.seq == 0x1234);
-    const std::vector<uint8_t> unknown = hex("01 04 00 00 00");
-    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(unknown.data(), unknown.size(), f), "unknown type");
-    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(unknown.data(), 1, f), "no type");
+    const std::vector<uint8_t> badWhich = hex("02 03 03 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(badWhich.data(), badWhich.size(), f), "unknown cursor");
+    // STATUS and END are the board's frames, never written.
+    const std::vector<uint8_t> st = hex("02 00 00 00 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(st.data(), st.size(), f), "STATUS write");
+    const std::vector<uint8_t> end = hex("02 04 01 00 00 00");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(end.data(), end.size(), f), "END write");
+    TEST_ASSERT_FALSE_MESSAGE(parseTournamentWrite(end.data(), 1, f), "no type");
 
     TEST_ASSERT_EQUAL_UINT8(13, commandSize(static_cast<uint8_t>(CommandId::BeginTournament)));
-    TEST_ASSERT_EQUAL_UINT8(12, commandSize(static_cast<uint8_t>(CommandId::CommitMirror)));
-    TEST_ASSERT_EQUAL_UINT8(9, commandSize(static_cast<uint8_t>(CommandId::AckOutbox)));
+    TEST_ASSERT_EQUAL_UINT8(9, commandSize(static_cast<uint8_t>(CommandId::AckChanges)));
     TEST_ASSERT_EQUAL_UINT8(8, commandSize(static_cast<uint8_t>(CommandId::SetSide)));
     WatchCommand cmd{};
-    const std::vector<uint8_t> setSide = hex("01 14 05 01 88 77 66 55");
+    const std::vector<uint8_t> setSide = hex("02 14 05 01 88 77 66 55");
+    TEST_ASSERT_TRUE(parseCommand(setSide.data(), setSide.size(), cmd) == CommandParse::Ok);
+    TEST_ASSERT_TRUE(cmd.id == CommandId::SetSide && cmd.side == 1 && cmd.uid == OLA && cmd.hasValidSide());
     TEST_ASSERT_TRUE(parseCommand(setSide.data(), setSide.size() - 1, cmd) == CommandParse::Malformed && cmd.seq == 5);
-    const std::vector<uint8_t> ack = hex("01 13 03 01 e0 b1 7a 34 12");
+    const std::vector<uint8_t> ack = hex("02 13 03 01 e0 b1 7a 34 12");
     TEST_ASSERT_TRUE(parseCommand(ack.data(), ack.size(), cmd) == CommandParse::Ok && cmd.upTo == 0x1234);
-    TEST_ASSERT_EQUAL_UINT8(20, buildTournamentStatus(TabletStatus{}).len);
+    TEST_ASSERT_TRUE(parseCommand(ack.data(), ack.size() - 1, cmd) == CommandParse::Malformed);
+    TEST_ASSERT_EQUAL_UINT8(TOURNAMENT_STATUS_FRAME, buildTournamentStatus(TournamentStatus{}).len);
+    TEST_ASSERT_EQUAL_UINT8(END_FRAME, buildTournamentEnd(0, 0).len);
+    TEST_ASSERT_EQUAL_UINT8(RECORD_FRAME, recordRead(ANNA_KRYSTIAN).len);
 }
 
 int main() {
@@ -1170,8 +1185,12 @@ int main() {
     RUN_TEST(test_heart_frames);
     RUN_TEST(test_results_frames);
     RUN_TEST(test_offline_games);
-    RUN_TEST(test_tablet_frames);
-    RUN_TEST(test_tablet_mode_entry);
-    RUN_TEST(test_tablet_frame_edges);
+    RUN_TEST(test_sync_join);
+    RUN_TEST(test_sync_begin);
+    RUN_TEST(test_sync_pull);
+    RUN_TEST(test_sync_merge);
+    RUN_TEST(test_sync_tombstone);
+    RUN_TEST(test_sync_leave);
+    RUN_TEST(test_sync_frame_edges);
     return UNITY_END();
 }

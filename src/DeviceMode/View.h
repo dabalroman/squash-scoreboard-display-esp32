@@ -48,7 +48,8 @@ public:
         return Garmin::AckStatus::WrongScreen;
     }
 
-    // An offline game was added or removed (#563): a view caching a standing refreshes it.
+    // Records or roster changed (an offline game, a RECORD write, a roster growth): a view
+    // caching a standing or a name refreshes it.
     virtual void onTournamentEdited() {}
 
     /**

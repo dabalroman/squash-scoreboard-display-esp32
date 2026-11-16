@@ -134,9 +134,12 @@ public:
         queueRender();
     }
 
-    void startMatch() {
+    // The game's record needs a live slot and a change seq (spec 20.2): none left, no game.
+    bool startMatch() {
+        if (tournament.reserveMatchSlot() != Garmin::AckStatus::Applied) return false;
         onStateChange(PadelModeState::MatchIntro);
         queueRender();
+        return true;
     }
 
     // Both must be in the tournament and distinct; `leftUid` takes the left court side.
@@ -165,8 +168,7 @@ public:
                 swapSides();
                 return Garmin::AckStatus::Applied;
             case Garmin::CommandId::StartMatch:
-                startMatch();
-                return Garmin::AckStatus::Applied;
+                return startMatch() ? Garmin::AckStatus::Applied : Garmin::AckStatus::Invalid;
             default:
                 return Garmin::AckStatus::WrongScreen;
         }

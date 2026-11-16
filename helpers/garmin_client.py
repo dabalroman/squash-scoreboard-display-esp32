@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Garmin App Remote test client: plays the watch's side of docs/garmin-protocol.md (v1)
-from a PC's Bluetooth adapter, so the board can be tested without the Connect IQ app (#81).
+"""Garmin App Remote test client: plays a client's side of docs/garmin-protocol.md (v2)
+from a PC's Bluetooth adapter, so the board can be tested without the Connect IQ app (#81) or the
+tablet. The pure record helpers (encode/decode, merge, games_crc) mirror spec 20 for the app to port.
 
 Needs `pip install bleak`. Never imported by the build.
 
@@ -15,15 +16,18 @@ Usage:
   python helpers/garmin_client.py roster               auth, read every roster entry
   python helpers/garmin_client.py results              auth, read the tournament's finished games (spec 19)
   python helpers/garmin_client.py results 3            the same from game 3 on ("anything new?" with 3 cached)
-  python helpers/garmin_client.py add-game 0x<uidA> 0x<uidB> 11 7   append an offline game (MATCH_START ... GAME_OVER)
+  python helpers/garmin_client.py add-game 0x<uidA> 0x<uidB> 11 7   add an offline game (MATCH_START ... GAME_OVER)
   python helpers/garmin_client.py remove-game 0        remove the offline game at that RESULTS index
-  python helpers/garmin_client.py push-roster ANNA:ff0000[:uid] KRYSTIAN:0040ff[:uid]   tablet: stage the roster (spec 20)
-  python helpers/garmin_client.py begin <tid> <sport> <name:RRGGBB[:uid]>...   tablet: stage the roster + BEGIN_TOURNAMENT
-  python helpers/garmin_client.py tstatus              tablet: read the TOURNAMENT status
-  python helpers/garmin_client.py outbox [from]        tablet: list the board's un-ACKed games from that seq
-  python helpers/garmin_client.py ack <tid> <upTo>     tablet: ACK_OUTBOX
-  python helpers/garmin_client.py mirror <tid> [id:uidA:uidB:sA:sB[:flags]]...   tablet: stage the games + COMMIT_MIRROR
-  python helpers/garmin_client.py set-side <left|right|0|1> <uid>   tablet: SET_SIDE
+  python helpers/garmin_client.py tstatus              read the TOURNAMENT status (spec 20)
+  python helpers/garmin_client.py changes [from]       pull the change log from that seq (default 1) to END
+  python helpers/garmin_client.py records [from]       walk the stored records by sort index (default 0)
+  python helpers/garmin_client.py put <id|new>:<rev>:<order|next>:<uidA>:<uidB>:<sA>:<sB>[:flags]
+                                                       write one RECORD (flags 1 DELETED, 2 OFFLINE)
+  python helpers/garmin_client.py ack <tid> <upTo>     ACK_CHANGES
+  python helpers/garmin_client.py push-roster ANNA:ff0000[:uid] KRYSTIAN:0040ff[:uid]   stage the roster only
+  python helpers/garmin_client.py join <tid> <sport> <name:RRGGBB[:uid]>...   stage the roster + BEGIN_TOURNAMENT
+                                                       (MENU: join; sport screen, same tid: grow; alias `begin`)
+  python helpers/garmin_client.py set-side <left|right|0|1> <uid>   SET_SIDE
   python helpers/garmin_client.py monitor             auth, print every state + HEART push until Ctrl+C
   python helpers/garmin_client.py heart 72             auth, send HR 72 (refreshed every 5 s), print the
                                                        others' HEART pushes until Ctrl+C, then clear it
@@ -34,7 +38,7 @@ Usage:
   python helpers/garmin_client.py send focus 0x<uid>   CHOOSE_PLAYERS: cursor to that profile (0 = START)
 
 Commands: select_sport <id>, back, toggle_player <uid>, start_tournament, set_pair <l> <r>,
-swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | tablet | uid | 0>,
+swap_sides, start_match, score <side>, undo <side>, skip, next_game, sync, focus <sport | uid | 0>,
 raw <hex...>.
 HEART is taken only while the board is on PLAYING (spec 18). The other watch must be a real one or
 another PC: Windows shares one link per board between processes, so a second instance here would be
@@ -53,6 +57,7 @@ import struct
 import sys
 import time
 import zlib
+from collections import namedtuple
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -62,7 +67,7 @@ try:
 except ImportError:
     sys.exit("bleak is missing: pip install bleak")
 
-PROTO = 0x01
+PROTO = 0x02
 COMPANY = 0xFFFF
 MAGIC = b"SCBD"
 UUID = "0d7800{:02x}-2f44-4f31-93b7-b78dc9e29735"
@@ -75,17 +80,12 @@ COMMANDS = {
     "start_match": (0x07, ""), "score": (0x08, "B"), "undo": (0x09, "B"), "skip": (0x0A, ""),
     "next_game": (0x0B, ""), "sync": (0x0D, ""), "focus": (0x0E, "I"),
     "add_offline_game": (0x0F, "IIBB"), "remove_offline_game": (0x10, "IHH"),
-    "begin_tournament": (0x11, "IBBI"), "commit_mirror": (0x12, "IBI"), "ack_outbox": (0x13, "IH"),
-    "set_side": (0x14, "BI"),
+    "begin_tournament": (0x11, "IBBI"), "ack_changes": (0x13, "IH"), "set_side": (0x14, "BI"),
 }
-SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x04: "TOURNAMENT_WAIT", 0x10: "CHOOSE_PLAYERS",
+SCREENS = {0x00: "BOOTING", 0x01: "MENU", 0x02: "CONFIG", 0x03: "PROFILE", 0x10: "CHOOSE_PLAYERS",
            0x11: "MATCH_START", 0x12: "INTRO", 0x13: "PLAYING", 0x14: "CELEBRATION", 0x15: "GAME_OVER"}
 SPORTS = {0: "none", 1: "squash", 2: "volleyball", 3: "short volleyball", 4: "padel"}
 SPORT_IDS = {name: sid for sid, name in SPORTS.items()}
-# MENU rows that are not sports (spec 11.3); `select_sport` / `focus` take them like a sport id.
-MENU_ENTRIES = {0x80: "TABLET_MODE"}
-MENU_ENTRY_IDS = {name.lower(): eid for eid, name in MENU_ENTRIES.items()}
-MENU_ENTRY_IDS["tablet"] = 0x80
 ACKS = {0: "APPLIED", 1: "WRONG_SCREEN", 2: "INVALID", 3: "UNKNOWN_CMD", 4: "BUSY", 5: "MALFORMED"}
 PADEL_POINTS = {0: "0", 1: "15", 2: "30", 3: "40", 4: "Ad"}
 # Bit 6 of the PLAYING flags and of the MATCH_START / INTRO / result flags byte (spec 11.3).
@@ -94,10 +94,12 @@ SIDES_SWAPPED = 0x40
 LAST_KNOWN = 0x10
 LAST_RIGHT = 0x20
 
-# TOURNAMENT frame types (spec 20.1): write types, read types (also CURSOR's `which`).
-T_ROSTER_ENTRY, T_MIRROR_ENTRY, T_CURSOR = 0x01, 0x02, 0x03
-T_STATUS, T_OUTBOX, T_OUTBOX_END = 0x00, 0x01, 0x02
-GAME_OFFLINE = 0x02
+# TOURNAMENT frame types and CURSOR targets (spec 20.1).
+T_STATUS, T_ROSTER_ENTRY, T_RECORD, T_CURSOR, T_END = 0x00, 0x01, 0x02, 0x03, 0x04
+CUR_STATUS, CUR_CHANGES, CUR_RECORDS = 0x00, 0x01, 0x02
+FLAG_DELETED, FLAG_OFFLINE = 0x01, 0x02
+RECORD_SIZE = 18
+ORDER_MAX = 0xFFFF
 SIDES = {"left": 0, "right": 1}
 
 # The board drops a value 15 s after its last write (spec 18), so a live HR is re-sent well inside that.
@@ -148,8 +150,7 @@ def parse_adv(adv):
     if len(payload) < 12 or payload[:4] != MAGIC:
         return None
     board_id, flags, code = struct.unpack_from("<IBH", payload, 5)
-    # (proto, board id, PAIRING, code, TOURNAMENT window - spec 9.2); index users keep working.
-    return payload[4], board_id, bool(flags & 1), code, bool(flags & 2)
+    return payload[4], board_id, bool(flags & 1), code
 
 
 async def scan(seconds=5.0):
@@ -201,7 +202,7 @@ def describe(body, names=None):
     try:
         if screen == 0x01:
             def entry(i):
-                return MENU_ENTRIES.get(i, SPORTS.get(i, i))
+                return SPORTS.get(i, i)
             out += f" cursor={entry(data[0])} entries={[entry(i) for i in data[2:2 + data[1]]]}"
         elif screen == 0x10:
             out += f" selected={struct.unpack_from('<I', data)[0]:#010x}"
@@ -270,10 +271,6 @@ def build_roster_entry(index, uid, r, g, b, name):
     return struct.pack("<BBBI3B9s", PROTO, T_ROSTER_ENTRY, index, uid, r, g, b, name.encode("ascii"))
 
 
-def build_mirror_entry(index, gid, uid_a, uid_b, score_a, score_b, flags=0):
-    return struct.pack("<BBBIIIBBB", PROTO, T_MIRROR_ENTRY, index, gid, uid_a, uid_b, score_a, score_b, flags)
-
-
 def build_cursor(which, seq=0):
     return struct.pack("<BBBH", PROTO, T_CURSOR, which, seq)
 
@@ -282,30 +279,103 @@ def roster_wire(uid, r, g, b, name):
     return struct.pack("<I3B9s", uid, r, g, b, name.encode("ascii"))
 
 
-def mirror_wire(gid, uid_a, uid_b, score_a, score_b, flags=0):
-    return struct.pack("<IIIBBB", gid, uid_a, uid_b, score_a, score_b, flags)
-
-
-def tablet_crc(entries):
-    """CRC-32 over the count byte then each entry's wire form (16 B roster, 15 B game; spec 20)."""
+def list_crc(entries):
+    """CRC-32 over the count byte then each entry's wire form (roster_crc, games_crc; spec 20)."""
     return zlib.crc32(bytes([len(entries)]) + b"".join(entries)) & 0xFFFFFFFF
 
 
+def roster_crc(entries):
+    """roster_crc / rosterVersion of (uid, r, g, b, name) entries in index order."""
+    return list_crc([roster_wire(*e) for e in entries])
+
+
+class Record(namedtuple("Record", "id rev order uid_a uid_b score_a score_b flags")):
+    """One game record (spec 20.2); its 18 B wire form is what games_crc and the merge tie compare."""
+    __slots__ = ()
+
+    @property
+    def deleted(self):
+        return bool(self.flags & FLAG_DELETED)
+
+    def wire(self):
+        return struct.pack("<IBHIIBBB", *self)
+
+    @classmethod
+    def from_wire(cls, data):
+        return cls(*struct.unpack_from("<IBHIIBBB", data))
+
+
+def build_record(record):
+    """RECORD write: the same 20 bytes a RECORD read returns, so a record forwards unchanged."""
+    return bytes([PROTO, T_RECORD]) + record.wire()
+
+
+def sort_key(record):
+    return record.order, record.id
+
+
+def next_order(held):
+    return min(max((r.order for r in held), default=0) + 1, ORDER_MAX)
+
+
+def new_record(held, uid_a, uid_b, score_a, score_b, flags=0):
+    """Create (spec 20.2): random non-zero id unused in `held`, rev 0, order above every held one."""
+    ids = {r.id for r in held}
+    gid = 0
+    while gid == 0 or gid in ids:
+        gid = int.from_bytes(os.urandom(4), "little")
+    return Record(gid, 0, next_order(held), uid_a, uid_b, score_a, score_b, flags)
+
+
+def edit_record(record, **changes):
+    """Edit: same id and order, rev + 1 mod 256."""
+    return record._replace(rev=(record.rev + 1) & 0xFF, **changes)
+
+
+def delete_record(record):
+    """Tombstone: rev + 1, DELETED set, everything else kept."""
+    return record._replace(rev=(record.rev + 1) & 0xFF, flags=record.flags | FLAG_DELETED)
+
+
+def merge(stored, new):
+    """The record a peer keeps after receiving `new` over `stored` (None = unknown id), spec 20.2.
+    Depends only on the two records, so peers converge whatever the arrival order."""
+    if stored is None:
+        return new
+    if stored.deleted != new.deleted:
+        return stored if stored.deleted else new
+    d = (new.rev - stored.rev) & 0xFF
+    if 1 <= d <= 127:
+        return new
+    if d > 128:
+        return stored
+    return new if new.wire() > stored.wire() else stored
+
+
+def games_crc(records):
+    """(games_count, games_crc) over the live records in (order, id) order; tombstones excluded."""
+    live = sorted((r for r in records if not r.deleted), key=sort_key)
+    return len(live), list_crc([r.wire() for r in live])
+
+
+Status = namedtuple("Status", "tournament_id sport roster_count roster_crc changes_to games_count games_crc log_epoch")
+
+
 def decode_status(frame):
-    """(tournament id, sport, roster count, roster crc, outbox from, outbox to, mirror crc), or None."""
+    """STATUS read -> Status, or None for a foreign / short / other-type frame."""
     if len(frame) < 20 or frame[0] != PROTO or frame[1] != T_STATUS:
         return None
-    return struct.unpack_from("<IBBIHHI", frame, 2)
+    return Status(*struct.unpack_from("<IBBIHBIB", frame, 2))
 
 
-def decode_outbox(frame):
-    """('game', seq, id, uidA, uidB, scoreA, scoreB, flags), ('end', seq) or None for a foreign frame."""
-    if len(frame) < 4 or frame[0] != PROTO:
+def decode_walk(frame):
+    """A CHANGES / RECORDS read: ('record', Record), ('end', seq, lost_to) or None."""
+    if len(frame) < 2 or frame[0] != PROTO:
         return None
-    if frame[1] == T_OUTBOX_END:
-        return "end", struct.unpack_from("<H", frame, 2)[0]
-    if frame[1] == T_OUTBOX and len(frame) >= 19:
-        return ("game",) + struct.unpack_from("<HIIIBBB", frame, 2)
+    if frame[1] == T_RECORD and len(frame) >= 2 + RECORD_SIZE:
+        return "record", Record.from_wire(frame[2:])
+    if frame[1] == T_END and len(frame) >= 6:
+        return ("end",) + struct.unpack_from("<HH", frame, 2)
     return None
 
 
@@ -319,21 +389,40 @@ def parse_roster_arg(text):
     return uid, r, g, b, parts[0]
 
 
-def parse_game_arg(text):
-    """id:uidA:uidB:sA:sB[:flags] -> (id, uidA, uidB, sA, sB, flags)."""
+def parse_record_arg(text, held=()):
+    """id:rev:order:uidA:uidB:sA:sB[:flags] -> Record; id `new` = a fresh id unused in `held`,
+    order `next` = 1 + the highest order in `held`."""
     parts = text.split(":")
-    if len(parts) not in (5, 6):
-        sys.exit("game: id:uidA:uidB:scoreA:scoreB[:flags] (flags 1 = PENDING, 2 = OFFLINE)")
-    v = [int(p, 0) for p in parts]
-    return tuple(v) + (0,) * (6 - len(v))
+    if len(parts) not in (7, 8):
+        sys.exit("record: <id|new>:<rev>:<order|next>:<uidA>:<uidB>:<sA>:<sB>[:flags]")
+    try:
+        gid = new_record(held, 0, 0, 0, 0).id if parts[0] == "new" else int(parts[0], 0)
+        order = next_order(held) if parts[2] == "next" else int(parts[2], 0)
+        rest = [int(p, 0) for p in parts[3:]] + [0] * (8 - len(parts))
+        rec = Record(gid, int(parts[1], 0), order, *rest)
+        rec.wire()
+    except (ValueError, struct.error) as err:
+        sys.exit(f"record: {err}")
+    return rec
 
 
 def describe_status(st):
-    tid, sport, count, crc, o_from, o_to, mcrc = st
-    if tid == 0:
-        return "TOURNAMENT status: no tablet tournament"
-    return (f"TOURNAMENT status: id {tid:08x} {SPORTS.get(sport, sport)} roster {count} crc {crc:08x} "
-            f"outbox {o_from}..{o_to} mirror crc {mcrc:08x}")
+    if st.tournament_id == 0:
+        return "TOURNAMENT status: no tournament"
+    return (f"TOURNAMENT status: id {st.tournament_id:08x} {SPORTS.get(st.sport, st.sport)} "
+            f"roster {st.roster_count} crc {st.roster_crc:08x} changes_to {st.changes_to} "
+            f"games {st.games_count} crc {st.games_crc:08x} log_epoch {st.log_epoch:02x}")
+
+
+def describe_record(rec, names=None):
+    names = names or {}
+
+    def who(uid):
+        return names.get(uid, f"{uid:08x}")
+
+    tags = "".join(t for f, t in ((FLAG_DELETED, " DELETED"), (FLAG_OFFLINE, " OFFLINE")) if rec.flags & f)
+    return (f"id {rec.id:08x} rev {rec.rev:3d} order {rec.order:5d}  "
+            f"{who(rec.uid_a):>9} {rec.score_a:2d}:{rec.score_b:<2d} {who(rec.uid_b)}{tags}")
 
 
 def describe_heart(values):
@@ -455,8 +544,6 @@ def build_command(name, args, seq):
     cmd_id, fmt = COMMANDS[name]
     if len(args) != len(fmt):
         sys.exit(f"{name} takes {len(fmt)} argument(s)")
-    if name in ("select_sport", "focus"):
-        args = [str(MENU_ENTRY_IDS.get(a.lower(), a)) for a in args]
     values = [int(a, 0) for a in args]
     return bytes([PROTO, cmd_id, seq]) + struct.pack("<" + fmt, *values)
 
@@ -475,7 +562,7 @@ async def find_address(store, board):
 async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("action", choices=["scan", "pair", "version", "state", "roster", "results", "add-game", "remove-game", "monitor", "send", "heart",
-                                       "push-roster", "begin", "tstatus", "outbox", "ack", "mirror", "set-side"])
+                                       *TABLET_ACTIONS])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--keys", default=str(DEFAULT_KEYS))
     ap.add_argument("--board", help="board id (hex) from the key store")
@@ -489,11 +576,9 @@ async def main():
         found = await scan()
         if not found:
             print("no scoreboard advertising")
-        for address, (device, rssi, (proto, board_id, pairing, code, tournament)) in found.items():
+        for address, (device, rssi, (proto, board_id, pairing, code)) in found.items():
             paired = " paired" if f"{board_id:08x}" in store["boards"] else ""
             window = f" PAIRING code {code:04d}" if pairing else ""
-            if tournament:
-                window = f" TOURNAMENT code {code:04d}"
             print(f"Scoreboard {board_id & 0xFFFF:04X}  id {board_id:08x}  proto {proto}  {address}  "
                   f"rssi {rssi}{window}{paired}")
         return
@@ -503,11 +588,10 @@ async def main():
             sys.exit("pair <code>")
         code = int(opts.args[0])
         found = await scan()
-        # A tournament window (spec 9.2) pairs the same way; its key is RAM-only on the board (slot 8).
-        match = [(a, v) for a, v in found.items() if (v[2][2] or v[2][4]) and v[2][3] == code]
+        match = [(a, v) for a, v in found.items() if v[2][2] and v[2][3] == code]
         if not match:
-            sys.exit(f"no board advertising PAIRING or TOURNAMENT with code {code:04d}")
-        address, (_, _, (proto, board_id, _, _, _)) = match[0]
+            sys.exit(f"no board advertising PAIRING with code {code:04d}")
+        address, (_, _, (proto, board_id, _, _)) = match[0]
         async with BleakClient(address) as client:
             session = Session(client)
             version = await session.read_version()
@@ -655,13 +739,40 @@ async def run_offline(session, action, args, seq):
         print(f"result {ACKS.get(body[3], body[3])}")
 
 
-TABLET_ACTIONS = ("push-roster", "begin", "tstatus", "outbox", "ack", "mirror", "set-side")
+TABLET_ACTIONS = ("tstatus", "changes", "records", "put", "ack", "push-roster", "join", "begin", "set-side")
 
 
 async def stage(session, frames):
     """One write after the previous one's response (spec 20: staged, not acked)."""
     for frame in frames:
         await session.tournament_write(frame)
+
+
+async def read_status(session):
+    """CURSOR STATUS + read; the read also binds this connection to the board's tournament."""
+    await session.tournament_write(build_cursor(CUR_STATUS))
+    status = decode_status(await session.read_tournament())
+    if status is None:
+        sys.exit("TOURNAMENT read refused (not authenticated?)")
+    return status
+
+
+async def walk(session, which, start):
+    """CURSOR then reads until END: ([Record], end seq, lost_to)."""
+    await session.tournament_write(build_cursor(which, start))
+    records = []
+    while True:
+        item = decode_walk(await session.read_tournament())
+        if item is None:
+            sys.exit("TOURNAMENT read refused")
+        if item[0] == "end":
+            return records, item[1], item[2]
+        records.append(item[1])
+
+
+def parse_sport(text):
+    sport = SPORT_IDS.get(text.replace("_", " ").lower())
+    return int(text, 0) if sport is None else sport
 
 
 async def run_tablet(session, action, args, seq):
@@ -675,49 +786,49 @@ async def run_tablet(session, action, args, seq):
         await stage(session, [build_roster_entry(i, *e) for i, e in enumerate(entries)])
         for i, e in enumerate(entries):
             print(f"staged {i}: {e[0]:08x} #{e[1]:02x}{e[2]:02x}{e[3]:02x} {e[4]}")
-        print(f"roster crc {tablet_crc([roster_wire(*e) for e in entries]):08x} (stage only; begin restages)")
+        print(f"roster crc {roster_crc(entries):08x} (stage only; join restages)")
         return
     if action == "tstatus":
-        await session.tournament_write(build_cursor(T_STATUS))
-        status = decode_status(await session.read_tournament())
-        if status is None:
-            sys.exit("TOURNAMENT read refused (not authenticated?)")
-        print(describe_status(status))
+        if args:
+            sys.exit("tstatus")
+        print(describe_status(await read_status(session)))
         return
-    if action == "outbox":
+    if action in ("changes", "records"):
         if len(args) > 1:
-            sys.exit("outbox [from]")
-        await session.tournament_write(build_cursor(T_OUTBOX, int(args[0], 0) if args else 0))
-        while True:
-            entry = decode_outbox(await session.read_tournament())
-            if entry is None:
-                sys.exit("TOURNAMENT read refused")
-            if entry[0] == "end":
-                print(f"OUTBOX_END at seq {entry[1]}")
-                return
-            _, oseq, gid, ua, ub, sa, sb, flags = entry
-            print(f"seq {oseq:3d}  id {gid:08x}  {ua:08x} {sa}:{sb} {ub:08x}{' OFFLINE' if flags & GAME_OFFLINE else ''}")
-    if action == "begin":
+            sys.exit(f"{action} [from]")
+        start = int(args[0], 0) if args else (1 if action == "changes" else 0)
+        which = CUR_CHANGES if action == "changes" else CUR_RECORDS
+        records, end, lost_to = await walk(session, which, start)
+        for rec in records:
+            print(describe_record(rec))
+        print(f"END seq {end} lost_to {lost_to}" + ("  (gap: walk RECORDS)" if action == "changes" and lost_to >= start > 1 else ""))
+        if action == "records":
+            count, crc = games_crc(records)
+            print(f"games {count} crc {crc:08x}")
+        return
+    if action == "put":
+        if len(args) != 1:
+            sys.exit("put <id|new>:<rev>:<order|next>:<uidA>:<uidB>:<sA>:<sB>[:flags]")
+        await read_status(session)
+        held = []
+        if args[0].split(":")[0] == "new" or args[0].split(":")[2:3] == ["next"]:
+            held, _, _ = await walk(session, CUR_RECORDS, 0)
+        rec = parse_record_arg(args[0], held)
+        await session.tournament_write(build_record(rec))
+        print(f"wrote {describe_record(rec)}")
+        print(describe_status(await read_status(session)))
+        return
+    if action in ("join", "begin"):
         if len(args) < 3:
-            sys.exit("begin <tid> <sport> <name:RRGGBB[:uid]>...")
-        sport = SPORT_IDS.get(args[1].replace("_", " ").lower())
-        if sport is None:
-            sport = int(args[1], 0)
+            sys.exit(f"{action} <tid> <sport> <name:RRGGBB[:uid]>...")
         entries = [parse_roster_arg(a) for a in args[2:]]
         await stage(session, [build_roster_entry(i, *e) for i, e in enumerate(entries)])
-        crc = tablet_crc([roster_wire(*e) for e in entries])
-        frame = build_command("begin_tournament", [args[0], str(sport), str(len(entries)), str(crc)], seq)
+        frame = build_command("begin_tournament",
+                              [args[0], str(parse_sport(args[1])), str(len(entries)), str(roster_crc(entries))], seq)
     elif action == "ack":
         if len(args) != 2:
             sys.exit("ack <tid> <upTo>")
-        frame = build_command("ack_outbox", args, seq)
-    elif action == "mirror":
-        if not args:
-            sys.exit("mirror <tid> [id:uidA:uidB:sA:sB[:flags]]...")
-        games = [parse_game_arg(a) for a in args[1:]]
-        await stage(session, [build_mirror_entry(i, *g) for i, g in enumerate(games)])
-        crc = tablet_crc([mirror_wire(*g) for g in games])
-        frame = build_command("commit_mirror", [args[0], str(len(games)), str(crc)], seq)
+        frame = build_command("ack_changes", args, seq)
     else:  # set-side
         if len(args) != 2:
             sys.exit("set-side <left|right|0|1> <uid>")

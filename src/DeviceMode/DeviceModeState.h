@@ -12,7 +12,6 @@ enum class DeviceModeState: uint8_t {
     ShortVolleyballMode = 5,
     PadelMode = 6,
     PlayerSetupMode = 7,
-    TournamentMode = 8,
     // Clock = 2,
     // Development = 3
 };

@@ -8,7 +8,10 @@
 
 class TournamentPlayersBarRenderer {
     static bool isActive(const UserProfile *user, const std::vector<UserProfile *> &activePlayers) {
-        return std::find(activePlayers.begin(), activePlayers.end(), user) != activePlayers.end();
+        // The tournament holds copies of the stored profiles: same uid, another address.
+        return std::find_if(activePlayers.begin(), activePlayers.end(), [user](const UserProfile *p) {
+            return p->getUid() == user->getUid();
+        }) != activePlayers.end();
     }
 
 public:

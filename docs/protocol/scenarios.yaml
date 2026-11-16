@@ -1239,9 +1239,9 @@ scenarios:
     section: "16.15"
     title: Delete
     goal: >-
-      Board 1 after sync_pull: three live records, RESULTS rev 0 (only appends so far). The watch's
-      connection has command seq 1 next; the tablet's cursor is STATUS on its own connection. A watch
-      deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the
+      Board 1 after sync_pull: three live records, RESULTS rev 0x5A00 (log_epoch 0x5A, only appends
+      so far). The watch's connection has command seq 1 next; the tablet's cursor is STATUS on its own
+      connection. A watch deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the
       tablet pulls the tombstone like any change.
     steps:
       - step: remove
@@ -1249,10 +1249,10 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 02 10 01 01 e0 b1 7a 00 00 02 00
-        fields: {cmd: 0x10, seq: 1, tournament_id: 0x7ab1e001, rev: 0, index: 2}
+        hex: 02 10 01 01 e0 b1 7a 00 5a 02 00
+        fields: {cmd: 0x10, seq: 1, tournament_id: 0x7ab1e001, rev: 0x5a00, index: 2}
         why: >-
-          REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0.
+          REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0x5A00.
 
       - step: remove_ack
         direction: board -> watch

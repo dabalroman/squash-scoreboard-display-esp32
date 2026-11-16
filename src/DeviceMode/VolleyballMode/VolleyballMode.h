@@ -3,7 +3,7 @@
 
 #include "VolleyballModeState.h"
 #include "DeviceMode/DeviceMode.h"
-#include "DeviceMode/TabletSupport.h"
+#include "DeviceMode/TournamentSync.h"
 #include "DeviceMode/View.h"
 #include "Tournament/Tournament.h"
 #include "Tournament/SelectionStore.h"
@@ -25,8 +25,10 @@ class VolleyballMode final : public DeviceMode {
     Tournament tournament;
     std::vector<UserProfile *> &users;
     std::function<void(CelebrationVariant)> onMatchOver;
-    // Non-null: a tablet tournament (spec 20) - the pushed roster, no picker, no SelectionStore.
-    TabletContext *tablet;
+    // Spec 20's roster stage and the unsynced warning; null in the host tests.
+    const TournamentContext *sync;
+    // Volleyball or short volleyball: STATUS's sport for a tournament started here.
+    uint8_t sport;
     // GAME_OVER's game: SET_SIDE on CELEBRATION moves the active match to the next pair.
     const Match *celebratedMatch = nullptr;
 
@@ -36,6 +38,12 @@ class VolleyballMode final : public DeviceMode {
                || state == VolleyballModeState::GameCelebration || state == VolleyballModeState::GameOver;
     }
 
+    // Fob C on CHOOSE_PLAYERS: to MENU, which drops the tournament (spec 20.6) - after a
+    // warning while it is unsynced.
+    void leave() {
+        TournamentSync::leave(sync, tournament, onDeviceModeChange);
+    }
+
     void setState(const VolleyballModeState newState) {
         state = newState;
     }
@@ -43,7 +51,9 @@ class VolleyballMode final : public DeviceMode {
     void handleStateChange() {
         // START (fob or watch) is the only way out of the choose list forward.
         if (previousState == VolleyballModeState::TournamentChoosePlayers && state == VolleyballModeState::MatchStartGame) {
-            SelectionStore::save(SelectionStore::Sport::Volleyball, tournament.getPlayers());
+            // A joined roster is the peer's: the board's own rematch selection stays.
+            if (!tournament.isJoined()) SelectionStore::save(SelectionStore::Sport::Volleyball, tournament.getPlayers());
+            tournament.start(sport);
         }
         previousState = state;
         // Timer-driven hand-overs (celebration, intro) call no preventTriggerForMs():
@@ -56,7 +66,7 @@ class VolleyballMode final : public DeviceMode {
                 activeView = std::make_unique<VolleyballTournamentChoosePlayersView>(
                     tournament,
                     users,
-                    onDeviceModeChange,
+                    [this](DeviceModeState) { leave(); },
                     [this](const VolleyballModeState newState) { setState(newState); }
                 );
                 break;
@@ -123,16 +133,19 @@ public:
         std::vector<UserProfile *> &users,
         std::unique_ptr<Rules> rules,
         std::function<void(CelebrationVariant)> onMatchOver,
-        TabletContext *tablet = nullptr
+        const TournamentContext *sync = nullptr,
+        const TournamentJoin *join = nullptr,
+        const Garmin::SportId sportId = Garmin::SportId::Volleyball
     )
         : DeviceMode(ledDisplay, backDisplay, einkDisplay, remoteInputManager, onDeviceModeChange),
-          tournament(std::move(rules), tablet != nullptr ? tablet->session.tournamentId() : 0), users(users), onMatchOver(std::move(onMatchOver)), tablet(tablet) {
+          tournament(std::move(rules)), users(users), onMatchOver(std::move(onMatchOver)), sync(sync),
+          sport(static_cast<uint8_t>(sportId)) {
 
         ledDisplay.setSameSideMode(true);
         backDisplay.setSameSideMode(true);
-        if (tablet != nullptr) {
-            // The tablet picked the players: every entry in, straight to MATCH_START.
-            for (UserProfile *user: users) tournament.addPlayer(*user);
+        if (join != nullptr
+            && tournament.join(join->tournamentId, join->sport, join->count, join->rosterCrc, join->entries)) {
+            // A peer's tournament (spec 20.3): every entry selected, straight to MATCH_START.
             setState(VolleyballModeState::MatchStartGame);
             return;
         }
@@ -149,8 +162,12 @@ public:
         return WatchSupport::editOfflineGames(onTournamentScreen() ? &tournament : nullptr, command);
     }
 
-    Garmin::AckStatus handleTabletCommand(const WatchCommand &command) override {
-        return TabletSupport::handle(tablet, tournament, command, onTournamentScreen());
+    Tournament *editTournament() override {
+        return &tournament;
+    }
+
+    Garmin::AckStatus handleTournamentCommand(const WatchCommand &command) override {
+        return TournamentSync::handle(sync, tournament, command, onTournamentScreen());
     }
 
     bool isInMatch() const override {
@@ -162,27 +179,26 @@ public:
         return state != previousState;
     }
 
-    // Only a person ends a tablet tournament (spec 20.6).
-    bool goBackFromWatch() override {
-        if (tablet != nullptr && state == VolleyballModeState::MatchStartGame) return false;
-        return goBack();
+    // Spec 20.6: a peer's BACK does not leave a tournament with unsynced changes.
+    Garmin::AckStatus goBackFromWatch() override {
+        if (state == VolleyballModeState::TournamentChoosePlayers) {
+            return TournamentSync::leaveFromWatch(tournament, onDeviceModeChange);
+        }
+        return DeviceMode::goBackFromWatch();
     }
 
     bool goBack() override {
         switch (state) {
             case VolleyballModeState::TournamentChoosePlayers:
-                onDeviceModeChange(DeviceModeState::ModeSwitchingMode);
+                leave();
                 return true;
             case VolleyballModeState::MatchStartGame:
-                // Tablet mode has no picker: the tournament ends here.
-                if (tablet != nullptr) {
-                    TabletSupport::leave(*tablet, tournament, onDeviceModeChange);
-                } else {
-                    setState(VolleyballModeState::TournamentChoosePlayers);
-                }
+                // The tournament stays; START again appends the newly selected (spec 20.3).
+                setState(VolleyballModeState::TournamentChoosePlayers);
                 return true;
             case VolleyballModeState::MatchIntro:
                 // No game exists yet (GamePlaying creates it), so nothing is lost.
+                tournament.releaseMatchSlot();
                 setState(VolleyballModeState::MatchStartGame);
                 return true;
             case VolleyballModeState::GameCelebration:

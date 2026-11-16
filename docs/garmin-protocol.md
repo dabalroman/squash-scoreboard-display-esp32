@@ -1511,13 +1511,13 @@ END: seq = 1 stored record (live + tombstones).
 
 **Delete**
 
-Board 1 after sync_pull: three live records, RESULTS rev 0 (only appends so far). The watch's connection has command seq 1 next; the tablet's cursor is STATUS on its own connection. A watch deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the tablet pulls the tombstone like any change.
+Board 1 after sync_pull: three live records, RESULTS rev 0x5A00 (log_epoch 0x5A, only appends so far). The watch's connection has command seq 1 next; the tablet's cursor is STATUS on its own connection. A watch deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the tablet pulls the tombstone like any change.
 
 `sync_tombstone/remove` - COMMAND write:
 ```
-02 10 01 01 e0 b1 7a 00 00 02 00    (11 B)
+02 10 01 01 e0 b1 7a 00 5a 02 00    (11 B)
 ```
-REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0.
+REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0x5A00.
 
 `sync_tombstone/remove_ack` - STATE notify:
 ```
