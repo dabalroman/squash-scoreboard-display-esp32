@@ -8,9 +8,10 @@ characteristic:
     The finished games of the current tournament, for a watch that draws the standings.
   usage: >-
     ROSTER-style cursor: a write sets the per-connection read cursor, each read returns the game at
-    the cursor and advances it. Games are appended in finish order; only an offline game may later
-    be removed, which changes rev and renumbers that pair's later turns. The board is the source of truth; a watch never derives results
-    from the states it observed. Optional for the watch (a pre-#527 v1 board lacks it).
+    the cursor and advances it. A read-only view of the tournament's live records (section 20.2),
+    sorted by (order, id): a game finished on this board appends; an edit, a delete or a merged
+    record that sorts earlier changes rev and may renumber turns. A watch never derives results
+    from the states it observed. Optional for the watch.
   see: "#191-results-frames"
 
   frames:
@@ -40,8 +41,9 @@ characteristic:
       description: One finished game, or the 11-byte header with rev alone past the end.
       usage: >-
         Each read returns the game at the cursor and advances it; past the end it stays. A different
-        tournamentId, a different rev or a count below the cached one drops the client's cache. rev is 0
-        for a new tournament and changes on every change other than an append. An 11-byte end frame
+        tournamentId, a different rev or a count below the cached one drops the client's cache. rev starts
+        at log_epoch * 256 (section 20.1) with every change log and changes on every change other
+        than an append. An 11-byte end frame
         also tells the client the board supports offline games (a 9-byte one = older firmware: hide
         the feature).
       structure:

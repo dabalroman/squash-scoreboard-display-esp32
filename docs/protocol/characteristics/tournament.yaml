@@ -5,14 +5,16 @@ characteristic:
   properties: [write, read]
   auth_required: true
   description: >-
-    A tablet's tournament on a board in tablet mode: staged roster and mirror writes, a status
-    read and the outbox of the board's own games.
+    The board's tournament as state for peers to sync: a status, a change log and the stored game
+    records to read, records to merge and roster entries to stage.
   usage: >-
-    Writes are staged byte copies, never acked; BEGIN_TOURNAMENT / COMMIT_MIRROR commit a stage
-    after checking its count and CRC. Reads answer per the connection's cursor: STATUS (at connect)
-    or OUTBOX. Before authentication a read answers the 1-byte [PROTO] and writes are discarded.
-    Optional for a watch (a board before #583 lacks it).
-  see: "#20-tablet-tournament-tournament"
+    Writes are never acked: a ROSTER_ENTRY is staged for BEGIN_TOURNAMENT, a RECORD is merged at
+    once (or dropped), a CURSOR selects the reads. Reads answer per the connection's cursor: STATUS
+    (at connect), CHANGES or RECORDS. A STATUS read binds the connection to the tournament it
+    reports; RECORD writes on a connection not bound to the running tournament are discarded.
+    Before authentication a read answers the 1-byte [PROTO] and writes are discarded. Optional for
+    a watch.
+  see: "#20-tournament-sync-tournament"
 
   frames:
     - frame: roster_entry
@@ -22,8 +24,8 @@ characteristic:
       size: 19
       description: Stages one roster entry for the next BEGIN_TOURNAMENT.
       usage: >-
-        The tablet writes entries 0 to count - 1, then sends BEGIN_TOURNAMENT. A rewritten index
-        overwrites; index >= TABLET_ROSTER_MAX is discarded.
+        The peer writes entries 0 to count - 1, then sends BEGIN_TOURNAMENT. A rewritten index
+        overwrites; index >= TOURNAMENT_ROSTER_MAX is discarded.
       structure:
         - field: proto
           type: uint8
@@ -31,11 +33,11 @@ characteristic:
           description: Protocol version.
         - field: type
           type: uint8
-          value: tournament_write.ROSTER_ENTRY
+          value: tournament_frame.ROSTER_ENTRY
           description: Frame type.
         - field: index
           type: uint8
-          description: Roster index, 0 to TABLET_ROSTER_MAX - 1.
+          description: Roster index, 0 to TOURNAMENT_ROSTER_MAX - 1.
         - field: uid
           type: uint32
           description: The entry's uid, non-zero, unique in the roster.
@@ -54,84 +56,20 @@ characteristic:
           padding: nul
           description: Printable ASCII, NUL-padded (a 9-character name has no NUL).
 
-    - frame: mirror_entry
-      name: Write MIRROR_ENTRY
+    - frame: record_write
+      name: Write RECORD
       access: write
       sender: watch
-      size: 18
-      description: Stages one game of the tablet's tournament for the next COMMIT_MIRROR.
-      usage: >-
-        The tablet writes games 0 to count - 1 in its list order, then sends COMMIT_MIRROR. A
-        rewritten index overwrites; index >= RESULTS_MAX is discarded.
-      structure:
-        - field: proto
-          type: uint8
-          value: PROTO
-          description: Protocol version.
-        - field: type
-          type: uint8
-          value: tournament_write.MIRROR_ENTRY
-          description: Frame type.
-        - field: index
-          type: uint8
-          description: Position in the mirror, 0 to RESULTS_MAX - 1.
-        - field: id
-          type: uint32
-          description: The game's id, non-zero, unique in the mirror.
-        - field: uid_a
-          type: uint32
-          description: One side's roster uid.
-        - field: uid_b
-          type: uint32
-          description: The other side's roster uid.
-        - field: score_a
-          type: uint8
-          description: uid_a's score.
-        - field: score_b
-          type: uint8
-          description: uid_b's score.
-        - field: flags
-          type: uint8
-          enum: game_flags
-          description: Game flags.
-
-    - frame: cursor
-      name: Write CURSOR
-      access: write
-      sender: watch
-      size: 5
-      description: Selects what this connection's next reads return.
-      usage: >-
-        STATUS: every read answers the status frame (seq ignored, send 0). OUTBOX: reads walk the
-        un-ACKed board games from seq on. At connect the cursor is STATUS.
-      structure:
-        - field: proto
-          type: uint8
-          value: PROTO
-          description: Protocol version.
-        - field: type
-          type: uint8
-          value: tournament_write.CURSOR
-          description: Frame type.
-        - field: which
-          type: uint8
-          enum: tournament_read
-          description: STATUS or OUTBOX; any other value is discarded.
-        - field: seq
-          type: uint16
-          description: First outbox seq to read (OUTBOX only).
-
-    - frame: status
-      name: Read STATUS
-      access: read
-      sender: board
       size: 20
-      description: The board's tablet tournament, read first after every (re)connect.
+      description: Merges one game record into the bound tournament.
       usage: >-
-        tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every
-        field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. 0 on TOURNAMENT_WAIT:
-        push the roster and BEGIN. A different id: the board runs another tournament; only a person
-        leaving and re-entering TOURNAMENT clears it.
+        Applied at once by the merge rule (section 20.2): a winning record replaces the stored one
+        and takes the next change seq; a losing or identical one is a no-op. Dropped without a
+        trace when the connection is not bound to the running tournament, id or order is 0, a
+        reserved flag is set, a replace carries another order than the stored record, or (live
+        records) the uids are equal or not both in the roster, the score is not a legal finished
+        game of the sport, or a new id would exceed the live cap (RESULTS_MAX, one less while a
+        match runs). The writer learns of a drop by comparing games_crc (section 20.5).
       structure:
         - field: proto
           type: uint8
@@ -139,61 +77,23 @@ characteristic:
           description: Protocol version.
         - field: type
           type: uint8
-          value: tournament_read.STATUS
+          value: tournament_frame.RECORD
           description: Frame type.
-        - field: tournament_id
-          type: uint32
-          description: The tablet's tournament id; 0 = none.
-        - field: sport
-          type: uint8
-          enum: sport
-          description: The tournament's sport.
-        - field: roster_count
-          type: uint8
-          description: Entries in the pushed roster.
-        - field: roster_crc
-          type: uint32
-          description: CRC-32 of the pushed roster, as BEGIN_TOURNAMENT's roster_crc and the state's rosterVersion.
-        - field: outbox_from
-          type: uint16
-          description: Seq of the oldest un-ACKed board game; outbox_to + 1 when the outbox is empty.
-        - field: outbox_to
-          type: uint16
-          description: Seq of the newest board game; 0 = none yet.
-        - field: mirror_crc
-          type: uint32
-          description: CRC of the last applied COMMIT_MIRROR; 0 = none since BEGIN_TOURNAMENT.
-
-    - frame: outbox
-      name: Read OUTBOX
-      access: read
-      sender: board
-      size: 19
-      description: The first un-ACKed board game at or after the cursor; the cursor moves past it.
-      usage: >-
-        Uids are the match's own A/B order, as in RESULTS. The tablet reads until OUTBOX_END, then
-        sends ACK_OUTBOX with the last seq once the games are stored.
-      structure:
-        - field: proto
-          type: uint8
-          value: PROTO
-          description: Protocol version.
-        - field: type
-          type: uint8
-          value: tournament_read.OUTBOX
-          description: Frame type.
-        - field: seq
-          type: uint16
-          description: The game's outbox seq.
         - field: id
           type: uint32
-          description: The game's id.
+          description: The game's id, random, non-zero, unique in the tournament; never reused.
+        - field: rev
+          type: uint8
+          description: Edit count mod 256; 0 at creation, + 1 on every edit or delete.
+        - field: order
+          type: uint16
+          description: Lamport stamp, 1 + the highest order the creator holds; kept by edits. Sort by (order, id).
         - field: uid_a
           type: uint32
-          description: The pair's own A uid.
+          description: Side A's roster uid (the match's own A).
         - field: uid_b
           type: uint32
-          description: The pair's own B uid.
+          description: Side B's roster uid.
         - field: score_a
           type: uint8
           description: A's score.
@@ -202,16 +102,20 @@ characteristic:
           description: B's score.
         - field: flags
           type: uint8
-          enum: game_flags
-          description: OFFLINE for a watch-added game; PENDING is 0 here.
+          enum: record_flags
+          description: Record flags.
 
-    - frame: outbox_end
-      name: Read OUTBOX_END
-      access: read
-      sender: board
-      size: 4
-      description: No un-ACKed board game at or after the cursor; the cursor stays.
-      usage: The tablet has the whole outbox. Also answered when no tablet tournament runs.
+    - frame: cursor
+      name: Write CURSOR
+      access: write
+      sender: watch
+      size: 5
+      description: Selects what this connection's next reads return.
+      usage: >-
+        STATUS: every read answers STATUS (seq ignored, send 0). CHANGES: reads walk the records
+        whose last change seq is >= seq, skipping those whose last change this peer wrote
+        (section 20.4). RECORDS: reads walk the stored records from sort index
+        seq on. At connect the cursor is STATUS.
       structure:
         - field: proto
           type: uint8
@@ -219,8 +123,133 @@ characteristic:
           description: Protocol version.
         - field: type
           type: uint8
-          value: tournament_read.OUTBOX_END
+          value: tournament_frame.CURSOR
+          description: Frame type.
+        - field: which
+          type: uint8
+          enum: tournament_cursor
+          description: STATUS, CHANGES or RECORDS; any other value is discarded.
+        - field: seq
+          type: uint16
+          description: First change seq (CHANGES) or sort index (RECORDS) to read.
+
+    - frame: status
+      name: Read STATUS
+      access: read
+      sender: board
+      size: 20
+      description: The board's tournament, read first after every (re)connect; binds the connection to it.
+      usage: >-
+        tournament_id 0 = no tournament (MENU, CHOOSE_PLAYERS before the first START, CONFIG,
+        PROFILE), then every field is 0. A peer with no tournament may adopt this one (join); a
+        peer with the same id pulls changes and pushes its records; a peer with another id leaves
+        the board alone. A log_epoch other than the one of the peer's last pull from this board
+        means a new change log: pull from 1.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_frame.STATUS
+          description: Frame type.
+        - field: tournament_id
+          type: uint32
+          description: The running tournament's id; 0 = none.
+        - field: sport
+          type: uint8
+          enum: sport
+          description: The tournament's sport.
+        - field: roster_count
+          type: uint8
+          description: Entries in the tournament roster (read them through ROSTER).
+        - field: roster_crc
+          type: uint32
+          description: CRC-32 of the roster, as BEGIN_TOURNAMENT's roster_crc and the state's rosterVersion.
+        - field: changes_to
+          type: uint16
+          description: The last change seq given out; 0 = no change yet. Restarts with every tournament on this board.
+        - field: games_count
+          type: uint8
+          description: Live (not deleted) records stored.
+        - field: games_crc
+          type: uint32
+          description: CRC-32 over games_count (1 B) and the live records' 18-byte forms in (order, id) order.
+        - field: log_epoch
+          type: uint8
+          description: >-
+            Random non-zero, drawn when this board's change log starts (START, or BEGIN_TOURNAMENT
+            on MENU); 0 = no tournament. Tells a restarted log from the old one.
+
+    - frame: record_read
+      name: Read RECORD
+      access: read
+      sender: board
+      size: 20
+      description: The next record of a CHANGES or RECORDS walk; the cursor moves past it.
+      usage: >-
+        CHANGES returns the record with the smallest last change seq >= the cursor, then moves the
+        cursor past that seq; each record is returned once per walk, in its latest form. A record
+        whose last change came from the reading connection's pairing slot is skipped. RECORDS
+        returns the record at the sort index (live and tombstones, by (order, id)), then index + 1.
+        Byte-identical to the write, so it can be forwarded to another peer as is.
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_frame.RECORD
+          description: Frame type.
+        - field: id
+          type: uint32
+          description: The game's id, random, non-zero, unique in the tournament; never reused.
+        - field: rev
+          type: uint8
+          description: Edit count mod 256; 0 at creation, + 1 on every edit or delete.
+        - field: order
+          type: uint16
+          description: Lamport stamp, 1 + the highest order the creator holds; kept by edits. Sort by (order, id).
+        - field: uid_a
+          type: uint32
+          description: Side A's roster uid (the match's own A).
+        - field: uid_b
+          type: uint32
+          description: Side B's roster uid.
+        - field: score_a
+          type: uint8
+          description: A's score.
+        - field: score_b
+          type: uint8
+          description: B's score.
+        - field: flags
+          type: uint8
+          enum: record_flags
+          description: Record flags.
+
+    - frame: end
+      name: Read END
+      access: read
+      sender: board
+      size: 6
+      description: A CHANGES or RECORDS walk has nothing more at the cursor; the cursor stays.
+      usage: >-
+        CHANGES: seq = changes_to, the value to ACK and to resume from (seq + 1). RECORDS: seq = the
+        stored record count. Also answered when no tournament runs (seq 0, lost_to 0).
+      structure:
+        - field: proto
+          type: uint8
+          value: PROTO
+          description: Protocol version.
+        - field: type
+          type: uint8
+          value: tournament_frame.END
           description: Frame type.
         - field: seq
           type: uint16
-          description: The cursor.
+          description: CHANGES - changes_to; RECORDS - stored records (live + tombstones).
+        - field: lost_to
+          type: uint16
+          description: Highest change seq of a tombstone dropped past TOMBSTONE_MAX; 0 = none. A puller whose last END is below it may have missed a delete.

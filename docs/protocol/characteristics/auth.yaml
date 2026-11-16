@@ -71,8 +71,8 @@ characteristic:
         - field: slot
           type: uint8
           size: 1
-          range: [0, TABLET_SLOT]
-          description: Board slot the watch's key was issued in (PAIRING result); TABLET_SLOT for a tournament pairing.
+          range: [0, SLOT_COUNT - 1]
+          description: Board slot the client's key was issued in (PAIRING result).
         - field: nw
           type: uint8[]
           size: NONCE_SIZE

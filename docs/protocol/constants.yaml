@@ -1,11 +1,11 @@
-# Wire constants of protocol v1, Assigned Numbers style: one entry per value.
+# Wire constants of protocol v2, Assigned Numbers style: one entry per value.
 # Source: docs/garmin-protocol.md sections 3, 4 and 14; the board's src/Garmin/GarminProtocol.h.
 # `type` drives rendering only: uint8/uint16/uint32 render hex, `size` renders a plain number.
 
 constants:
   - name: PROTO
     type: uint8
-    value: 0x01
+    value: 0x02
     description: Protocol version. Byte 0 of every characteristic value and the advertised version byte.
     usage: >-
       Both sides write their own PROTO first in every frame and drop any received frame whose
@@ -28,18 +28,9 @@ constants:
     description: "Bit 0 of the advertising flags byte: the pairing window is open and the code is present."
     usage: >-
       The board sets it while the pairing window is open; the watch's pairing screen lists only
-      advertisers with it set. Bits 2-7 are reserved, sent 0, ignored.
+      advertisers with it set. Bits 1-7 are reserved, sent 0, ignored (bit 1 was v1's tournament
+      window).
     see: "#42-advind-19-b"
-
-  - name: ADV_FLAG_TOURNAMENT
-    type: uint8
-    value: 0x02
-    description: "Bit 1 of the advertising flags byte: the tournament pairing window is open and the code is present."
-    usage: >-
-      The board sets it, never together with bit 0, while it waits on TOURNAMENT_WAIT; a tablet
-      lists such boards and pairs with the advertised code without asking anyone. Watches ignore
-      it, so they never offer the board for a lasting pairing.
-    see: "#92-tournament-pairing"
 
   - name: MAX_FRAME
     type: size
@@ -118,18 +109,9 @@ constants:
   - name: SLOT_COUNT
     type: size
     value: 8
-    description: Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot.
-    usage: Bounds the AUTH proof's slot id (0 to SLOT_COUNT - 1, plus TABLET_SLOT).
+    description: Paired clients a board holds; the 9th pairing evicts the least recently authenticated slot.
+    usage: Bounds the AUTH proof's slot id (0 to SLOT_COUNT - 1). Watches and tablets share the slots.
     see: "#9-pairing"
-
-  - name: TABLET_SLOT
-    type: uint8
-    value: 8
-    description: The slot id of the key a tournament pairing issues; RAM only, one per board.
-    usage: >-
-      Returned in a tournament window's PAIRING result and accepted in the AUTH proof. The key
-      lives until the board leaves tablet mode or restarts; a new tournament pairing replaces it.
-    see: "#92-tournament-pairing"
 
   - name: MAX_CONNECTIONS
     type: size
@@ -230,23 +212,39 @@ constants:
   - name: RESULTS_MAX
     type: size
     value: 128
-    description: Most finished games listed per tournament.
-    usage: Later games are not listed and count stays at 128. Also the most entries a mirror commit takes (section 20).
+    description: Most live (not deleted) game records per tournament.
+    usage: >-
+      A board refuses to create a record beyond it (START_MATCH and ADD_OFFLINE_GAME answer
+      INVALID) and drops a merged new record that would exceed it, keeping one slot free while a
+      match runs; RESULTS lists at most this many.
     see: "#14-limits"
 
-  - name: TABLET_ROSTER_MAX
+  - name: TOMBSTONE_MAX
+    type: size
+    value: 32
+    description: Most deleted records (tombstones) a board keeps per tournament.
+    usage: >-
+      Storing one more drops the tombstone with the oldest change seq first; END's lost_to
+      reports the highest seq dropped this way.
+    see: "#202-records-and-merge"
+
+  - name: TOURNAMENT_ROSTER_MAX
     type: size
     value: 16
-    description: Most roster entries a tablet pushes for one tournament.
-    usage: BEGIN_TOURNAMENT with a larger count answers INVALID; one round robin of 16 is 120 games, inside RESULTS_MAX.
-    see: "#20-tablet-tournament-tournament"
+    description: Most roster entries a tournament holds.
+    usage: >-
+      The board's player picker stops at it and BEGIN_TOURNAMENT with a larger count answers
+      INVALID; one round robin of 16 is 120 games, inside RESULTS_MAX.
+    see: "#203-starting-and-joining"
 
-  - name: GAME_ENTRY_SIZE
+  - name: RECORD_SIZE
     type: size
-    value: 15
-    description: "Wire size of one game on TOURNAMENT: id (u32), uidA, uidB, scoreA, scoreB, flags."
-    usage: Carried by the MIRROR_ENTRY write and the outbox read; the mirror CRC is over every entry's 15-byte form.
-    see: "#20-tablet-tournament-tournament"
+    value: 18
+    description: "Wire size of one game record: id (u32), rev, order (u16), uidA, uidB, scoreA, scoreB, flags."
+    usage: >-
+      Bytes 2-19 of the RECORD frame. The merge tie-break compares these bytes, and games_crc is
+      over the live records' 18-byte forms.
+    see: "#202-records-and-merge"
 
 uuids:
   - name: SERVICE_UUID
@@ -306,7 +304,7 @@ uuids:
   - name: TOURNAMENT_UUID
     value: 0d78000a-2f44-4f31-93b7-b78dc9e29735
     description: TOURNAMENT characteristic.
-    usage: A tablet stages the roster and the mirror here and reads the status and the outbox.
+    usage: Peers stage roster entries, write records and read the status, changes and records here.
     see: "#6-gatt-layout"
 
 enums:
@@ -417,7 +415,7 @@ enums:
     description: The board's current screen, byte 0 of every state body.
     usage: >-
       Selects the screen data that follows in the body; a screen the watch does not know reads as
-      "board busy".
+      "board busy". 0x04 is reserved (v1's TOURNAMENT_WAIT).
     see: "#112-body"
     values:
       - name: BOOTING
@@ -432,9 +430,6 @@ enums:
       - name: PROFILE
         value: 0x03
         description: Player setup; the watch shows "edit on phone" + BACK.
-      - name: TOURNAMENT_WAIT
-        value: 0x04
-        description: Tablet tournament mode, waiting for a tablet's BEGIN_TOURNAMENT; the watch shows "board busy".
       - name: CHOOSE_PLAYERS
         value: 0x10
         description: Roster with in/out selection and START.
@@ -459,12 +454,12 @@ enums:
     description: The sport a mode belongs to; 0 outside a sport (byte 1 of the state body).
     usage: >-
       Drives the roster kind (teams vs players) and the PLAYING score interpretation; the watch
-      offers exactly the sports the board's MENU state lists (beside the menu_entry rows it knows).
+      offers exactly the sports the board's MENU state lists.
     see: "#112-body"
     values:
       - name: none
         value: 0x00
-        description: No sport (BOOTING, MENU, CONFIG, PROFILE, TOURNAMENT_WAIT).
+        description: No sport (BOOTING, MENU, CONFIG, PROFILE).
       - name: squash
         value: 0x01
         description: Squash.
@@ -477,19 +472,6 @@ enums:
       - name: padel
         value: 0x04
         description: Padel.
-
-  - name: menu_entry
-    type: uint8
-    description: A MENU row id that is not a sport. Sport rows use their sport id.
-    usage: >-
-      MENU lists menu-entry ids (sport ids and these) in menu order and reports the highlighted
-      one as its cursor; FOCUS and SELECT_SPORT take them like sport ids. Never a state body's
-      sport, never a BEGIN_TOURNAMENT sport. A watch skips ids it does not know.
-    see: "#113-screen-data"
-    values:
-      - name: TABLET_MODE
-        value: 0x80
-        description: The TOURNAMENT row; selecting it enters tablet mode (section 20).
 
   - name: side
     type: uint8
@@ -505,54 +487,62 @@ enums:
         value: 1
         description: Right court side.
 
-  - name: tournament_write
+  - name: tournament_frame
     type: uint8
-    description: Byte 1 of a TOURNAMENT write - which staged frame this is.
+    description: Byte 1 of every TOURNAMENT frame - which frame this is.
     usage: >-
-      The board copies ROSTER_ENTRY and MIRROR_ENTRY into their stages and CURSOR into the
-      connection's read cursor; any other value is discarded.
-    see: "#201-tournament-frames"
-    values:
-      - name: ROSTER_ENTRY
-        value: 0x01
-        description: One roster entry for the next BEGIN_TOURNAMENT.
-      - name: MIRROR_ENTRY
-        value: 0x02
-        description: One game for the next COMMIT_MIRROR.
-      - name: CURSOR
-        value: 0x03
-        description: Selects what the next reads return.
-
-  - name: tournament_read
-    type: uint8
-    description: Byte 1 of a TOURNAMENT read; also the CURSOR write's `which`.
-    usage: >-
-      A read answers STATUS until a CURSOR write selects OUTBOX; then OUTBOX entries until
-      OUTBOX_END.
+      Writes take ROSTER_ENTRY, RECORD and CURSOR; reads answer STATUS, RECORD or END. RECORD is the
+      same 20 bytes in both directions, so a record read from one peer is written to another
+      unchanged. Any other value written is discarded.
     see: "#201-tournament-frames"
     values:
       - name: STATUS
         value: 0x00
-        description: The tablet tournament's id, sport, roster, outbox range and mirror CRC.
-      - name: OUTBOX
+        description: The board's tournament id, sport, roster, change seq and live-games summary.
+      - name: ROSTER_ENTRY
         value: 0x01
-        description: One un-ACKed board game.
-      - name: OUTBOX_END
+        description: One roster entry staged for the next BEGIN_TOURNAMENT.
+      - name: RECORD
         value: 0x02
-        description: No un-ACKed game at or after the cursor.
+        description: One game record, written (merged) or read (a change or a stored record).
+      - name: CURSOR
+        value: 0x03
+        description: Selects what this connection's next reads return.
+      - name: END
+        value: 0x04
+        description: A CHANGES or RECORDS walk has nothing more at the cursor.
 
-  - name: game_flags
+  - name: tournament_cursor
     type: uint8
-    description: Flags byte of a TOURNAMENT game entry (mirror and outbox).
+    description: The CURSOR write's `which` - what a TOURNAMENT read answers.
     usage: >-
-      The tablet sets PENDING on this board's games it has not accepted yet and OFFLINE on games a
-      client added; the board sets OFFLINE on outbox games a watch added. Other bits are reserved,
-      sent 0, ignored.
-    see: "#20-tablet-tournament-tournament"
+      STATUS at connect. CHANGES walks the stored records by change seq, RECORDS by sort index;
+      both end with END.
+    see: "#201-tournament-frames"
     values:
-      - name: PENDING
+      - name: STATUS
+        value: 0x00
+        description: Every read answers the STATUS frame.
+      - name: CHANGES
+        value: 0x01
+        description: >-
+          Reads return the records changed at or after a change seq, oldest change first, except
+          those whose last change the reading peer wrote.
+      - name: RECORDS
+        value: 0x02
+        description: Reads return every stored record from a sort index on, tombstones included.
+
+  - name: record_flags
+    type: uint8
+    description: Flags byte of a game record.
+    usage: >-
+      Part of the record, so changing a flag is an edit (rev + 1). Other bits are reserved, sent 0;
+      a record with one set is dropped.
+    see: "#202-records-and-merge"
+    values:
+      - name: DELETED
         bit: 0
-        description: Not accepted yet - counted in the court's tally, not listed in RESULTS (mirror only; 0 in the outbox).
+        description: A tombstone - the game was deleted; not listed, not in games_crc.
       - name: OFFLINE
         bit: 1
-        description: Added by a client, not tracked by a board - RESULTS turn bit 7.
+        description: Entered on a client, not scored on a board - RESULTS turn bit 7.

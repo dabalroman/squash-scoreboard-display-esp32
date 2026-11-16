@@ -26,7 +26,7 @@ scenarios:
         access: advertise
         characteristic: ADVERTISING
         frame: adv_ind
-        hex: 0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06
+        hex: 0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06
         fields: {board_id: 0x12345678, flags: 0, pairing_code: 0}
         why: >-
           The identifying manufacturer data first, then the Flags AD. Board id is the little-endian
@@ -37,22 +37,11 @@ scenarios:
         access: advertise
         characteristic: ADVERTISING
         frame: adv_ind
-        hex: 0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06
+        hex: 0f ff ff ff 53 43 42 44 02 78 56 34 12 01 af 10 02 01 06
         fields: {board_id: 0x12345678, flags: ADV_FLAG_PAIRING, pairing_code: 0x10AF}
         why: >-
           The pairing window is open, so flags bit 0 is set and the drawn code 4271 (0x10AF) is
           carried little-endian. The watch lists only advertisers with bit 0 set.
-
-      - step: adv_tournament
-        direction: board -> tablet
-        access: advertise
-        characteristic: ADVERTISING
-        frame: adv_ind
-        hex: 0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06
-        fields: {board_id: 0x12345678, flags: ADV_FLAG_TOURNAMENT, pairing_code: 0x10AF}
-        why: >-
-          The board waits on TOURNAMENT_WAIT with its tournament window open: bit 1 only, so a
-          watch does not list it, and the code a tablet pairs with unasked (section 9.2).
 
       - step: scan_rsp
         direction: board -> watch
@@ -71,7 +60,7 @@ scenarios:
         access: read
         characteristic: VERSION
         frame: version
-        hex: 01 30 2e 36 2e 31 38 37
+        hex: 02 30 2e 36 2e 31 38 37
         fields: {version: "0.6.187"}
         why: >-
           PROTO then the firmware version string, read once on connect. The watch compares PROTO with
@@ -89,8 +78,8 @@ scenarios:
         access: read
         characteristic: AUTH
         frame: challenge
-        hex: 01 00 a0 a1 a2 a3 a4 a5 a6 a7
-        fields: {proto: 0x01, type: CHALLENGE, nb: a0 a1 a2 a3 a4 a5 a6 a7}
+        hex: 02 00 a0 a1 a2 a3 a4 a5 a6 a7
+        fields: {proto: PROTO, type: CHALLENGE, nb: a0 a1 a2 a3 a4 a5 a6 a7}
         why: >-
           First read on a fresh connection. The board drew Nb when the watch connected; the watch
           needs it to build a proof the board can check and that is useless on any other
@@ -101,8 +90,8 @@ scenarios:
         access: write
         characteristic: AUTH
         frame: proof
-        hex: 01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae
-        fields: {proto: 0x01, type: PROOF, slot: 2, nw: b0 b1 b2 b3 b4 b5 b6 b7, watch_mac: 4e 47 0a 94 b9 24 ac ae}
+        hex: 02 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae
+        fields: {proto: PROTO, type: PROOF, slot: 2, nw: b0 b1 b2 b3 b4 b5 b6 b7, watch_mac: 4e 47 0a 94 b9 24 ac ae}
         derivation:
           hmac_sha256: {key: key, message: 57 a0 a1 a2 a3 a4 a5 a6 a7}
           digest: 4e470a94b924acae1ef4234f341a5c760ddebc1858661c39580b7201b2a95047
@@ -117,8 +106,8 @@ scenarios:
         access: read
         characteristic: AUTH
         frame: result
-        hex: 01 02 00 18 57 e1 b4 a9 6e bf 5a
-        fields: {proto: 0x01, type: RESULT, status: OK, board_mac: 18 57 e1 b4 a9 6e bf 5a}
+        hex: 02 02 00 18 57 e1 b4 a9 6e bf 5a
+        fields: {proto: PROTO, type: RESULT, status: OK, board_mac: 18 57 e1 b4 a9 6e bf 5a}
         derivation:
           hmac_sha256: {key: key, message: 42 b0 b1 b2 b3 b4 b5 b6 b7}
           digest: 1857e1b4a96ebf5a8236582beab5ab29d65cef89dc6c9aab8e492a0a97ed76ce
@@ -134,8 +123,8 @@ scenarios:
         access: read
         characteristic: AUTH
         frame: result
-        hex: 01 02 01
-        fields: {proto: 0x01, type: RESULT, status: BAD_PROOF}
+        hex: 02 02 01
+        fields: {proto: PROTO, type: RESULT, status: BAD_PROOF}
         why: >-
           The same exchange when the board's slot 2 holds a different key (the watch was evicted
           and the slot reissued). No board MAC; the board disconnects 2 s later and the watch
@@ -153,7 +142,7 @@ scenarios:
         access: write
         characteristic: PAIRING
         frame: request
-        hex: 01 01 af 10
+        hex: 02 01 af 10
         fields: {code: 0x10AF}
         why: >-
           The watch writes the request carrying the code 4271 (0x10AF, little-endian) it picked next
@@ -164,7 +153,7 @@ scenarios:
         access: read
         characteristic: PAIRING
         frame: result
-        hex: 01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
+        hex: 02 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f
         fields: {status: OK, slot: 2, key: 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f}
         why: >-
           The code matched, so the board answers OK with the slot id and the 16-byte key the watch
@@ -176,7 +165,7 @@ scenarios:
         access: read
         characteristic: PAIRING
         frame: result
-        hex: 01 02 02
+        hex: 02 02 02
         fields: {status: BAD_CODE}
         why: >-
           A code that does not match the board's. Non-zero status means no key follows: the watch
@@ -194,7 +183,7 @@ scenarios:
         access: write
         characteristic: ROSTER
         frame: write
-        hex: 01 00
+        hex: 02 00
         fields: {index: 0}
         why: The watch sets the per-connection cursor to 0 before reading the whole roster.
 
@@ -203,7 +192,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
+        hex: 02 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
         fields: {index: 0, count: 3, uid: 0x0A0B0C0D, r: 0xff, g: 0x00, b: 0x00, name: ANNA}
         derivation:
           crc32: 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
@@ -217,7 +206,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
+        hex: 02 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
         fields: {index: 1, count: 3, uid: 0x11223344, r: 0x00, g: 0x40, b: 0xff, name: KRYSTIAN}
         why: "Second entry: KRYSTIAN uid 0x11223344 rgb 00 40 ff, name NUL-padded to 9 bytes."
 
@@ -226,7 +215,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
+        hex: 02 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
         fields: {index: 2, count: 3, uid: 0x55667788, r: 0x00, g: 0xc0, b: 0x30, name: OLA}
         why: "Third entry: OLA uid 0x55667788 rgb 00 c0 30."
 
@@ -235,7 +224,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 03 03
+        hex: 02 03 03
         fields: {index: 3, count: 3}
         why: >-
           Past the end the cursor stays at the last entry and the read returns the 3-byte header
@@ -253,7 +242,7 @@ scenarios:
         access: write
         characteristic: ROSTER
         frame: write
-        hex: 01 00
+        hex: 02 00
         fields: {index: 0}
         why: Same cursor write; the board serves the teams roster while a team sport is active.
 
@@ -262,7 +251,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
+        hex: 02 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00
         fields: {index: 0, count: 2, uid: 0x21222324, r: 0xff, g: 0x80, b: 0x00, name: ORLY}
         derivation:
           crc32: 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
@@ -274,7 +263,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
+        hex: 02 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00
         fields: {index: 1, count: 2, uid: 0x31323334, r: 0x00, g: 0xff, b: 0x80, name: LISY}
         why: Second team LISY uid 0x31323334 rgb 00 ff 80.
 
@@ -283,7 +272,7 @@ scenarios:
         access: read
         characteristic: ROSTER
         frame: read
-        hex: 01 02 02
+        hex: 02 02 02
         fields: {index: 2, count: 2}
         why: "Past the end: the 3-byte header alone."
 
@@ -301,10 +290,10 @@ scenarios:
         frame: chunk
         state_seq: 0x01
         hex:
-          - 01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
+          - 02 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03
+        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 4, entry_ids: 04 01 02 03}
         why: >-
-          Cursor on padel, four sports and TABLET_MODE listed. The body is 15 B, so it fits one chunk: header
+          Cursor on padel, four sports listed. The body is 14 B, so it fits one chunk: header
           PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
 
   - id: score_confirm
@@ -319,7 +308,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 08 07 00
+        hex: 02 08 07 00
         fields: {cmd: 0x08, seq: 7, side: left}
         why: SCORE left with sequence number 7; the watch shows the pending point at once.
 
@@ -330,8 +319,8 @@ scenarios:
         frame: chunk
         state_seq: 0x2a
         hex:
-          - 01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11
-          - 01 2a 12 01 00 05 03
+          - 02 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11
+          - 02 2a 12 01 00 05 03
         body: {screen: PLAYING, sport: squash, ack_seq: 7, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x11, left_games: 1, right_games: 0, left_score: 5, right_score: 3}
         why: >-
           The board applied it and pushed PLAYING, squash, ack 7 APPLIED, flags 0x11 (UNCOMMITTED,
@@ -352,8 +341,8 @@ scenarios:
         frame: chunk
         state_seq: 0x2b
         hex:
-          - 01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12
-          - 01 2b 12 01 00 06 06 03 02
+          - 02 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12
+          - 02 2b 12 01 00 06 06 03 02
         body: {screen: PLAYING, sport: padel, ack_seq: 12, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x12, left_games: 1, right_games: 0, left_score: 6, right_score: 6, left_point: 3, right_point: 2}
         why: >-
           Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed, the last rally won by the left
@@ -366,8 +355,8 @@ scenarios:
         frame: chunk
         state_seq: 0x2c
         hex:
-          - 01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
-          - 01 2c 12 00 00 02 01 03 04
+          - 02 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
+          - 02 2c 12 00 00 02 01 03 04
         body: {screen: PLAYING, sport: padel, ack_seq: 13, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x31, left_games: 0, right_games: 0, left_score: 2, right_score: 1, left_point: 3, right_point: 4}
         why: >-
           Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right ->
@@ -377,7 +366,7 @@ scenarios:
     section: "16.8"
     title: Too-old and too-new board
     goal: >-
-      The watch accepts exactly protocol v1; a foreign PROTO in the advertising or an unauthenticated
+      The watch accepts exactly protocol v2; a foreign PROTO in the advertising or an unauthenticated
       read keeps it from trusting the board.
     steps:
       - step: too_old
@@ -385,19 +374,19 @@ scenarios:
         access: advertise
         characteristic: ADVERTISING
         frame: raw
-        hex: 0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06
+        hex: 0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06
         why: >-
-          PROTO 0 in the ADV_IND (byte 8). Too old: no connect, "Update the scoreboard firmware
-          (board v0, needs v1)".
+          PROTO 1 in the ADV_IND (byte 8). Too old: no connect, "Update the scoreboard firmware
+          (board v1, needs v2)".
 
       - step: too_new
         direction: board -> watch
         access: advertise
         characteristic: ADVERTISING
         frame: raw
-        hex: 0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06
+        hex: 0f ff ff ff 53 43 42 44 03 78 56 34 12 00 00 00 02 01 06
         why: >-
-          PROTO 2 in the ADV_IND. Too new: no connect, "Update the watch app". Only the version byte
+          PROTO 3 in the ADV_IND. Too new: no connect, "Update the watch app". Only the version byte
           differs from adv_normal.
 
       - step: unauth_read
@@ -405,7 +394,7 @@ scenarios:
         access: read
         characteristic: STATE
         frame: raw
-        hex: "01"
+        hex: "02"
         why: >-
           An unauthenticated read of STATE (or ROSTER) answers the 1-byte [PROTO] and nothing else;
           no state is pushed until the connection authenticates.
@@ -422,7 +411,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0e 03 01 00 00 00
+        hex: 02 0e 03 01 00 00 00
         fields: {cmd: 0x0e, seq: 3, target: 0x00000001}
         why: On MENU, focus the squash row (sport id 0x00000001), seq 3.
 
@@ -433,8 +422,8 @@ scenarios:
         frame: chunk
         state_seq: 0x02
         hex:
-          - 01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.squash, n: 5, entry_ids: 04 01 02 03 80}
+          - 02 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03
+        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.squash, n: 4, entry_ids: 04 01 02 03}
         why: The board answers with the cursor on squash (body 15 B, stateSeq 2).
 
       - step: focus_krystian
@@ -442,7 +431,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0e 04 44 33 22 11
+        hex: 02 0e 04 44 33 22 11
         fields: {cmd: 0x0e, seq: 4, target: 0x11223344}
         why: On CHOOSE_PLAYERS, focus KRYSTIAN's profile row (uid 0x11223344), seq 4.
 
@@ -453,7 +442,7 @@ scenarios:
         frame: chunk
         state_seq: 0x10
         hex:
-          - 01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
+          - 02 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11
         body: {screen: CHOOSE_PLAYERS, sport: squash, ack_seq: 4, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000005, cursor: 0x11223344}
         why: >-
           CHOOSE_PLAYERS: ANNA (bit 0) and OLA (bit 2) selected (0x00000005), cursor on KRYSTIAN.
@@ -464,7 +453,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0e 05 00 00 00 00
+        hex: 02 0e 05 00 00 00 00
         fields: {cmd: 0x0e, seq: 5, target: 0}
         why: "Focus the START row: target 0 (cursor bytes 00 00 00 00), seq 5."
 
@@ -473,7 +462,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0e 06 78 56 34 12
+        hex: 02 0e 06 78 56 34 12
         fields: {cmd: 0x0e, seq: 6, target: 0x12345678}
         why: >-
           A uid not in the roster (0x12345678), seq 6 - acked 6 INVALID and the cursor stays. The
@@ -484,7 +473,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: raw
-        hex: 01 0e 07 01
+        hex: 02 0e 07 01
         why: A 4-byte FOCUS is too short (missing three target bytes), acked 7 MALFORMED.
 
   - id: heart
@@ -499,7 +488,7 @@ scenarios:
         access: write
         characteristic: HEART
         frame: write
-        hex: 01 92
+        hex: 02 92
         fields: {bpm: 146}
         why: Watch A (connection slot 0) writes 146 bpm (0x92) while PLAYING.
 
@@ -508,7 +497,7 @@ scenarios:
         access: write
         characteristic: HEART
         frame: write
-        hex: 01 7c
+        hex: 02 7c
         fields: {bpm: 124}
         why: Watch C (slot 2) writes 124 bpm (0x7c); both writes land before the next tick.
 
@@ -517,7 +506,7 @@ scenarios:
         access: notify
         characteristic: HEART
         frame: notify
-        hex: 01 7c 00 00
+        hex: 02 7c 00 00
         fields: {values: 7c 00 00}
         why: A's notify carries C's value (0x7c); A's own is always left out.
 
@@ -526,7 +515,7 @@ scenarios:
         access: notify
         characteristic: HEART
         frame: notify
-        hex: 01 92 7c 00
+        hex: 02 92 7c 00
         fields: {values: 92 7c 00}
         why: B's notify lists A then C in slot order, padded with 0.
 
@@ -535,7 +524,7 @@ scenarios:
         access: notify
         characteristic: HEART
         frame: notify
-        hex: 01 92 00 00
+        hex: 02 92 00 00
         fields: {values: 92 00 00}
         why: >-
           C's notify lists A. After C clears its value, B is re-notified the same list (A only); A is
@@ -546,7 +535,7 @@ scenarios:
         access: write
         characteristic: HEART
         frame: write
-        hex: 01 00
+        hex: 02 00
         fields: {bpm: 0}
         why: C clears its value with bpm 0.
 
@@ -555,7 +544,7 @@ scenarios:
         access: notify
         characteristic: HEART
         frame: notify
-        hex: 01 00 00 00
+        hex: 02 00 00 00
         fields: {values: 00 00 00}
         why: All zero = nobody else is sharing; sent once A's 1 s window ends.
 
@@ -572,7 +561,7 @@ scenarios:
         access: write
         characteristic: HEART
         frame: raw
-        hex: "01"
+        hex: "02"
         why: A 1-byte write is too short for the 2-byte frame and is discarded.
 
   - id: sides_swapped
@@ -589,7 +578,7 @@ scenarios:
         frame: chunk
         state_seq: 0x30
         hex:
-          - 01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
+          - 02 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40
         body: {screen: INTRO, sport: squash, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x40}
         why: INTRO body 17 B, stateSeq 0x30, flags 0x40 (SIDES_SWAPPED).
 
@@ -600,8 +589,8 @@ scenarios:
         frame: chunk
         state_seq: 0x31
         hex:
-          - 01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50
-          - 01 31 12 00 01 02 01
+          - 02 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50
+          - 02 31 12 00 01 02 01
         body: {screen: PLAYING, sport: squash, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x50, left_games: 0, right_games: 1, left_score: 2, right_score: 1}
         why: >-
           PLAYING, games 0:1, score 2:1, committed, the newest point the left's (flags 0x50:
@@ -614,8 +603,8 @@ scenarios:
         frame: chunk
         state_seq: 0x32
         hex:
-          - 01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
-          - 01 32 12 0b 07 01 01 00 40
+          - 02 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00
+          - 02 32 12 0b 07 01 01 00 40
         body: {screen: GAME_OVER, sport: squash, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, winner: left, left_score: 11, right_score: 7, left_games: 1, right_games: 1, variant: 0, flags: 0x40}
         why: >-
           GAME_OVER, ANNA won 11:7, games 1:1, normal variant. Body 23 B, flags 0x40 at the end of
@@ -628,8 +617,8 @@ scenarios:
         frame: chunk
         state_seq: 0x33
         hex:
-          - 01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
-          - 01 33 12 33 22 11 40
+          - 02 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 02 33 12 33 22 11 40
         body: {screen: MATCH_START, sport: squash, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x40}
         why: >-
           MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still reversed
@@ -653,7 +642,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 08 01 01
+        hex: 02 08 01 01
         fields: {cmd: 0x08, seq: 1, side: right}
         why: SCORE right, seq 1, in a fresh game at 0:0 (flags were 0x00 unknown).
 
@@ -664,8 +653,8 @@ scenarios:
         frame: chunk
         state_seq: 0x40
         hex:
-          - 01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
-          - 01 40 12 00 00 00 01
+          - 02 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31
+          - 02 40 12 00 00 00 01
         body: {screen: PLAYING, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x31, left_games: 0, right_games: 0, left_score: 0, right_score: 1}
         why: >-
           The board pushes stateSeq 0x40: ack 1 APPLIED, score 0:1, flags 0x31 (UNCOMMITTED,
@@ -683,7 +672,7 @@ scenarios:
         access: write
         characteristic: RESULTS
         frame: write
-        hex: 01 00 00
+        hex: 02 00 00
         fields: {index: 0}
         why: The watch sets the read cursor to 0 (index is uint16).
 
@@ -692,7 +681,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01
+        hex: 02 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01
         fields: {index: 0, count: 3, tournament_id: 0xC0FFEE01, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, turn: 1}
         why: ANNA - KRYSTIAN 11:7, the pair's first game.
 
@@ -701,7 +690,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01
+        hex: 02 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01
         fields: {index: 1, count: 3, tournament_id: 0xC0FFEE01, uid_a: 0x11223344, uid_b: 0x55667788, score_a: 11, score_b: 4, turn: 1}
         why: KRYSTIAN - OLA 11:4.
 
@@ -710,7 +699,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02
+        hex: 02 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02
         fields: {index: 2, count: 3, tournament_id: 0xC0FFEE01, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 9, score_b: 11, turn: 2}
         why: ANNA - KRYSTIAN again, 9:11, the pair's second game (turn 2; KRYSTIAN won it).
 
@@ -719,7 +708,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 03 00 03 00 01 ee ff c0 00 00
+        hex: 02 03 00 03 00 01 ee ff c0 00 00
         fields: {index: 3, count: 3, tournament_id: 0xC0FFEE01, rev: 0}
         why: >-
           Past the end: the 11-byte header with rev 0 (no change but appends so far). A catch-up write of
@@ -730,7 +719,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 03 00 00 00 00 00 00 00 00 00
+        hex: 02 03 00 00 00 00 00 00 00 00 00
         fields: {index: 3, count: 0, tournament_id: 0x00000000, rev: 0}
         why: >-
           Outside a sport mode: no tournament, count 0, id 0 - the watch drops its cache.
@@ -740,7 +729,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: raw
-        hex: "01"
+        hex: "02"
         why: An unauthenticated read answers the 1-byte [PROTO] only.
 
       - step: discard_short
@@ -748,7 +737,7 @@ scenarios:
         access: write
         characteristic: RESULTS
         frame: raw
-        hex: 01 02
+        hex: 02 02
         why: A 2-byte write is too short for the 3-byte cursor frame; the cursor stays.
 
       - step: discard_v0
@@ -774,7 +763,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07
+        hex: 02 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07
         fields: {cmd: 0x0f, seq: 5, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7}
         why: "ADD_OFFLINE_GAME, seq 5, ANNA - KRYSTIAN 11:7 (13 B)."
 
@@ -785,8 +774,8 @@ scenarios:
         frame: chunk
         state_seq: 0x50
         hex:
-          - 01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
-          - 01 50 12 33 22 11 00
+          - 02 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 02 50 12 33 22 11 00
         body: {screen: MATCH_START, sport: squash, ack_seq: 5, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
         why: >-
           Legal squash score, both players selected: ack 5 APPLIED. The screen stays MATCH_START and
@@ -797,7 +786,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03
+        hex: 02 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03
         fields: {cmd: 0x0f, seq: 6, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 15, score_b: 3}
         why: >-
           Seq 6: 15:3 is not a legal squash game (the winner had already won at 11); the frame
@@ -810,8 +799,8 @@ scenarios:
         frame: chunk
         state_seq: 0x51
         hex:
-          - 01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
-          - 01 51 12 33 22 11 00
+          - 02 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 02 51 12 33 22 11 00
         body: {screen: MATCH_START, sport: squash, ack_seq: 6, ack_status: INVALID, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
         why: Ack 6 INVALID, nothing was stored.
 
@@ -820,7 +809,7 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81
+        hex: 02 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81
         fields: {index: 0, count: 1, tournament_id: 0xC0FFEE01, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, turn: 0x81}
         why: >-
           A second client reads the game (cursor 0): turn 0x81 = OFFLINE (bit 7) and the pair's
@@ -831,7 +820,7 @@ scenarios:
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 10 07 01 ee ff c0 00 00 00 00
+        hex: 02 10 07 01 ee ff c0 00 00 00 00
         fields: {cmd: 0x10, seq: 7, tournament_id: 0xC0FFEE01, rev: 0, index: 0}
         why: >-
           REMOVE_OFFLINE_GAME, seq 7: game 0 of tournament 0xC0FFEE01 as read under rev 0 (11 B).
@@ -843,8 +832,8 @@ scenarios:
         frame: chunk
         state_seq: 0x52
         hex:
-          - 01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
-          - 01 52 12 33 22 11 00
+          - 02 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44
+          - 02 52 12 33 22 11 00
         body: {screen: MATCH_START, sport: squash, ack_seq: 7, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
         why: Ack 7 APPLIED, the game is gone and rev is now 1.
 
@@ -853,560 +842,610 @@ scenarios:
         access: read
         characteristic: RESULTS
         frame: read
-        hex: 01 00 00 00 00 01 ee ff c0 01 00
+        hex: 02 00 00 00 00 01 ee ff c0 01 00
         fields: {index: 0, count: 0, tournament_id: 0xC0FFEE01, rev: 1}
         why: >-
           Reading from cursor 0 again: nothing is listed, so this is the end frame, with rev 1. A
           client that cached rev 0 drops its cache; the 11 B size also shows the board supports
           offline games.
 
-  - id: tablet_begin
+  - id: sync_join
     section: "16.15"
-    title: Tablet tournament
+    title: Tournament sync - a tablet joins a board's tournament
     goal: >-
-      A person picked TOURNAMENT on a squash board; a tablet reads that no tournament runs, stages
-      a two-entry roster and begins its tournament, which lands the board on MATCH_START.
-    notes: >-
-      Tablet tournament 0x7AB1E001. Until BEGIN_TOURNAMENT the stored players roster of 16.4 is
-      active (rosterVersion 0x150fe75b).
-    steps:
-      - step: wait_state
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x60
-        hex:
-          - 01 60 01 04 00 00 00 5b e7 0f 15
-        body: {screen: TOURNAMENT_WAIT, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b}
-        why: >-
-          TOURNAMENT_WAIT carries no screen data. A watch that does not know 0x04 shows "board
-          busy".
-
-      - step: status_none
-        direction: board -> watch
-        access: read
-        characteristic: TOURNAMENT
-        frame: status
-        hex: 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-        fields: {tournament_id: 0, sport: none, roster_count: 0, roster_crc: 0, outbox_from: 0, outbox_to: 0, mirror_crc: 0}
-        why: The cursor is STATUS at connect; tournament_id 0 = no tablet tournament, so the tablet pushes one.
-
-      - step: roster_anna
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: roster_entry
-        hex: 01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
-        fields: {index: 0, uid: 0x0A0B0C0D, r: 0xff, g: 0x00, b: 0x00, name: ANNA}
-        why: "Entry 0: the same 16-byte wire form as a ROSTER read (16.4). Staged, not acked."
-
-      - step: roster_krystian
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: roster_entry
-        hex: 01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
-        fields: {index: 1, uid: 0x11223344, r: 0x00, g: 0x40, b: 0xff, name: KRYSTIAN}
-        why: Entry 1.
-
-      - step: begin
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6
-        fields: {cmd: 0x11, seq: 1, tournament_id: 0x7AB1E001, sport: squash, count: 2, roster_crc: 0xc694f1d4}
-        derivation:
-          crc32: 02 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
-          value: 0xc694f1d4
-        why: >-
-          BEGIN_TOURNAMENT, seq 1: squash, 2 entries, roster_crc over the count byte and both staged
-          entries - the rosterVersion formula of section 12 (13 B).
-
-      - step: begin_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x61
-        hex:
-          - 01 61 02 11 01 01 00 d4 f1 94 c6 03 00 00 00 0d 0c 0b 0a 44
-          - 01 61 12 33 22 11 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0xc694f1d4, selected: 0x00000003, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
-        why: >-
-          Ack 1 APPLIED on the sport's MATCH_START: both entries selected, no CHOOSE_PLAYERS, and
-          rosterVersion is now the pushed roster's CRC, so watches re-read it.
-
-      - step: status_begun
-        direction: board -> watch
-        access: read
-        characteristic: TOURNAMENT
-        frame: status
-        hex: 01 00 01 e0 b1 7a 01 02 d4 f1 94 c6 01 00 00 00 00 00 00 00
-        fields: {tournament_id: 0x7AB1E001, sport: squash, roster_count: 2, roster_crc: 0xc694f1d4, outbox_from: 1, outbox_to: 0, mirror_crc: 0}
-        why: >-
-          The tablet's id, sport and roster; no board game yet (outbox_to 0, outbox_from =
-          outbox_to + 1) and no mirror yet.
-
-  - id: tablet_repush
-    section: "16.15"
-    title: Roster update
-    goal: >-
-      A late joiner: the tablet appends OLA, re-staging every entry, and sends BEGIN_TOURNAMENT
-      again with the same id while the tournament runs.
-    steps:
-      - step: roster_anna
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: roster_entry
-        hex: 01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
-        fields: {index: 0, uid: 0x0A0B0C0D, r: 0xff, g: 0x00, b: 0x00, name: ANNA}
-        why: The last BEGIN cleared the stage, so every entry is written again; ANNA stays at index 0.
-
-      - step: roster_krystian
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: roster_entry
-        hex: 01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
-        fields: {index: 1, uid: 0x11223344, r: 0x00, g: 0x40, b: 0xff, name: KRYSTIAN}
-        why: KRYSTIAN stays at index 1.
-
-      - step: roster_ola
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: roster_entry
-        hex: 01 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
-        fields: {index: 2, uid: 0x55667788, r: 0x00, g: 0xc0, b: 0x30, name: OLA}
-        why: The new entry, appended.
-
-      - step: repush
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 11 02 01 e0 b1 7a 01 03 5b e7 0f 15
-        fields: {cmd: 0x11, seq: 2, tournament_id: 0x7AB1E001, sport: squash, count: 3, roster_crc: 0x150fe75b}
-        why: >-
-          Same id and sport, 3 entries; the CRC equals 16.4's rosterVersion because the entries are
-          the same.
-
-      - step: repush_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x62
-        hex:
-          - 01 62 02 11 01 02 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
-          - 01 62 12 33 22 11 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 2, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
-        why: >-
-          Ack 2 APPLIED: OLA is selected too, the pair and the games are untouched, and the new
-          rosterVersion tells the watches to re-read.
-
-  - id: tablet_outbox
-    section: "16.15"
-    title: Outbox
-    goal: The tablet pulls the board's new games and acknowledges them once stored.
-    notes: >-
-      ANNA beat KRYSTIAN 11:7 on the board (id 0x5EED0001, seq 1) and a watch added the offline game
-      KRYSTIAN - OLA 11:4 (id 0x5EED0002, seq 2); the board is back on MATCH_START. The tablet's
-      cursor is STATUS.
+      Board 1 drew tournament 0x7AB1E001 and log_epoch 0x5A at START from ANNA, KRYSTIAN and OLA (16.4's stored players,
+      so roster_crc = 0x150fe75b). ANNA beat KRYSTIAN 11:7: record 0x5EED0001, rev 0, order 1, change
+      seq 1. A new connection: cursor STATUS, command seq from 1. A person started a squash tournament
+      on board 1 and one game is recorded. A tablet with no tournament reads it, adopts it, pulls the
+      change log and acknowledges it.
     steps:
       - step: status
         direction: board -> watch
         access: read
         characteristic: TOURNAMENT
         frame: status
-        hex: 01 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 02 00 00 00 00 00
-        fields: {tournament_id: 0x7AB1E001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, outbox_from: 1, outbox_to: 2, mirror_crc: 0}
-        why: Same id as the tablet's, so it continues; seqs 1 to 2 are un-ACKed.
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 5a
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 1, games_count: 1, games_crc: 0xd015c673, log_epoch: 0x5a}
+        derivation:
+          crc32: 01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+          value: 0xd015c673
+        why: >-
+          Byte 1 0x00 STATUS. One live record; the tablet has no tournament, so it adopts 0x7AB1E001 and
+          reads the roster through ROSTER (16.4). The read also binds this connection to the tournament.
 
-      - step: cursor_outbox
+      - step: cursor_changes
         direction: watch -> board
         access: write
         characteristic: TOURNAMENT
         frame: cursor
-        hex: 01 03 01 01 00
-        fields: {which: OUTBOX, seq: 1}
-        why: Reads now walk the outbox from outbox_from.
+        hex: 02 03 01 01 00
+        fields: {which: CHANGES, seq: 1}
+        why: A joiner reads the whole log, from change seq 1.
 
       - step: read_1
         direction: board -> watch
         access: read
         characteristic: TOURNAMENT
-        frame: outbox
-        hex: 01 01 01 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 00
-        fields: {seq: 1, id: 0x5EED0001, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, flags: 0}
-        why: The board's tracked game; the tablet shows it as a pending card.
-
-      - step: read_2
-        direction: board -> watch
-        access: read
-        characteristic: TOURNAMENT
-        frame: outbox
-        hex: 01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02
-        fields: {seq: 2, id: 0x5EED0002, uid_a: 0x11223344, uid_b: 0x55667788, score_a: 11, score_b: 4, flags: [OFFLINE]}
-        why: The watch's offline game (flags 0x02); the tablet accepts it as is.
+        frame: record_read
+        hex: 02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+        fields: {id: 0x5EED0001, rev: 0, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, flags: 0}
+        why: >-
+          Byte 1 0x02 RECORD: id, rev 0, order 1, ANNA - KRYSTIAN 11:7, flags 0 (scored on the board). The
+          18 bytes after the type are what games_crc covers.
 
       - step: read_end
         direction: board -> watch
         access: read
         characteristic: TOURNAMENT
-        frame: outbox_end
-        hex: 01 02 03 00
-        fields: {seq: 3}
-        why: Nothing un-ACKed at or after seq 3; the cursor stays.
+        frame: end
+        hex: 02 04 01 00 00 00
+        fields: {seq: 1, lost_to: 0}
+        why: >-
+          END: changes_to 1, nothing dropped. The cursor stays; the tablet resumes from seq 2 next time.
 
       - step: ack
         direction: watch -> board
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 13 03 01 e0 b1 7a 02 00
-        fields: {cmd: 0x13, seq: 3, tournament_id: 0x7AB1E001, up_to: 2}
-        why: ACK_OUTBOX, seq 3, once both games are stored on the tablet.
+        hex: 02 13 01 01 e0 b1 7a 01 00
+        fields: {cmd: 0x13, seq: 1, tournament_id: 0x7ab1e001, up_to: 1}
+        why: >-
+          ACK_CHANGES, seq 1, once the record is durable on the tablet. The first ACK arms the unsynced
+          guard.
 
       - step: ack_ack
         direction: board -> watch
         access: notify
         characteristic: STATE
         frame: chunk
-        state_seq: 0x63
+        state_seq: 0x60
         hex:
-          - 01 63 02 11 01 03 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
-          - 01 63 12 33 22 11 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
-        why: Ack 3 APPLIED. The games stay on the board; only the outbox is empty now.
+          - 02 60 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
+          - 02 60 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 1 APPLIED; no screen change.
 
-      - step: cursor_status
-        direction: watch -> board
-        access: write
-        characteristic: TOURNAMENT
-        frame: cursor
-        hex: 01 03 00 00 00
-        fields: {which: STATUS, seq: 0}
-        why: Back to the status read.
-
-      - step: status_acked
+  - id: sync_begin
+    section: "16.15"
+    title: A second board joins from MENU
+    goal: >-
+      Board 2 on MENU holds no tournament. A new connection: cursor STATUS, command seq from 1. The
+      tablet extends its tournament to board 2, which idles on MENU: stage the roster,
+      BEGIN_TOURNAMENT, push the records, then pull: the board does not echo the tablet's own
+      writes.
+    steps:
+      - step: status_none
         direction: board -> watch
         access: read
         characteristic: TOURNAMENT
         frame: status
-        hex: 01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 00 00 00 00
-        fields: {tournament_id: 0x7AB1E001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, outbox_from: 3, outbox_to: 2, mirror_crc: 0}
-        why: outbox_from = outbox_to + 1, the outbox is empty.
+        hex: 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        fields: {tournament_id: 0, sport: none, roster_count: 0, roster_crc: 0, changes_to: 0, games_count: 0, games_crc: 0, log_epoch: 0}
+        why: >-
+          tournament_id 0: no tournament, every field 0. The tablet may BEGIN it into its own.
 
-  - id: tablet_mirror
-    section: "16.15"
-    title: Mirror
-    goal: >-
-      The tablet replaces the board's games with its whole tournament, so the board's tally and its
-      watches' RESULTS show it.
-    notes: >-
-      The organiser has not accepted the board's game yet, so the tablet sends it PENDING; ANNA -
-      OLA 11:9 (id 0x7AB10003) came from another court through the tablet's (+). Before the commit
-      RESULTS listed the offline game alone, rev 0.
-    steps:
-      - step: mirror_0
+      - step: roster_anna
         direction: watch -> board
         access: write
         characteristic: TOURNAMENT
-        frame: mirror_entry
-        hex: 01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01
-        fields: {index: 0, id: 0x5EED0001, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, flags: [PENDING]}
-        why: This board's game, still a pending card on the tablet.
+        frame: roster_entry
+        hex: 02 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00
+        fields: {index: 0, uid: 0x0A0B0C0D, r: 0xff, g: 0x00, b: 0x00, name: ANNA}
+        why: Entry 0, the 16-byte wire form of a ROSTER read (16.4). Staged, not acked.
 
-      - step: mirror_1
+      - step: roster_krystian
         direction: watch -> board
         access: write
         characteristic: TOURNAMENT
-        frame: mirror_entry
-        hex: 01 02 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02
-        fields: {index: 1, id: 0x5EED0002, uid_a: 0x11223344, uid_b: 0x55667788, score_a: 11, score_b: 4, flags: [OFFLINE]}
-        why: The accepted offline game.
+        frame: roster_entry
+        hex: 02 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00
+        fields: {index: 1, uid: 0x11223344, r: 0x00, g: 0x40, b: 0xff, name: KRYSTIAN}
+        why: Entry 1.
 
-      - step: mirror_2
+      - step: roster_ola
         direction: watch -> board
         access: write
         characteristic: TOURNAMENT
-        frame: mirror_entry
-        hex: 01 02 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00
-        fields: {index: 2, id: 0x7AB10003, uid_a: 0x0A0B0C0D, uid_b: 0x55667788, score_a: 11, score_b: 9, flags: 0}
-        why: An accepted game from another court.
+        frame: roster_entry
+        hex: 02 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
+        fields: {index: 2, uid: 0x55667788, r: 0x00, g: 0xc0, b: 0x30, name: OLA}
+        why: Entry 2.
 
-      - step: commit
+      - step: begin
         direction: watch -> board
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 12 04 01 e0 b1 7a 03 43 d6 50 80
-        fields: {cmd: 0x12, seq: 4, tournament_id: 0x7AB1E001, count: 3, crc: 0x8050d643}
+        hex: 02 11 01 01 e0 b1 7a 01 03 5b e7 0f 15
+        fields: {cmd: 0x11, seq: 1, tournament_id: 0x7ab1e001, sport: squash, count: 3, roster_crc: 0x150fe75b}
         derivation:
-          crc32: 03 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00
-          value: 0x8050d643
-        why: COMMIT_MIRROR, seq 4, crc over the count byte and the three staged 15-byte games.
-
-      - step: commit_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x64
-        hex:
-          - 01 64 02 11 01 04 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
-          - 01 64 12 33 22 11 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 4, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
-        why: Ack 4 APPLIED; the board swapped its games in one step.
-
-      - step: results_2
-        direction: board -> watch
-        access: read
-        characteristic: RESULTS
-        frame: read
-        hex: 01 01 00 02 00 01 e0 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 01
-        fields: {index: 1, count: 2, tournament_id: 0x7AB1E001, uid_a: 0x0A0B0C0D, uid_b: 0x55667788, score_a: 11, score_b: 9, turn: 1}
+          crc32: 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00
+          value: 0x150fe75b
         why: >-
-          A watch reads RESULTS: the tablet's id, the offline game at index 0 and the (+) game at
-          index 1. The PENDING game is not listed, but the court's ANNA - KRYSTIAN tally counts it.
+          BEGIN_TOURNAMENT, seq 1: the tablet's id and sport, 3 entries, roster_crc over the count byte
+          and the staged entries (the rosterVersion formula of section 12).
 
-      - step: results_end
-        direction: board -> watch
-        access: read
-        characteristic: RESULTS
-        frame: read
-        hex: 01 02 00 02 00 01 e0 b1 7a 01 00
-        fields: {index: 2, count: 2, tournament_id: 0x7AB1E001, rev: 1}
-        why: The listed games changed, so rev went from 0 to 1, once for this commit.
-
-      - step: status_mirrored
-        direction: board -> watch
-        access: read
-        characteristic: TOURNAMENT
-        frame: status
-        hex: 01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 43 d6 50 80
-        fields: {tournament_id: 0x7AB1E001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, outbox_from: 3, outbox_to: 2, mirror_crc: 0x8050d643}
-        why: mirror_crc is the applied commit's crc; after a reconnect the tablet compares it with its own.
-
-  - id: tablet_set_side
-    section: "16.15"
-    title: SET_SIDE
-    goal: The tablet puts OLA on the right instead of KRYSTIAN.
-    steps:
-      - step: set_side
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 14 05 01 88 77 66 55
-        fields: {cmd: 0x14, seq: 5, side: right, uid: 0x55667788}
-        why: SET_SIDE, seq 5, right side, OLA (8 B).
-
-      - step: set_side_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x65
-        hex:
-          - 01 65 02 11 01 05 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88
-          - 01 65 12 77 66 55 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 5, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x55667788, flags: 0x00}
-        why: Ack 5 APPLIED, the pair is ANNA - OLA. On PLAYING the running game would move to that pair with its score.
-
-  - id: tablet_refusals
-    section: "16.15"
-    title: Refusals
-    goal: What the board refuses in tablet mode, and a tablet command outside it.
-    notes: >-
-      The board of 16.15 at MATCH_START (ANNA - OLA), then a board on MENU that a tablet BEGINs by
-      mistake (a new connection, seq starts at 1).
-    steps:
-      - step: begin_other_tid
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 11 06 02 e0 b1 7a 01 03 5b e7 0f 15
-        fields: {cmd: 0x11, seq: 6, tournament_id: 0x7AB1E002, sport: squash, count: 3, roster_crc: 0x150fe75b}
-        why: Another tournament's BEGIN while 0x7AB1E001 runs.
-
-      - step: begin_other_tid_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x66
-        hex:
-          - 01 66 02 11 01 06 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88
-          - 01 66 12 77 66 55 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 6, ack_status: INVALID, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x55667788, flags: 0x00}
-        why: Ack 6 INVALID; a person must leave and re-enter TOURNAMENT on the board.
-
-      - step: commit_bad_crc
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 12 07 01 e0 b1 7a 00 00 00 00 00
-        fields: {cmd: 0x12, seq: 7, tournament_id: 0x7AB1E001, count: 0, crc: 0}
-        why: An empty mirror with a wrong crc (an empty mirror's is 0xd202ef8d, the CRC-32 of 00).
-
-      - step: commit_bad_crc_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x67
-        hex:
-          - 01 67 02 11 01 07 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88
-          - 01 67 12 77 66 55 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 7, ack_status: INVALID, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x55667788, flags: 0x00}
-        why: Ack 7 INVALID; the games are unchanged and the mirror stage is cleared.
-
-      - step: remove
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 10 08 01 e0 b1 7a 01 00 00 00
-        fields: {cmd: 0x10, seq: 8, tournament_id: 0x7AB1E001, rev: 1, index: 0}
-        why: A watch tries to remove the offline game.
-
-      - step: remove_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x68
-        hex:
-          - 01 68 02 11 01 08 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88
-          - 01 68 12 77 66 55 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 8, ack_status: WRONG_SCREEN, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x55667788, flags: 0x00}
-        why: Ack 8 WRONG_SCREEN; the tablet is the only editor.
-
-      - step: back
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 02 09
-        fields: {cmd: 0x02, seq: 9}
-        why: A watch's BACK on MATCH_START.
-
-      - step: back_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x69
-        hex:
-          - 01 69 02 11 01 09 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88
-          - 01 69 12 77 66 55 00
-        body: {screen: MATCH_START, sport: squash, ack_seq: 9, ack_status: WRONG_SCREEN, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x55667788, flags: 0x00}
-        why: Ack 9 WRONG_SCREEN; only the board's long C leaves tablet mode.
-
-      - step: begin_on_menu
-        direction: watch -> board
-        access: write
-        characteristic: COMMAND
-        frame: command
-        hex: 01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6
-        fields: {cmd: 0x11, seq: 1, tournament_id: 0x7AB1E001, sport: squash, count: 2, roster_crc: 0xc694f1d4}
-        why: The BEGIN of tablet_begin/begin, sent to a board on MENU.
-
-      - step: begin_on_menu_ack
-        direction: board -> watch
-        access: notify
-        characteristic: STATE
-        frame: chunk
-        state_seq: 0x02
-        hex:
-          - 01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 1, ack_status: WRONG_SCREEN, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
-        why: >-
-          Ack 1 WRONG_SCREEN; BEGIN_TOURNAMENT never enters tablet mode, SELECT_SPORT TABLET_MODE
-          does (16.16).
-
-  - id: tablet_mode_entry
-    section: "16.16"
-    title: Tablet mode entry and exit
-    goal: >-
-      A client enters tablet mode with the standard MENU commands (TABLET_MODE is a menu entry like
-      a sport) and leaves TOURNAMENT_WAIT with BACK, as a person's long C does.
-    notes: A squash board on MENU, a new connection (seq starts at 1).
-    steps:
-      - step: menu
+      - step: begin_ack
         direction: board -> watch
         access: notify
         characteristic: STATE
         frame: chunk
         state_seq: 0x70
         hex:
-          - 01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 0, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
-        why: The TOURNAMENT row is listed as menu entry 0x80 after the sports; a watch skips an id it does not know.
+          - 02 70 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
+          - 02 70 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 1 APPLIED on the sport's MATCH_START, every entry selected.
 
-      - step: focus_tablet
+      - step: status_joined
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 00 00 00 8d ef 02 d2 c3
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 0, games_count: 0, games_crc: 0xd202ef8d, log_epoch: 0xc3}
+        derivation:
+          crc32: "00"
+          value: 0xd202ef8d
+        why: >-
+          Joined with no record yet: changes_to 0, games_count 0, and games_crc of the empty list = CRC-32
+          of the count byte 0. Binds this connection.
+
+      - step: push_1
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: record_write
+        hex: 02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+        fields: {id: 0x5EED0001, rev: 0, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, flags: 0}
+        why: >-
+          Board 1's record forwarded unchanged (sync_join/read_1 with the same bytes): unknown id, so
+          board 2 stores it and gives it change seq 1. Never acked.
+
+      - step: status_synced
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 1, games_count: 1, games_crc: 0xd015c673, log_epoch: 0xc3}
+        derivation:
+          crc32: 01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+          value: 0xd015c673
+        why: >-
+          games_count and games_crc now equal board 1's (sync_join/status): both boards hold the same live
+          records.
+
+      - step: cursor_changes
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: cursor
+        hex: 02 03 01 01 00
+        fields: {which: CHANGES, seq: 1}
+        why: The tablet pulls board 2's log from seq 1.
+
+      - step: read_end
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: end
+        hex: 02 04 01 00 00 00
+        fields: {seq: 1, lost_to: 0}
+        why: >-
+          Change seq 1 is the tablet's own push (its pairing slot wrote it), so it is skipped: END at
+          once, seq 1. ACKing 1 covers it.
+
+  - id: sync_pull
+    section: "16.15"
+    title: Resume after a link drop
+    goal: >-
+      Since sync_join: KRYSTIAN beat OLA 11:5 on board 1 (0x5EED0002, order 2, seq 2), then a watch
+      added the offline game ANNA - OLA 11:6 (0x5EED0003, order 3, seq 3). The tablet read seq 2, then
+      lost the link before END. A new connection. Board 1 recorded two more games; the tablet's link
+      dropped mid-pull. It reconnects and resumes from its last END, re-reading at most what it
+      already had.
+    steps:
+      - step: status
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 03 79 2d 75 ef 5a
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 3, games_count: 3, games_crc: 0xef752d79, log_epoch: 0x5a}
+        derivation:
+          crc32: 03 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00 03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02
+          value: 0xef752d79
+        why: >-
+          Same id: the tablet continues. changes_to 3 > its last END 1.
+
+      - step: cursor_changes
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: cursor
+        hex: 02 03 01 02 00
+        fields: {which: CHANGES, seq: 2}
+        why: Resume from the last END seq + 1; the read of seq 2 before the drop does not count.
+
+      - step: read_2
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: record_read
+        hex: 02 02 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00
+        fields: {id: 0x5EED0002, rev: 0, order: 2, uid_a: 0x11223344, uid_b: 0x55667788, score_a: 11, score_b: 5, flags: 0}
+        why: >-
+          Seq 2 again: merging it a second time is a no-op on the tablet.
+
+      - step: read_3
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: record_read
+        hex: 02 02 03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02
+        fields: {id: 0x5EED0003, rev: 0, order: 3, uid_a: 0x0A0B0C0D, uid_b: 0x55667788, score_a: 11, score_b: 6, flags: [OFFLINE]}
+        why: >-
+          The watch's offline game: flags 0x02 OFFLINE.
+
+      - step: read_end
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: end
+        hex: 02 04 03 00 00 00
+        fields: {seq: 3, lost_to: 0}
+        why: >-
+          END: changes_to 3.
+
+      - step: ack
         direction: watch -> board
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 0e 01 80 00 00 00
-        fields: {cmd: 0x0e, seq: 1, target: 0x00000080}
-        why: FOCUS on the TOURNAMENT row, as on a sport row.
+        hex: 02 13 01 01 e0 b1 7a 03 00
+        fields: {cmd: 0x13, seq: 1, tournament_id: 0x7ab1e001, up_to: 3}
+        why: ACK_CHANGES up to 3, seq 1 on this connection.
 
-      - step: focus_tablet_ack
+      - step: ack_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x61
+        hex:
+          - 02 61 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
+          - 02 61 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 1 APPLIED.
+
+  - id: sync_merge
+    section: "16.15"
+    title: Edits, a stale write and a tie
+    goal: >-
+      Board 2 after sync_begin. Tablet T1 corrected 0x5EED0001 to 11:8; tablet T2 independently
+      corrected it to 11:9; both edits are rev 1. A late relay still carries rev 0. Every write is on
+      a bound connection. The merge rule on board 2: a newer rev replaces, an older one is a no-op,
+      two different edits with the same rev resolve to the larger byte image on every peer.
+    steps:
+      - step: status
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 1, games_count: 1, games_crc: 0xd015c673, log_epoch: 0xc3}
+        derivation:
+          crc32: 01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+          value: 0xd015c673
+        why: One live record, changes_to 1.
+
+      - step: edit
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: record_write
+        hex: 02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 08 00
+        fields: {id: 0x5EED0001, rev: 1, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 8, flags: 0}
+        why: >-
+          T1's edit: rev 0 -> 1, order kept. Newer, so it replaces the stored record and takes change seq
+          2.
+
+      - step: stale
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: record_write
+        hex: 02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00
+        fields: {id: 0x5EED0001, rev: 0, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 7, flags: 0}
+        why: >-
+          The rev 0 original again: older than the stored rev 1, a no-op (no change seq).
+
+      - step: tie
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: record_write
+        hex: 02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00
+        fields: {id: 0x5EED0001, rev: 1, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 9, flags: 0}
+        why: >-
+          T2's edit, also rev 1. Same rev, different bytes: the larger 18-byte image wins - the first
+          differing byte is score_b, 0x09 > 0x08 - so 11:9 replaces 11:8 (change seq 3). T1 gets 11:9 on
+          its next pull; had it arrived first, 11:8 would have lost the same way.
+
+      - step: status_after
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 01 8b 0a 99 d3 c3
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 3, games_count: 1, games_crc: 0xd3990a8b, log_epoch: 0xc3}
+        derivation:
+          crc32: 01 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00
+          value: 0xd3990a8b
+        why: changes_to 3, still one live record; games_crc over the 11:9 form.
+
+      - step: cursor_records
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: cursor
+        hex: 02 03 02 00 00
+        fields: {which: RECORDS, seq: 0}
+        why: A full walk by sort index, the fallback when games_crc differs from the reader's.
+
+      - step: read_0
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: record_read
+        hex: 02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00
+        fields: {id: 0x5EED0001, rev: 1, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 9, flags: 0}
+        why: >-
+          Index 0: the stored record in its latest form.
+
+      - step: read_end
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: end
+        hex: 02 04 01 00 00 00
+        fields: {seq: 1, lost_to: 0}
+        why: >-
+          END: seq = 1 stored record (live + tombstones).
+
+  - id: sync_tombstone
+    section: "16.15"
+    title: Delete
+    goal: >-
+      Board 1 after sync_pull: three live records, RESULTS rev 0 (only appends so far). The watch's
+      connection has command seq 1 next; the tablet's cursor is STATUS on its own connection. A watch
+      deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the
+      tablet pulls the tombstone like any change.
+    steps:
+      - step: remove
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 02 10 01 01 e0 b1 7a 00 00 02 00
+        fields: {cmd: 0x10, seq: 1, tournament_id: 0x7ab1e001, rev: 0, index: 2}
+        why: >-
+          REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0.
+
+      - step: remove_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x62
+        hex:
+          - 02 62 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44
+          - 02 62 12 33 22 11 00
+        body: {screen: MATCH_START, sport: squash, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, left_uid: 0x0A0B0C0D, right_uid: 0x11223344, flags: 0x00}
+        why: Ack 1 APPLIED; no screen change.
+
+      - step: results_end
+        direction: board -> watch
+        access: read
+        characteristic: RESULTS
+        frame: read
+        hex: 02 02 00 02 00 01 e0 b1 7a 01 5a
+        fields: {index: 2, count: 2, tournament_id: 0x7ab1e001, rev: 0x5a01}
+        why: >-
+          The watch's RESULTS from index 2: count 2 now and rev 0x5A01 (log_epoch 0x5A, one change), so it drops its cache.
+
+      - step: status
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 01 e0 b1 7a 01 03 5b e7 0f 15 04 00 02 44 60 80 a7 5a
+        fields: {tournament_id: 0x7ab1e001, sport: squash, roster_count: 3, roster_crc: 0x150fe75b, changes_to: 4, games_count: 2, games_crc: 0xa7806044, log_epoch: 0x5a}
+        derivation:
+          crc32: 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00
+          value: 0xa7806044
+        why: >-
+          The tablet: changes_to 4, two live records (a tombstone is not in games_crc).
+
+      - step: cursor_changes
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: cursor
+        hex: 02 03 01 04 00
+        fields: {which: CHANGES, seq: 4}
+        why: From its last END + 1.
+
+      - step: read_4
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: record_read
+        hex: 02 02 03 00 ed 5e 01 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 03
+        fields: {id: 0x5EED0003, rev: 1, order: 3, uid_a: 0x0A0B0C0D, uid_b: 0x55667788, score_a: 11, score_b: 6, flags: [DELETED, OFFLINE]}
+        why: >-
+          The tombstone: rev 0 -> 1, flags 0x03 DELETED + OFFLINE, everything else kept. The tablet merges
+          it like an edit and forwards it to board 2 unchanged.
+
+      - step: read_end
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: end
+        hex: 02 04 04 00 00 00
+        fields: {seq: 4, lost_to: 0}
+        why: >-
+          END: changes_to 4; no tombstone dropped yet.
+
+  - id: sync_leave
+    section: "16.15"
+    title: End releases a board
+    goal: >-
+      Board 2 after sync_merge (changes_to 3), on the tablet's connection of sync_begin: after BEGIN
+      (seq 1) it ACKed up to 1 (seq 2), which armed the unsynced guard. The tablet's End on board 2: BACK toward
+      MENU is refused while the board holds un-ACKed changes, so the tablet pulls, ACKs, and the board
+      leaves.
+    steps:
+      - step: back_1
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 02 02 03
+        fields: {cmd: 0x02, seq: 3}
+        why: BACK on MATCH_START.
+
+      - step: back_1_ack
         direction: board -> watch
         access: notify
         characteristic: STATE
         frame: chunk
         state_seq: 0x71
         hex:
-          - 01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 1, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: menu_entry.TABLET_MODE, n: 5, entry_ids: 04 01 02 03 80}
-        why: Ack 1 APPLIED, the cursor is the menu-entry id 0x80.
+          - 02 71 01 10 01 03 00 5b e7 0f 15 07 00 00 00 00 00 00 00
+        body: {screen: CHOOSE_PLAYERS, sport: squash, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, cursor: 0x00000000}
+        why: Ack 3 APPLIED on CHOOSE_PLAYERS, cursor on START; the tournament still runs.
 
-      - step: select_tablet
+      - step: back_2
         direction: watch -> board
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 01 02 80
-        fields: {cmd: 0x01, seq: 2, sport: menu_entry.TABLET_MODE}
-        why: SELECT_SPORT on the TOURNAMENT row, the person's D on it.
+        hex: 02 02 04
+        fields: {cmd: 0x02, seq: 4}
+        why: BACK on CHOOSE_PLAYERS would leave the tournament.
 
-      - step: select_tablet_ack
+      - step: back_2_ack
         direction: board -> watch
         access: notify
         characteristic: STATE
         frame: chunk
         state_seq: 0x72
         hex:
-          - 01 72 01 04 00 02 00 5b e7 0f 15
-        body: {screen: TOURNAMENT_WAIT, sport: none, ack_seq: 2, ack_status: APPLIED, roster_version: 0x150fe75b}
-        why: Ack 2 APPLIED on TOURNAMENT_WAIT; tablet mode runs and the tournament window is open (9.2).
+          - 02 72 01 10 01 04 02 5b e7 0f 15 07 00 00 00 00 00 00 00
+        body: {screen: CHOOSE_PLAYERS, sport: squash, ack_seq: 4, ack_status: INVALID, roster_version: 0x150fe75b, selected: 0x00000007, cursor: 0x00000000}
+        why: >-
+          Ack 4 INVALID: changes_to 3 > acked_to 1. Nothing changes.
 
-      - step: back_on_wait
+      - step: cursor_changes
+        direction: watch -> board
+        access: write
+        characteristic: TOURNAMENT
+        frame: cursor
+        hex: 02 03 01 02 00
+        fields: {which: CHANGES, seq: 2}
+        why: Pull from the last END + 1.
+
+      - step: read
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: record_read
+        hex: 02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00
+        fields: {id: 0x5EED0001, rev: 1, order: 1, uid_a: 0x0A0B0C0D, uid_b: 0x11223344, score_a: 11, score_b: 9, flags: 0}
+        why: >-
+          Seqs 2 and 3 both changed 0x5EED0001; the walk returns it once, in its latest form (change seq
+          3, written by T2, so not skipped for T1).
+
+      - step: read_end
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: end
+        hex: 02 04 03 00 00 00
+        fields: {seq: 3, lost_to: 0}
+        why: >-
+          END: changes_to 3.
+
+      - step: ack
         direction: watch -> board
         access: write
         characteristic: COMMAND
         frame: command
-        hex: 01 02 03
-        fields: {cmd: 0x02, seq: 3}
-        why: BACK on TOURNAMENT_WAIT, the person's long C.
+        hex: 02 13 05 01 e0 b1 7a 03 00
+        fields: {cmd: 0x13, seq: 5, tournament_id: 0x7ab1e001, up_to: 3}
+        why: ACK_CHANGES up to 3.
 
-      - step: back_on_wait_ack
+      - step: ack_ack
         direction: board -> watch
         access: notify
         characteristic: STATE
         frame: chunk
         state_seq: 0x73
         hex:
-          - 01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80
-        body: {screen: MENU, sport: none, ack_seq: 3, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 5, entry_ids: 04 01 02 03 80}
-        why: Ack 3 APPLIED on a new MENU (cursor on the first row); tablet mode and the window ended.
+          - 02 73 01 10 01 05 00 5b e7 0f 15 07 00 00 00 00 00 00 00
+        body: {screen: CHOOSE_PLAYERS, sport: squash, ack_seq: 5, ack_status: APPLIED, roster_version: 0x150fe75b, selected: 0x00000007, cursor: 0x00000000}
+        why: Ack 5 APPLIED.
+
+      - step: back_3
+        direction: watch -> board
+        access: write
+        characteristic: COMMAND
+        frame: command
+        hex: 02 02 06
+        fields: {cmd: 0x02, seq: 6}
+        why: BACK again.
+
+      - step: back_3_ack
+        direction: board -> watch
+        access: notify
+        characteristic: STATE
+        frame: chunk
+        state_seq: 0x74
+        hex:
+          - 02 74 01 01 00 06 00 5b e7 0f 15 04 04 04 01 02 03
+        body: {screen: MENU, sport: none, ack_seq: 6, ack_status: APPLIED, roster_version: 0x150fe75b, cursor: sport.padel, n: 4, entry_ids: 04 01 02 03}
+        why: >-
+          Ack 6 APPLIED on MENU: the board left and dropped the tournament; its stored roster is active
+          again.
+
+      - step: status_none
+        direction: board -> watch
+        access: read
+        characteristic: TOURNAMENT
+        frame: status
+        hex: 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        fields: {tournament_id: 0, sport: none, roster_count: 0, roster_crc: 0, changes_to: 0, games_count: 0, games_crc: 0, log_epoch: 0}
+        why: No tournament. The tablet keeps the board's link for a later BEGIN.

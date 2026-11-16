@@ -1,17 +1,19 @@
-# Garmin App Remote - BLE protocol (v1)
+# Garmin App Remote - BLE protocol (v2)
 
 Contract between the scoreboard firmware (task #80) and the Connect IQ watch app (task #81).
 Spec for task #79. Background and measurements: the POC (task #66).
 
-Status: **protocol version 1, frozen** at the first public Connect IQ store release (watch app
-1.0.0); v0 was the development version and never reached the public. An incompatible change now
-bumps `PROTO` (see [Versioning](#5-versioning-and-compatibility)).
+Status: **protocol version 2** (draft, task #623): v1's frames plus one tournament model shared by
+the board, tablets and other boards (section 20). v1 was frozen at the first public Connect IQ store
+release (watch app 1.0.0); v0 never reached the public. An incompatible change bumps `PROTO` (see
+[Versioning](#5-versioning-and-compatibility)).
 Deviations from the locked task decisions are listed in [Open questions](#17-open-questions-and-deviations).
 
 ## 1. Model
 
 - The watch is always the BLE central, the board the GATT peripheral (Connect IQ cannot be a peripheral).
-- The board is the single source of truth (in tablet mode the tablet is, section 20). The watch sends **semantic commands** (not virtual
+- The board is the single source of truth for its screen. A tournament's games are records that
+  peers (tablets, later boards) merge (section 20). The watch sends **semantic commands** (not virtual
   A/B/C/D presses); the board applies them through its normal mode/view logic and pushes the
   resulting **screen state**; the watch renders that state.
 - Several watches (up to 4 connected, 8 paired) may control one board at once; each sees every
@@ -23,7 +25,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 
 ## 2. Conventions
 
-- **Every frame starts with the protocol version byte** (`PROTO`, currently `0x01`): every
+- **Every frame starts with the protocol version byte** (`PROTO`, currently `0x02`): every
   characteristic value read, written or notified, and the manufacturer data's version field
   (fixed offset, see 4.1). A frame whose first byte differs from the receiver's own `PROTO`
   is **dropped** by either side (the board does not apply or acknowledge it).
@@ -45,10 +47,9 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 <!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
 | Name | Value | Meaning |
 |---|---|---|
-| `PROTO` | `0x01` | Protocol version. Byte 0 of every characteristic value and the advertised version byte. |
+| `PROTO` | `0x02` | Protocol version. Byte 0 of every characteristic value and the advertised version byte. |
 | `COMPANY_ID` | `0xFFFF` | Bluetooth SIG test company id carried in the manufacturer data, until a registered one exists. |
 | `ADV_FLAG_PAIRING` | `0x01` | Bit 0 of the advertising flags byte: the pairing window is open and the code is present. |
-| `ADV_FLAG_TOURNAMENT` | `0x02` | Bit 1 of the advertising flags byte: the tournament pairing window is open and the code is present. |
 | `MAX_FRAME` | 20 | Maximum frame size in bytes; every read, write and notify is at most this. |
 | `MAX_ADV` | 31 | Maximum BLE advertising payload in bytes. |
 | `CHUNK_HEADER` | 3 | Fixed STATE notify header: PROTO, stateSeq, index<<4 \| count. |
@@ -59,8 +60,7 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | `KEY_SIZE` | 16 | Length of the per-watch HMAC key the board issues on pairing. |
 | `NONCE_SIZE` | 8 | Length of the board nonce Nb and the watch nonce Nw. |
 | `MAC_SIZE` | 8 | Truncated MAC length - the first 8 bytes of HMAC-SHA256. |
-| `SLOT_COUNT` | 8 | Paired watches a board holds; the 9th pairing evicts the least recently authenticated slot. |
-| `TABLET_SLOT` | `0x08` | The slot id of the key a tournament pairing issues; RAM only, one per board. |
+| `SLOT_COUNT` | 8 | Paired clients a board holds; the 9th pairing evicts the least recently authenticated slot. |
 | `MAX_CONNECTIONS` | 4 | Concurrent BLE connections the board accepts; it stops advertising while all are open. |
 | `ROSTER_ENTRY_SIZE` | 16 | Wire size of one roster entry: uid (u32), r, g, b, then a 9-byte name. |
 | `ROSTER_NAME_SIZE` | 9 | Bytes of the roster entry's name field, printable ASCII, NUL-padded. |
@@ -74,9 +74,10 @@ Deviations from the locked task decisions are listed in [Open questions](#17-ope
 | `HEART_MIN_INTERVAL_MS` | 1000 ms | Minimum interval between HEART notifies to one connection. |
 | `RESULTS_HEADER` | 9 | RESULTS read header: PROTO, index (u16), count (u16), tournamentId (u32). |
 | `RESULT_ENTRY_SIZE` | 11 | Wire size of one finished-game entry: uidA, uidB, scoreA, scoreB, turn. |
-| `RESULTS_MAX` | 128 | Most finished games listed per tournament. |
-| `TABLET_ROSTER_MAX` | 16 | Most roster entries a tablet pushes for one tournament. |
-| `GAME_ENTRY_SIZE` | 15 | Wire size of one game on TOURNAMENT: id (u32), uidA, uidB, scoreA, scoreB, flags. |
+| `RESULTS_MAX` | 128 | Most live (not deleted) game records per tournament. |
+| `TOMBSTONE_MAX` | 32 | Most deleted records (tombstones) a board keeps per tournament. |
+| `TOURNAMENT_ROSTER_MAX` | 16 | Most roster entries a tournament holds. |
+| `RECORD_SIZE` | 18 | Wire size of one game record: id (u32), rev, order (u16), uidA, uidB, scoreA, scoreB, flags. |
 <!-- /generated: constants -->
 
 UUIDs (fresh, not the POC's):
@@ -133,10 +134,10 @@ Even without the Flags AD it is 34. Moving it to the scan response does not help
 | 1 | 1 | `ad_type` | `0xFF` - Manufacturer specific. |
 | 2 | 2 | `company_id` | `COMPANY_ID` (`0xFFFF`) - Company id. |
 | 4 | 4 | `magic` | `53 43 42 44` - Product magic. |
-| 8 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 8 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 9 | 4 | `board_id` | Board id, drawn per board. |
-| 13 | 1 | `flags` | Bit 0 PAIRING (window open), bit 1 TOURNAMENT (tournament window open, section 9.2); bits 2-7 reserved, sent 0, ignored. |
-| 14 | 2 | `pairing_code` | Pairing code 0-9999 while PAIRING or TOURNAMENT, else 0x0000 (ignored). |
+| 13 | 1 | `flags` | Bit 0 PAIRING (window open); bits 1-7 reserved, sent 0, ignored. |
+| 14 | 2 | `pairing_code` | Pairing code 0-9999 while PAIRING, else 0x0000 (ignored). |
 | 16 | 3 | `flags_ad` | `02 01 06` - Flags AD: LE General Discoverable, BR/EDR not supported. |
 
 Broadcast always while BLE is up. The watch's pre-connect filter matches company id + magic (+ version + board id + flags) on this payload. The manufacturer bytes after the company id are frozen across protocol versions.
@@ -184,8 +185,12 @@ offset 0 or 2). Then:
 - **v1 is frozen at the first public Connect IQ store release** (watch app 1.0.0, accepting
   exactly v1: `MIN = MAX = 1`). v1 = v0's frames with `PROTO` `0x01`, plus HEART. A board still on
   v0 firmware is shown "Update the scoreboard firmware" (16.8).
-- From then on every incompatible change bumps `PROTO` (the next one is v2), and the range
-  check applies.
+- From then on every incompatible change bumps `PROTO`, and the range check applies.
+- **v2** (#623) = v1's frames with `PROTO` `0x02`, minus tablet mode (v1's TOURNAMENT_WAIT,
+  TABLET_MODE, ADV_FLAG_TOURNAMENT, the tablet slot, COMMIT_MIRROR, the outbox and mirror) and with
+  the TOURNAMENT characteristic redesigned as record sync (section 20). A watch app accepting only
+  v1 shows "Update the watch app" for a v2 board; a v2 watch app shows "Update the scoreboard
+  firmware" for a v1 board (16.8).
 - The watch checks the version from the advertising data before connecting, and again from the
   VERSION characteristic after connecting (both must be in range and equal).
 
@@ -219,13 +224,8 @@ from before it lacks the characteristic. Store app 1.0.0 never looks for it. Off
 ADD_OFFLINE_GAME / REMOVE_OFFLINE_GAME (0x0F / 0x10, a COMMAND frame of up to 13 B), a `rev` u16 on
 RESULTS' past-the-end frame (11 B instead of 9 B), and RESULTS `turn` bit 7 = OFFLINE (section 19,
 16.14). The `turn` bit is a deliberate exception to the rule above: a new meaning for an existing
-field, normally a `PROTO` bump (section 17, item 12). Tablet tournament (#583) - screen
-TOURNAMENT_WAIT (0x04), commands 0x11-0x14 and the TOURNAMENT characteristic (section 20, 16.15):
-old watches show "board busy" on the new screen and never send the commands. Tablet mode entry
-(#612) - MENU lists menu entry 0x80 TABLET_MODE after the sports, SELECT_SPORT takes it and BACK
-on TOURNAMENT_WAIT leaves tablet mode (section 11.3, 20.6, 16.16): old watches skip the unknown
-id and never send BACK on TOURNAMENT_WAIT (a busy screen for them); BACK on a tablet MATCH_START
-stays WRONG_SCREEN; an old board answers INVALID to the select and WRONG_SCREEN to that BACK.
+field, normally a `PROTO` bump (section 17, item 12). v1's tablet mode (#583, #612) was replaced
+in v2, not extended (above).
 
 **Frozen across all versions:** company id, magic and the version byte's offset in the
 advertising data; the VERSION characteristic's UUID and its byte 0.
@@ -247,7 +247,7 @@ Connect IQ profile (limit is 3).
 | RESULTS | write, read | yes | The finished games of the current tournament, for a watch that draws the standings. |
 | ROSTER | write, read | yes | The active roster (players or teams): a write sets the per-connection read cursor, each read returns the entry at the cursor and advances it. |
 | STATE | read, notify | yes | The board's current screen state: a body split into chunked notifications, plus a read of chunk 0 for a quick sync check. |
-| TOURNAMENT | write, read | yes | A tablet's tournament on a board in tablet mode: staged roster and mirror writes, a status read and the outbox of the board's own games. |
+| TOURNAMENT | write, read | yes | The board's tournament as state for peers to sync: a status, a change log and the stored game records to read, records to merge and roster entries to stage. |
 | VERSION | read | no | The board's protocol version and firmware version string, read once on connect to confirm compatibility. |
 <!-- /generated: gatt -->
 
@@ -265,7 +265,7 @@ no notifications. Notify-only, never indications (unreliable on some watches).
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1-19 | `version` | Firmware version, ASCII, no NUL (e.g. 0.6.187). |
 
 Read once per connection; a shorter or foreign-PROTO value is ignored.
@@ -276,7 +276,7 @@ Read once per connection; a shorter or foreign-PROTO value is ignored.
 | Step | Request | Notes |
 |---|---|---|
 | 1 | scan, filter (4.4), `pairDevice()` | `pairDevice` does not persist across launches: every launch rescans |
-| 2 | (on connect) check service + the seven v1 characteristics exist (VERSION to HEART) | any missing -> disconnect, treat as not a scoreboard; RESULTS and TOURNAMENT missing are not an error (sections 19, 20) |
+| 2 | (on connect) check service + the seven mandatory characteristics exist (VERSION to HEART) | any missing -> disconnect, treat as not a scoreboard; RESULTS and TOURNAMENT missing are not an error (sections 19, 20) |
 | 3 | read VERSION | out of range or `!=` advertised -> disconnect + message (section 5) |
 | 4 | read AUTH | challenge (8.1) |
 | 5 | write AUTH | proof |
@@ -318,7 +318,7 @@ One proof per connection: after a failed proof the board answers the result and 
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x00` CHALLENGE - Marks this read as a challenge. `0` CHALLENGE, `1` PROOF, `2` RESULT |
 | 2 | 8 | `nb` | Board nonce, fresh per connection. |
 
@@ -328,9 +328,9 @@ The watch reads AUTH before it has written a proof (connection sequence step 4) 
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x01` PROOF - Marks this write as a proof. `0` CHALLENGE, `1` PROOF, `2` RESULT |
-| 2 | 1 | `slot` | Board slot the watch's key was issued in (PAIRING result); TABLET_SLOT for a tournament pairing. Range 0-TABLET_SLOT. |
+| 2 | 1 | `slot` | Board slot the client's key was issued in (PAIRING result). Range 0-SLOT_COUNT - 1. |
 | 3 | 8 | `nw` | Watch nonce, fresh per attempt. |
 | 11 | 8 | `watch_mac` | First 8 bytes of HMAC-SHA256(K, 0x57 \|\| Nb). |
 
@@ -340,7 +340,7 @@ The watch draws Nw, computes MAC("W" \|\| Nb) with the key of the slot the board
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x02` RESULT - Marks this read as a result. `0` CHALLENGE, `1` PROOF, `2` RESULT |
 | 2 | 1 | `status` | Outcome of the proof. `0` OK, `1` BAD_PROOF, `2` UNKNOWN_SLOT |
 | 3 | 8 | `board_mac` | First 8 bytes of HMAC-SHA256(K, 0x42 \|\| Nw). Present only when `status == OK`. |
@@ -387,7 +387,7 @@ The 10 s unauthenticated timeout restarts when a pairing result is delivered.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x00` NONE - Marks this read as "no request". `0` NONE, `1` REQUEST, `2` RESULT |
 
 The watch reads this on a fresh connection to confirm no pairing is in progress.
@@ -396,7 +396,7 @@ The watch reads this on a fresh connection to confirm no pairing is in progress.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x01` REQUEST - Marks this write as a pairing request. `0` NONE, `1` REQUEST, `2` RESULT |
 | 2 | 2 | `code` | The 4-digit code shown next to the chosen board. |
 
@@ -406,7 +406,7 @@ Sent once on the pairing connection. The board answers RESULT whether the code m
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x02` RESULT - Marks this read as a pairing result. `0` NONE, `1` REQUEST, `2` RESULT |
 | 2 | 1 | `status` | Outcome of the request. `0` OK, `1` WINDOW_CLOSED, `2` BAD_CODE, `3` FULL_RETRY |
 | 3 | 1 | `slot` | Board slot the new key was issued in. Present only when `status == OK`. |
@@ -418,30 +418,14 @@ Read (or notified) after the request. OK carries slotId + the 16-byte key the wa
 The board answers within the write's access callback, so the result is readable as soon as the
 write response arrives.
 
-### 9.2 Tournament pairing
+### 9.2 Tablets
 
-A tablet pairs with no one at the board (#583): someone already chose the board by entering
-tablet mode on it (a person picking TOURNAMENT, or an authenticated client's SELECT_SPORT
-TABLET_MODE), so that choice is the user-opened window.
-
-1. On TOURNAMENT_WAIT (section 20) the board turns GARMIN on if it is off (it stays on, as after
-   PARUJ), draws a code and opens the **tournament window**: no time limit, advertised as
-   `ADV_FLAG_TOURNAMENT` (bit 1) + code, with bit 0 clear, so a watch never lists the board. The
-   window closes when the board leaves TOURNAMENT_WAIT (BEGIN_TOURNAMENT, or leaving tablet mode).
-   It is not shown on the board's displays.
-2. A tablet lists advertisers with bit 1 set and runs section 9 steps 3-5 with the advertised
-   code, unasked. The board answers OK with slot `TABLET_SLOT` (8) and a fresh key, kept in RAM
-   only: never written to NVS, never in a watch slot, so no paired watch is evicted.
-3. The tablet authenticates with `TABLET_SLOT` like any slot (section 8), then and on every
-   reconnect while the tournament runs.
-4. The key ends with tablet mode: when the board leaves it (to the main menu, or back to
-   TOURNAMENT_WAIT) or restarts, the board drops every connection authenticated with it, and a
-   later proof for `TABLET_SLOT` answers UNKNOWN_SLOT. A tablet that sees UNKNOWN_SLOT forgets the
-   key and pairs again in the next tournament window. A second tournament pairing replaces the
-   key and drops the connection that held the old one.
-
-One tablet key per board. Any client may pair in the tournament window (the board does not tell a
-tablet from a watch); the result is the same 20 B OK frame of 9.1.
+A tablet pairs exactly like a watch, in the PARUJ window (the bench board, with no displays to
+show a code on, keeps it open), and its key takes one of the
+`SLOT_COUNT` slots (persisted, evicted like any other). The board cannot tell a tablet from a
+watch; what makes a peer a tablet is only what it reads and writes (section 20). v1's RAM-only
+tournament window and tablet slot are gone: a board that reboots keeps the tablet's key, so the
+tablet re-joins without a person at the board (20.3).
 
 ## 10. Commands
 
@@ -453,7 +437,7 @@ tablet from a watch); the result is the same 20 B OK frame of 9.1.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `cmd` | Command id. |
 | 2 | 1 | `seq` | Sequence number, 1-255. |
 | 3 | n | `args` | The command's arguments. - the command table (10.2) |
@@ -468,7 +452,7 @@ The arguments depend on the command id (commands.yaml).
 | Id | Name | Args | Size | Valid on | Board effect |
 |---|---|---|---|---|---|
 | `0x01` | SELECT_SPORT | `sport` uint8 | 4 | MENU | Act on a MENU row (cursor to the row + D). |
-| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE, TOURNAMENT_WAIT | DeviceMode::goBack(): one step back toward the menu. |
+| `0x02` | BACK | - | 3 | CHOOSE_PLAYERS, MATCH_START, INTRO, CELEBRATION, GAME_OVER, PROFILE | DeviceMode::goBack(): one step back toward the menu. |
 | `0x03` | TOGGLE_PLAYER | `uid` uint32 | 7 | CHOOSE_PLAYERS | Add or remove that profile (D on its row). |
 | `0x04` | START_TOURNAMENT | - | 3 | CHOOSE_PLAYERS | -> MATCH_START (D on START). |
 | `0x05` | SET_PAIR | `left_uid` uint32, `right_uid` uint32 | 11 | MATCH_START | Make the match between leftUid and rightUid, leftUid on the left. |
@@ -481,11 +465,11 @@ The arguments depend on the command id (commands.yaml).
 | `0x0C` | UNUSED_0C | - | - | - | Reserved; never sent. |
 | `0x0D` | SYNC | - | 3 | ALL | No state change; re-push the full state. |
 | `0x0E` | FOCUS | `target` uint32 | 7 | MENU, CHOOSE_PLAYERS | Move the board's cursor to a row without acting on it (A / B scrolling, silent). |
-| `0x0F` | ADD_OFFLINE_GAME | `uid_a` uint32, `uid_b` uint32, `score_a` uint8, `score_b` uint8 | 13 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Append a game played off the board to the current tournament's results. |
-| `0x10` | REMOVE_OFFLINE_GAME | `tournament_id` uint32, `rev` uint16, `index` uint16 | 11 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Remove a mistaken offline game from the current tournament's results. |
-| `0x11` | BEGIN_TOURNAMENT | `tournament_id` uint32, `sport` uint8, `count` uint8, `roster_crc` uint32 | 13 | TOURNAMENT_WAIT, MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Start the tablet's tournament from the staged roster, or update its roster. |
-| `0x12` | COMMIT_MIRROR | `tournament_id` uint32, `count` uint8, `crc` uint32 | 12 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Replace the board's games with the staged mirror, atomically. |
-| `0x13` | ACK_OUTBOX | `tournament_id` uint32, `up_to` uint16 | 9 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | The tablet has stored every board game up to that outbox seq. |
+| `0x0F` | ADD_OFFLINE_GAME | `uid_a` uint32, `uid_b` uint32, `score_a` uint8, `score_b` uint8 | 13 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Record a game played off the board in the current tournament. |
+| `0x10` | REMOVE_OFFLINE_GAME | `tournament_id` uint32, `rev` uint16, `index` uint16 | 11 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Delete a mistaken offline game from the current tournament. |
+| `0x11` | BEGIN_TOURNAMENT | `tournament_id` uint32, `sport` uint8, `count` uint8, `roster_crc` uint32 | 13 | MENU, MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Join the board to a tournament from the staged roster, or grow its roster. |
+| `0x12` | UNUSED_12 | - | - | - | Reserved; never sent. |
+| `0x13` | ACK_CHANGES | `tournament_id` uint32, `up_to` uint16 | 9 | CHOOSE_PLAYERS, MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | The sender has stored every change up to that change seq durably. |
 | `0x14` | SET_SIDE | `side` uint8, `uid` uint32 | 8 | MATCH_START, INTRO, PLAYING, CELEBRATION, GAME_OVER | Put that roster entry on that court side (hot-swap). |
 <!-- /generated: commands -->
 
@@ -501,8 +485,8 @@ id (PROFILE and CONFIG are never listed, so no client can focus them). Each
 FOCUS costs the e-paper at most one partial refresh; requests made during a refresh coalesce
 into one, as for fob scrolling.
 
-BEGIN_TOURNAMENT, COMMIT_MIRROR, ACK_OUTBOX and SET_SIDE are tablet-mode commands (section 20):
-outside tablet mode they answer WRONG_SCREEN on every screen.
+BEGIN_TOURNAMENT, ACK_CHANGES and SET_SIDE serve tournament sync (section 20); any authenticated
+client may send them. 0x12 is unused (UNKNOWN_CMD).
 
 ### 10.3 Sequence numbers and acknowledgement
 
@@ -537,7 +521,7 @@ A frame with a foreign `PROTO` is dropped without any ack.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `state_seq` | Per-connection push counter, +1 per push, wraps. |
 | 2 | 1 | `index_count` | index << 4 \| count (index 0-14, count 1-15). |
 | 3 | 1-17 | `body` | Body bytes for this chunk. |
@@ -562,7 +546,7 @@ connection, so each connection gets its own push.
 
 Sports - one wire table, independent of `DeviceModeState`; the watch offers exactly the sports
 the board's MENU state lists (built from `ModeSwitchingView`'s `ModeMenuEntry` table, in menu
-order; the list also carries the `menu_entry` rows of 11.3, which are not sports):
+order):
 
 | `sport` | Name |
 |---|---|
@@ -580,7 +564,6 @@ Screens:
 | `0x01` | MENU | `ModeSwitchingMode` | sport list, plus the menu entries it knows (PROFILE / CONFIG never listed) |
 | `0x02` | CONFIG | `ConfigMode` | board busy |
 | `0x03` | PROFILE | `PlayerSetupMode` | "edit on phone" + BACK |
-| `0x04` | TOURNAMENT_WAIT | `TournamentWaitMode` (section 20) | board busy |
 | `0x10` | CHOOSE_PLAYERS | `TournamentChoosePlayers` | roster with in/out, START |
 | `0x11` | MATCH_START | `MatchStartGame` | left/right pick, swap, start |
 | `0x12` | INTRO | `MatchIntro` | the pair, SKIP |
@@ -591,7 +574,7 @@ Screens:
 
 ### 11.3 Screen data
 
-BOOTING, CONFIG, PROFILE, TOURNAMENT_WAIT: none (body 8 B, 1 chunk).
+BOOTING, CONFIG, PROFILE: none (body 8 B, 1 chunk).
 
 MENU (body `10 + n`):
 
@@ -599,11 +582,10 @@ MENU (body `10 + n`):
 |---|---|---|
 | 8 | 1 | cursor: menu-entry id of the highlighted row, 0 on a row not listed (PROFILE, CONFIG) |
 | 9 | 1 | `n` menu entries |
-| 10 | n | menu-entry ids in menu order (today `04 01 02 03 80`: padel, squash, volleyball, short volleyball, TABLET_MODE) |
+| 10 | n | menu-entry ids in menu order (today `04 01 02 03`: padel, squash, volleyball, short volleyball) |
 
-A menu-entry id is a `sport` id or a `menu_entry` value (`0x80` TABLET_MODE, the TOURNAMENT row,
-section 20). Entries share one id space so FOCUS and SELECT_SPORT name any row the same way; a
-client skips ids it does not know.
+A menu-entry id is a `sport` id; FOCUS and SELECT_SPORT name rows by it. A client skips ids it
+does not know (room for non-sport rows later).
 
 CHOOSE_PLAYERS (body 16, 1 chunk):
 
@@ -713,7 +695,7 @@ the one every uid in the current state belongs to (CHOOSE_PLAYERS' selection and
 | `sport` | Roster kind |
 |---|---|
 | `0x04` padel, `0x02` volleyball, `0x03` short volleyball | teams |
-| `0x01` squash, `0x00` (BOOTING, MENU, CONFIG, PROFILE, TOURNAMENT_WAIT) | players |
+| `0x01` squash, `0x00` (BOOTING, MENU, CONFIG, PROFILE) | players |
 
 - The board selects the roster when it changes mode and switches to it **with** the first
   state of the new mode: until that state is published, every state (pushed or read) keeps the
@@ -727,8 +709,10 @@ the one every uid in the current state belongs to (CHOOSE_PLAYERS' selection and
   does nothing special.
 - A watch that ignores the kind (one cache slot per board) still works: it re-reads on every
   switch between a team sport and the rest.
-- In tablet mode the tablet's pushed roster (section 20.2) is the active roster of the sport's
-  kind, in place of the stored one; the stored roster returns when tablet mode ends.
+- While a tournament runs, its roster (the START selection, or a BEGIN_TOURNAMENT's staged list,
+  section 20.3) is the active roster of the sport's kind, in place of the stored one; the stored
+  roster returns when the board leaves the tournament. `rosterVersion` is then the tournament's
+  `roster_crc`.
 
 <!-- generated: frames:ROSTER -->
 <!-- Do not edit: generated from docs/protocol/ by `python helpers/check_protocol.py build`. -->
@@ -736,7 +720,7 @@ the one every uid in the current state belongs to (CHOOSE_PLAYERS' selection and
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `index` | Entry index to read next. |
 
 One write + `count` reads re-reads the whole roster.
@@ -745,7 +729,7 @@ One write + `count` reads re-reads the whole roster.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `index` | The cursor this read answers. |
 | 2 | 1 | `count` | Roster size. |
 | 3 | 4 | `uid` | The profile or team id. Present only when `index < count`. |
@@ -796,9 +780,9 @@ Each read returns the entry at the cursor and advances it; past the end the curs
 | HEART values per notify | 3 (every other connection) | `MAX_CONNECTIONS` - 1 |
 | HEART notifies | 1 / s per connection, newest content | section 18 |
 | Heart rate held by the board | latest per connection, RAM only, 15 s expiry | section 18 |
-| RESULTS games listed | 128 per tournament; later games are not listed | `Garmin::RESULTS_MAX`, section 19 |
-| Tablet roster | 16 entries | `TABLET_ROSTER_MAX`, section 20 (one round robin of 16 = 120 games) |
-| Mirror | 128 games | `RESULTS_MAX`, section 20.4 |
+| Live game records | 128 per tournament; START_MATCH / ADD_OFFLINE_GAME answer INVALID at the cap, a merged record beyond it is dropped | `RESULTS_MAX`, section 20.2 |
+| Tombstones | 32; the oldest change is dropped first | `TOMBSTONE_MAX`, section 20.2 |
+| Tournament roster | 16 entries | `TOURNAMENT_ROSTER_MAX`, section 20 (one round robin of 16 = 120 games) |
 
 ## 15. Crypto availability
 
@@ -822,21 +806,15 @@ The two advertising payloads the board broadcasts while BLE is up, and the VERSI
 
 `advertising/adv_normal` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06    (19 B)
+0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06    (19 B)
 ```
 The identifying manufacturer data first, then the Flags AD. Board id is the little-endian fixture; flags 0 = no pairing window, pairing code ignored.
 
 `advertising/adv_pairing` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 01 78 56 34 12 01 af 10 02 01 06    (19 B)
+0f ff ff ff 53 43 42 44 02 78 56 34 12 01 af 10 02 01 06    (19 B)
 ```
 The pairing window is open, so flags bit 0 is set and the drawn code 4271 (0x10AF) is carried little-endian. The watch lists only advertisers with bit 0 set.
-
-`advertising/adv_tournament` - ADVERTISING advertise:
-```
-0f ff ff ff 53 43 42 44 01 78 56 34 12 02 af 10 02 01 06    (19 B)
-```
-The board waits on TOURNAMENT_WAIT with its tournament window open: bit 1 only, so a watch does not list it, and the code a tablet pairs with unasked (section 9.2).
 
 `advertising/scan_rsp` - ADVERTISING scan_response:
 ```
@@ -846,7 +824,7 @@ The 128-bit service UUID little-endian, then the local name Score-XXXX where XXX
 
 `advertising/version` - VERSION read:
 ```
-01 30 2e 36 2e 31 38 37    (8 B)
+02 30 2e 36 2e 31 38 37    (8 B)
 ```
 PROTO then the firmware version string, read once on connect. The watch compares PROTO with the advertised byte; both must be in range and equal.
 
@@ -856,13 +834,13 @@ A paired watch reconnects to its board and both sides prove they hold the same k
 
 `auth/challenge` - AUTH read:
 ```
-01 00 a0 a1 a2 a3 a4 a5 a6 a7    (10 B)
+02 00 a0 a1 a2 a3 a4 a5 a6 a7    (10 B)
 ```
 First read on a fresh connection. The board drew Nb when the watch connected; the watch needs it to build a proof the board can check and that is useless on any other connection.
 
 `auth/proof` - AUTH write:
 ```
-01 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae    (19 B)
+02 01 02 b0 b1 b2 b3 b4 b5 b6 b7 4e 47 0a 94 b9 24 ac ae    (19 B)
   HMAC-SHA256(K, 57 a0 a1 a2 a3 a4 a5 a6 a7)
     = 4e470a94b924acae1ef4234f341a5c760ddebc1858661c39580b7201b2a95047
 ```
@@ -870,7 +848,7 @@ The watch names its slot, sends a fresh Nw for the board to MAC, and proves it h
 
 `auth/result_ok` - AUTH read:
 ```
-01 02 00 18 57 e1 b4 a9 6e bf 5a    (11 B)
+02 02 00 18 57 e1 b4 a9 6e bf 5a    (11 B)
   HMAC-SHA256(K, 42 b0 b1 b2 b3 b4 b5 b6 b7)
     = 1857e1b4a96ebf5a8236582beab5ab29d65cef89dc6c9aab8e492a0a97ed76ce
 ```
@@ -878,7 +856,7 @@ The proof matched, so the connection is authenticated. The board answers with it
 
 `auth/result_bad_proof` (instead of `result_ok`) - AUTH read:
 ```
-01 02 01    (3 B)
+02 02 01    (3 B)
 ```
 The same exchange when the board's slot 2 holds a different key (the watch was evicted and the slot reissued). No board MAC; the board disconnects 2 s later and the watch shows "pair again".
 
@@ -888,19 +866,19 @@ The watch sends the code it picked from the advertising and stores the key the b
 
 `pairing/request` - PAIRING write:
 ```
-01 01 af 10    (4 B)
+02 01 af 10    (4 B)
 ```
 The watch writes the request carrying the code 4271 (0x10AF, little-endian) it picked next to the chosen board. The type byte marks this as REQUEST.
 
 `pairing/result_ok` - PAIRING read:
 ```
-01 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f    (20 B)
+02 02 00 02 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f    (20 B)
 ```
 The code matched, so the board answers OK with the slot id and the 16-byte key the watch stores as {0x12345678, 2, 00..0f}. The key crosses the air once inside the open window.
 
 `pairing/result_bad_code` (instead of `result_ok`) - PAIRING read:
 ```
-01 02 02    (3 B)
+02 02 02    (3 B)
 ```
 A code that does not match the board's. Non-zero status means no key follows: the watch shows why and the user may retry.
 
@@ -910,13 +888,13 @@ The watch walks the players roster one entry per read: write sets the cursor, ea
 
 `roster_read/write` - ROSTER write:
 ```
-01 00    (2 B)
+02 00    (2 B)
 ```
 The watch sets the per-connection cursor to 0 before reading the whole roster.
 
 `roster_read/read_anna` - ROSTER read:
 ```
-01 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
+02 00 03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
   CRC-32(03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00)
     = 0x150fe75b
 ```
@@ -924,19 +902,19 @@ First entry: ANNA uid 0x0A0B0C0D rgb ff 00 00. The rosterVersion every state bod
 
 `roster_read/read_krystian` - ROSTER read:
 ```
-01 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
+02 01 03 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
 ```
 Second entry: KRYSTIAN uid 0x11223344 rgb 00 40 ff, name NUL-padded to 9 bytes.
 
 `roster_read/read_ola` - ROSTER read:
 ```
-01 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00    (19 B)
+02 02 03 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00    (19 B)
 ```
 Third entry: OLA uid 0x55667788 rgb 00 c0 30.
 
 `roster_read/read_past_end` - ROSTER read:
 ```
-01 03 03    (3 B)
+02 03 03    (3 B)
 ```
 Past the end the cursor stays at the last entry and the read returns the 3-byte header alone, so the watch knows it has the whole roster.
 
@@ -946,13 +924,13 @@ The teams roster, active in padel and volleyball: the same walk, with the teams'
 
 `roster_read_teams/write` - ROSTER write:
 ```
-01 00    (2 B)
+02 00    (2 B)
 ```
 Same cursor write; the board serves the teams roster while a team sport is active.
 
 `roster_read_teams/read_orly` - ROSTER read:
 ```
-01 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00    (19 B)
+02 00 02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00    (19 B)
   CRC-32(02 24 23 22 21 ff 80 00 4f 52 4c 59 00 00 00 00 00 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00)
     = 0xdb5f702c
 ```
@@ -960,13 +938,13 @@ First team ORLY uid 0x21222324 rgb ff 80 00; the teams rosterVersion is 0xdb5f70
 
 `roster_read_teams/read_lisy` - ROSTER read:
 ```
-01 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00    (19 B)
+02 01 02 34 33 32 31 00 ff 80 4c 49 53 59 00 00 00 00 00    (19 B)
 ```
 Second team LISY uid 0x31323334 rgb 00 ff 80.
 
 `roster_read_teams/read_past_end` - ROSTER read:
 ```
-01 02 02    (3 B)
+02 02 02    (3 B)
 ```
 Past the end: the 3-byte header alone.
 
@@ -976,9 +954,9 @@ A MENU body in one chunk, the menu entries with the highlighted row - the first 
 
 `menu_state/menu` - STATE notify:
 ```
-01 01 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
+02 01 01 01 00 00 00 5b e7 0f 15 04 04 04 01 02 03    (17 B)
 ```
-Cursor on padel, four sports and TABLET_MODE listed. The body is 15 B, so it fits one chunk: header PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
+Cursor on padel, four sports listed. The body is 14 B, so it fits one chunk: header PROTO, stateSeq 1, index/count 0x01. rosterVersion 0x150fe75b is the players roster CRC.
 
 ### 16.6 SCORE with confirm (squash)
 
@@ -986,14 +964,14 @@ The watch scores a point optimistically and the board acknowledges it through th
 
 `score_confirm/score` - COMMAND write:
 ```
-01 08 07 00    (4 B)
+02 08 07 00    (4 B)
 ```
 SCORE left with sequence number 7; the watch shows the pending point at once.
 
 `score_confirm/state` - STATE notify:
 ```
-01 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11    (20 B)
-01 2a 12 01 00 05 03    (7 B)
+02 2a 02 13 01 07 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 11    (20 B)
+02 2a 12 01 00 05 03    (7 B)
 ```
 The board applied it and pushed PLAYING, squash, ack 7 APPLIED, flags 0x11 (UNCOMMITTED, LAST_KNOWN - the newest point is the left's), games 1:0, score 5:3. The 21 B body is two chunks; ackSeq 7 settles the pending press.
 
@@ -1003,37 +981,37 @@ Two padel PLAYING bodies: a tiebreak and a ladder deuce, showing the extra left_
 
 `padel_playing/tiebreak` - STATE notify:
 ```
-01 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12    (20 B)
-01 2b 12 01 00 06 06 03 02    (9 B)
+02 2b 02 13 04 0c 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 12    (20 B)
+02 2b 12 01 00 06 06 03 02    (9 B)
 ```
 Tiebreak: sets 1:0, gems 6:6, raw points 3:2, committed, the last rally won by the left (flags 0x12: TIEBREAK, LAST_KNOWN), ack 12.
 
 `padel_playing/ladder` - STATE notify:
 ```
-01 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
-01 2c 12 00 00 02 01 03 04    (9 B)
+02 2c 02 13 04 0d 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
+02 2c 12 00 00 02 01 03 04    (9 B)
 ```
 Ladder: sets 0:0, gems 2:1, committed deuce, then an uncommitted rally to the right -> 40:Ad (points 3, 4; flags 0x31: UNCOMMITTED, LAST_KNOWN, LAST_RIGHT), ack 13.
 
 ### 16.8 Too-old and too-new board
 
-The watch accepts exactly protocol v1; a foreign PROTO in the advertising or an unauthenticated read keeps it from trusting the board.
+The watch accepts exactly protocol v2; a foreign PROTO in the advertising or an unauthenticated read keeps it from trusting the board.
 
 `board_version/too_old` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 00 78 56 34 12 00 00 00 02 01 06    (19 B)
+0f ff ff ff 53 43 42 44 01 78 56 34 12 00 00 00 02 01 06    (19 B)
 ```
-PROTO 0 in the ADV_IND (byte 8). Too old: no connect, "Update the scoreboard firmware (board v0, needs v1)".
+PROTO 1 in the ADV_IND (byte 8). Too old: no connect, "Update the scoreboard firmware (board v1, needs v2)".
 
 `board_version/too_new` - ADVERTISING advertise:
 ```
-0f ff ff ff 53 43 42 44 02 78 56 34 12 00 00 00 02 01 06    (19 B)
+0f ff ff ff 53 43 42 44 03 78 56 34 12 00 00 00 02 01 06    (19 B)
 ```
-PROTO 2 in the ADV_IND. Too new: no connect, "Update the watch app". Only the version byte differs from adv_normal.
+PROTO 3 in the ADV_IND. Too new: no connect, "Update the watch app". Only the version byte differs from adv_normal.
 
 `board_version/unauth_read` - STATE read:
 ```
-01    (1 B)
+02    (1 B)
 ```
 An unauthenticated read of STATE (or ROSTER) answers the 1-byte [PROTO] and nothing else; no state is pushed until the connection authenticates.
 
@@ -1043,43 +1021,43 @@ The watch moves the board's cursor silently with FOCUS, and the board answers wi
 
 `focus/focus_squash` - COMMAND write:
 ```
-01 0e 03 01 00 00 00    (7 B)
+02 0e 03 01 00 00 00    (7 B)
 ```
 On MENU, focus the squash row (sport id 0x00000001), seq 3.
 
 `focus/menu_state` - STATE notify:
 ```
-01 02 01 01 00 03 00 5b e7 0f 15 01 05 04 01 02 03 80    (18 B)
+02 02 01 01 00 03 00 5b e7 0f 15 01 04 04 01 02 03    (17 B)
 ```
 The board answers with the cursor on squash (body 15 B, stateSeq 2).
 
 `focus/focus_krystian` - COMMAND write:
 ```
-01 0e 04 44 33 22 11    (7 B)
+02 0e 04 44 33 22 11    (7 B)
 ```
 On CHOOSE_PLAYERS, focus KRYSTIAN's profile row (uid 0x11223344), seq 4.
 
 `focus/choose_players_state` - STATE notify:
 ```
-01 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11    (19 B)
+02 10 01 10 01 04 00 5b e7 0f 15 05 00 00 00 44 33 22 11    (19 B)
 ```
 CHOOSE_PLAYERS: ANNA (bit 0) and OLA (bit 2) selected (0x00000005), cursor on KRYSTIAN. Body 16 B, stateSeq 0x10.
 
 `focus/focus_start` - COMMAND write:
 ```
-01 0e 05 00 00 00 00    (7 B)
+02 0e 05 00 00 00 00    (7 B)
 ```
 Focus the START row: target 0 (cursor bytes 00 00 00 00), seq 5.
 
 `focus/focus_unknown_uid` - COMMAND write:
 ```
-01 0e 06 78 56 34 12    (7 B)
+02 0e 06 78 56 34 12    (7 B)
 ```
 A uid not in the roster (0x12345678), seq 6 - acked 6 INVALID and the cursor stays. The frame itself is well-formed, only the target is wrong.
 
 `focus/focus_malformed` - COMMAND write:
 ```
-01 0e 07 01    (4 B)
+02 0e 07 01    (4 B)
 ```
 A 4-byte FOCUS is too short (missing three target bytes), acked 7 MALFORMED.
 
@@ -1089,43 +1067,43 @@ Three authenticated watches share heart rate while PLAYING; the board relays eac
 
 `heart/write_a` - HEART write:
 ```
-01 92    (2 B)
+02 92    (2 B)
 ```
 Watch A (connection slot 0) writes 146 bpm (0x92) while PLAYING.
 
 `heart/write_c` - HEART write:
 ```
-01 7c    (2 B)
+02 7c    (2 B)
 ```
 Watch C (slot 2) writes 124 bpm (0x7c); both writes land before the next tick.
 
 `heart/notify_a` - HEART notify:
 ```
-01 7c 00 00    (4 B)
+02 7c 00 00    (4 B)
 ```
 A's notify carries C's value (0x7c); A's own is always left out.
 
 `heart/notify_b` - HEART notify:
 ```
-01 92 7c 00    (4 B)
+02 92 7c 00    (4 B)
 ```
 B's notify lists A then C in slot order, padded with 0.
 
 `heart/notify_c` - HEART notify:
 ```
-01 92 00 00    (4 B)
+02 92 00 00    (4 B)
 ```
 C's notify lists A. After C clears its value, B is re-notified the same list (A only); A is notified 01 00 00 00 once its 1 s window ends.
 
 `heart/write_c_clear` - HEART write:
 ```
-01 00    (2 B)
+02 00    (2 B)
 ```
 C clears its value with bpm 0.
 
 `heart/notify_a_empty` - HEART notify:
 ```
-01 00 00 00    (4 B)
+02 00 00 00    (4 B)
 ```
 All zero = nobody else is sharing; sent once A's 1 s window ends.
 
@@ -1137,7 +1115,7 @@ A v0 (PROTO 0) write is dropped: byte 0 differs from PROTO.
 
 `heart/discard_short` - HEART write:
 ```
-01    (1 B)
+02    (1 B)
 ```
 A 1-byte write is too short for the 2-byte frame and is discarded.
 
@@ -1147,28 +1125,28 @@ The same pair played reversed (KRYSTIAN left in the first game, ANNA left now), 
 
 `sides_swapped/intro` - STATE notify:
 ```
-01 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40    (20 B)
+02 30 01 12 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 40    (20 B)
 ```
 INTRO body 17 B, stateSeq 0x30, flags 0x40 (SIDES_SWAPPED).
 
 `sides_swapped/playing` - STATE notify:
 ```
-01 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50    (20 B)
-01 31 12 00 01 02 01    (7 B)
+02 31 02 13 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 50    (20 B)
+02 31 12 00 01 02 01    (7 B)
 ```
 PLAYING, games 0:1, score 2:1, committed, the newest point the left's (flags 0x50: SIDES_SWAPPED, LAST_KNOWN).
 
 `sides_swapped/game_over` - STATE notify:
 ```
-01 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00    (20 B)
-01 32 12 0b 07 01 01 00 40    (9 B)
+02 32 02 15 01 00 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 00    (20 B)
+02 32 12 0b 07 01 01 00 40    (9 B)
 ```
 GAME_OVER, ANNA won 11:7, games 1:1, normal variant. Body 23 B, flags 0x40 at the end of chunk 1.
 
 `sides_swapped/match_start` - STATE notify:
 ```
-01 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 33 12 33 22 11 40    (7 B)
+02 33 02 11 01 00 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 33 12 33 22 11 40    (7 B)
 ```
 MATCH_START before the next game, ANNA and KRYSTIAN selected (mask 3), still reversed (flags 0x40). Not swapped, these states carry bit 6 clear (00 in place of 40, 10 in place of 50).
 
@@ -1178,14 +1156,14 @@ The newest point's side and the last rally's side are named in the flags byte, s
 
 `last_known/score_right` - COMMAND write:
 ```
-01 08 01 01    (4 B)
+02 08 01 01    (4 B)
 ```
 SCORE right, seq 1, in a fresh game at 0:0 (flags were 0x00 unknown).
 
 `last_known/state` - STATE notify:
 ```
-01 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
-01 40 12 00 00 00 01    (7 B)
+02 40 02 13 01 01 00 5b e7 0f 15 0d 0c 0b 0a 44 33 22 11 31    (20 B)
+02 40 12 00 00 00 01    (7 B)
 ```
 The board pushes stateSeq 0x40: ack 1 APPLIED, score 0:1, flags 0x31 (UNCOMMITTED, LAST_KNOWN, LAST_RIGHT).
 
@@ -1197,49 +1175,49 @@ The watch walks the finished games of a tournament one per read, ROSTER-style, t
 
 `results/write` - RESULTS write:
 ```
-01 00 00    (3 B)
+02 00 00    (3 B)
 ```
 The watch sets the read cursor to 0 (index is uint16).
 
 `results/read_1` - RESULTS read:
 ```
-01 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01    (20 B)
+02 00 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 01    (20 B)
 ```
 ANNA - KRYSTIAN 11:7, the pair's first game.
 
 `results/read_2` - RESULTS read:
 ```
-01 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01    (20 B)
+02 01 00 03 00 01 ee ff c0 44 33 22 11 88 77 66 55 0b 04 01    (20 B)
 ```
 KRYSTIAN - OLA 11:4.
 
 `results/read_3` - RESULTS read:
 ```
-01 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02    (20 B)
+02 02 00 03 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 09 0b 02    (20 B)
 ```
 ANNA - KRYSTIAN again, 9:11, the pair's second game (turn 2; KRYSTIAN won it).
 
 `results/read_past_end` - RESULTS read:
 ```
-01 03 00 03 00 01 ee ff c0 00 00    (11 B)
+02 03 00 03 00 01 ee ff c0 00 00    (11 B)
 ```
 Past the end: the 11-byte header with rev 0 (no change but appends so far). A catch-up write of [PROTO, n] with n = the cached count then reads until this end frame.
 
 `results/read_no_tournament` - RESULTS read:
 ```
-01 03 00 00 00 00 00 00 00 00 00    (11 B)
+02 03 00 00 00 00 00 00 00 00 00    (11 B)
 ```
 Outside a sport mode: no tournament, count 0, id 0 - the watch drops its cache.
 
 `results/unauth_read` - RESULTS read:
 ```
-01    (1 B)
+02    (1 B)
 ```
 An unauthenticated read answers the 1-byte [PROTO] only.
 
 `results/discard_short` - RESULTS write:
 ```
-01 02    (2 B)
+02 02    (2 B)
 ```
 A 2-byte write is too short for the 3-byte cursor frame; the cursor stays.
 
@@ -1255,395 +1233,406 @@ A client adds a game played off the board, the board refuses an illegal score, a
 
 `offline_games/add` - COMMAND write:
 ```
-01 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07    (13 B)
+02 0f 05 0d 0c 0b 0a 44 33 22 11 0b 07    (13 B)
 ```
 ADD_OFFLINE_GAME, seq 5, ANNA - KRYSTIAN 11:7 (13 B).
 
 `offline_games/add_ack` - STATE notify:
 ```
-01 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 50 12 33 22 11 00    (7 B)
+02 50 02 11 01 05 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 50 12 33 22 11 00    (7 B)
 ```
 Legal squash score, both players selected: ack 5 APPLIED. The screen stays MATCH_START and the board plays no sound.
 
 `offline_games/add_illegal` - COMMAND write:
 ```
-01 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03    (13 B)
+02 0f 06 0d 0c 0b 0a 44 33 22 11 0f 03    (13 B)
 ```
 Seq 6: 15:3 is not a legal squash game (the winner had already won at 11); the frame itself is well-formed.
 
 `offline_games/add_illegal_ack` - STATE notify:
 ```
-01 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 51 12 33 22 11 00    (7 B)
+02 51 02 11 01 06 02 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 51 12 33 22 11 00    (7 B)
 ```
 Ack 6 INVALID, nothing was stored.
 
 `offline_games/read_offline` - RESULTS read:
 ```
-01 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81    (20 B)
+02 00 00 01 00 01 ee ff c0 0d 0c 0b 0a 44 33 22 11 0b 07 81    (20 B)
 ```
 A second client reads the game (cursor 0): turn 0x81 = OFFLINE (bit 7) and the pair's first game (bits 0-6 = 1).
 
 `offline_games/remove` - COMMAND write:
 ```
-01 10 07 01 ee ff c0 00 00 00 00    (11 B)
+02 10 07 01 ee ff c0 00 00 00 00    (11 B)
 ```
 REMOVE_OFFLINE_GAME, seq 7: game 0 of tournament 0xC0FFEE01 as read under rev 0 (11 B).
 
 `offline_games/remove_ack` - STATE notify:
 ```
-01 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 52 12 33 22 11 00    (7 B)
+02 52 02 11 01 07 00 5b e7 0f 15 03 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 52 12 33 22 11 00    (7 B)
 ```
 Ack 7 APPLIED, the game is gone and rev is now 1.
 
 `offline_games/read_end_rev` - RESULTS read:
 ```
-01 00 00 00 00 01 ee ff c0 01 00    (11 B)
+02 00 00 00 00 01 ee ff c0 01 00    (11 B)
 ```
 Reading from cursor 0 again: nothing is listed, so this is the end frame, with rev 1. A client that cached rev 0 drops its cache; the 11 B size also shows the board supports offline games.
 
 Tournament 0xC0FFEE01 is running on a squash board at MATCH_START with ANNA and KRYSTIAN selected and no game finished yet.
 
-### 16.15 Tablet tournament
+### 16.15 Tournament sync - a tablet joins a board's tournament
 
-A person picked TOURNAMENT on a squash board; a tablet reads that no tournament runs, stages a two-entry roster and begins its tournament, which lands the board on MATCH_START.
+Board 1 drew tournament 0x7AB1E001 and log_epoch 0x5A at START from ANNA, KRYSTIAN and OLA (16.4's stored players, so roster_crc = 0x150fe75b). ANNA beat KRYSTIAN 11:7: record 0x5EED0001, rev 0, order 1, change seq 1. A new connection: cursor STATUS, command seq from 1. A person started a squash tournament on board 1 and one game is recorded. A tablet with no tournament reads it, adopts it, pulls the change log and acknowledges it.
 
-`tablet_begin/wait_state` - STATE notify:
+`sync_join/status` - TOURNAMENT read:
 ```
-01 60 01 04 00 00 00 5b e7 0f 15    (11 B)
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 5a    (20 B)
+  CRC-32(01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00)
+    = 0xd015c673
 ```
-TOURNAMENT_WAIT carries no screen data. A watch that does not know 0x04 shows "board busy".
+Byte 1 0x00 STATUS. One live record; the tablet has no tournament, so it adopts 0x7AB1E001 and reads the roster through ROSTER (16.4). The read also binds this connection to the tournament.
 
-`tablet_begin/status_none` - TOURNAMENT read:
+`sync_join/cursor_changes` - TOURNAMENT write:
 ```
-01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    (20 B)
+02 03 01 01 00    (5 B)
 ```
-The cursor is STATUS at connect; tournament_id 0 = no tablet tournament, so the tablet pushes one.
+A joiner reads the whole log, from change seq 1.
 
-`tablet_begin/roster_anna` - TOURNAMENT write:
+`sync_join/read_1` - TOURNAMENT read:
 ```
-01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
+02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00    (20 B)
 ```
-Entry 0: the same 16-byte wire form as a ROSTER read (16.4). Staged, not acked.
+Byte 1 0x02 RECORD: id, rev 0, order 1, ANNA - KRYSTIAN 11:7, flags 0 (scored on the board). The 18 bytes after the type are what games_crc covers.
 
-`tablet_begin/roster_krystian` - TOURNAMENT write:
+`sync_join/read_end` - TOURNAMENT read:
 ```
-01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
+02 04 01 00 00 00    (6 B)
+```
+END: changes_to 1, nothing dropped. The cursor stays; the tablet resumes from seq 2 next time.
+
+`sync_join/ack` - COMMAND write:
+```
+02 13 01 01 e0 b1 7a 01 00    (9 B)
+```
+ACK_CHANGES, seq 1, once the record is durable on the tablet. The first ACK arms the unsynced guard.
+
+`sync_join/ack_ack` - STATE notify:
+```
+02 60 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 60 12 33 22 11 00    (7 B)
+```
+Ack 1 APPLIED; no screen change.
+
+**A second board joins from MENU**
+
+Board 2 on MENU holds no tournament. A new connection: cursor STATUS, command seq from 1. The tablet extends its tournament to board 2, which idles on MENU: stage the roster, BEGIN_TOURNAMENT, push the records, then pull: the board does not echo the tablet's own writes.
+
+`sync_begin/status_none` - TOURNAMENT read:
+```
+02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    (20 B)
+```
+tournament_id 0: no tournament, every field 0. The tablet may BEGIN it into its own.
+
+`sync_begin/roster_anna` - TOURNAMENT write:
+```
+02 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
+```
+Entry 0, the 16-byte wire form of a ROSTER read (16.4). Staged, not acked.
+
+`sync_begin/roster_krystian` - TOURNAMENT write:
+```
+02 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
 ```
 Entry 1.
 
-`tablet_begin/begin` - COMMAND write:
+`sync_begin/roster_ola` - TOURNAMENT write:
 ```
-01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6    (13 B)
-  CRC-32(02 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00)
-    = 0xc694f1d4
+02 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00    (19 B)
 ```
-BEGIN_TOURNAMENT, seq 1: squash, 2 entries, roster_crc over the count byte and both staged entries - the rosterVersion formula of section 12 (13 B).
+Entry 2.
 
-`tablet_begin/begin_ack` - STATE notify:
+`sync_begin/begin` - COMMAND write:
 ```
-01 61 02 11 01 01 00 d4 f1 94 c6 03 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 61 12 33 22 11 00    (7 B)
+02 11 01 01 e0 b1 7a 01 03 5b e7 0f 15    (13 B)
+  CRC-32(03 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00)
+    = 0x150fe75b
 ```
-Ack 1 APPLIED on the sport's MATCH_START: both entries selected, no CHOOSE_PLAYERS, and rosterVersion is now the pushed roster's CRC, so watches re-read it.
+BEGIN_TOURNAMENT, seq 1: the tablet's id and sport, 3 entries, roster_crc over the count byte and the staged entries (the rosterVersion formula of section 12).
 
-`tablet_begin/status_begun` - TOURNAMENT read:
+`sync_begin/begin_ack` - STATE notify:
 ```
-01 00 01 e0 b1 7a 01 02 d4 f1 94 c6 01 00 00 00 00 00 00 00    (20 B)
+02 70 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 70 12 33 22 11 00    (7 B)
 ```
-The tablet's id, sport and roster; no board game yet (outbox_to 0, outbox_from = outbox_to + 1) and no mirror yet.
+Ack 1 APPLIED on the sport's MATCH_START, every entry selected.
 
-Tablet tournament 0x7AB1E001. Until BEGIN_TOURNAMENT the stored players roster of 16.4 is active (rosterVersion 0x150fe75b).
+`sync_begin/status_joined` - TOURNAMENT read:
+```
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 00 00 00 8d ef 02 d2 c3    (20 B)
+  CRC-32(00)
+    = 0xd202ef8d
+```
+Joined with no record yet: changes_to 0, games_count 0, and games_crc of the empty list = CRC-32 of the count byte 0. Binds this connection.
 
-**Roster update**
+`sync_begin/push_1` - TOURNAMENT write:
+```
+02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00    (20 B)
+```
+Board 1's record forwarded unchanged (sync_join/read_1 with the same bytes): unknown id, so board 2 stores it and gives it change seq 1. Never acked.
 
-A late joiner: the tablet appends OLA, re-staging every entry, and sends BEGIN_TOURNAMENT again with the same id while the tournament runs.
+`sync_begin/status_synced` - TOURNAMENT read:
+```
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3    (20 B)
+  CRC-32(01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00)
+    = 0xd015c673
+```
+games_count and games_crc now equal board 1's (sync_join/status): both boards hold the same live records.
 
-`tablet_repush/roster_anna` - TOURNAMENT write:
+`sync_begin/cursor_changes` - TOURNAMENT write:
 ```
-01 01 00 0d 0c 0b 0a ff 00 00 41 4e 4e 41 00 00 00 00 00    (19 B)
+02 03 01 01 00    (5 B)
 ```
-The last BEGIN cleared the stage, so every entry is written again; ANNA stays at index 0.
+The tablet pulls board 2's log from seq 1.
 
-`tablet_repush/roster_krystian` - TOURNAMENT write:
+`sync_begin/read_end` - TOURNAMENT read:
 ```
-01 01 01 44 33 22 11 00 40 ff 4b 52 59 53 54 49 41 4e 00    (19 B)
+02 04 01 00 00 00    (6 B)
 ```
-KRYSTIAN stays at index 1.
+Change seq 1 is the tablet's own push (its pairing slot wrote it), so it is skipped: END at once, seq 1. ACKing 1 covers it.
 
-`tablet_repush/roster_ola` - TOURNAMENT write:
-```
-01 01 02 88 77 66 55 00 c0 30 4f 4c 41 00 00 00 00 00 00    (19 B)
-```
-The new entry, appended.
+**Resume after a link drop**
 
-`tablet_repush/repush` - COMMAND write:
-```
-01 11 02 01 e0 b1 7a 01 03 5b e7 0f 15    (13 B)
-```
-Same id and sport, 3 entries; the CRC equals 16.4's rosterVersion because the entries are the same.
+Since sync_join: KRYSTIAN beat OLA 11:5 on board 1 (0x5EED0002, order 2, seq 2), then a watch added the offline game ANNA - OLA 11:6 (0x5EED0003, order 3, seq 3). The tablet read seq 2, then lost the link before END. A new connection. Board 1 recorded two more games; the tablet's link dropped mid-pull. It reconnects and resumes from its last END, re-reading at most what it already had.
 
-`tablet_repush/repush_ack` - STATE notify:
+`sync_pull/status` - TOURNAMENT read:
 ```
-01 62 02 11 01 02 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 62 12 33 22 11 00    (7 B)
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 03 79 2d 75 ef 5a    (20 B)
+  CRC-32(03 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00 03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02)
+    = 0xef752d79
 ```
-Ack 2 APPLIED: OLA is selected too, the pair and the games are untouched, and the new rosterVersion tells the watches to re-read.
+Same id: the tablet continues. changes_to 3 > its last END 1.
 
-**Outbox**
+`sync_pull/cursor_changes` - TOURNAMENT write:
+```
+02 03 01 02 00    (5 B)
+```
+Resume from the last END seq + 1; the read of seq 2 before the drop does not count.
 
-The tablet pulls the board's new games and acknowledges them once stored.
+`sync_pull/read_2` - TOURNAMENT read:
+```
+02 02 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00    (20 B)
+```
+Seq 2 again: merging it a second time is a no-op on the tablet.
 
-`tablet_outbox/status` - TOURNAMENT read:
+`sync_pull/read_3` - TOURNAMENT read:
 ```
-01 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 02 00 00 00 00 00    (20 B)
+02 02 03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02    (20 B)
 ```
-Same id as the tablet's, so it continues; seqs 1 to 2 are un-ACKed.
+The watch's offline game: flags 0x02 OFFLINE.
 
-`tablet_outbox/cursor_outbox` - TOURNAMENT write:
+`sync_pull/read_end` - TOURNAMENT read:
 ```
-01 03 01 01 00    (5 B)
+02 04 03 00 00 00    (6 B)
 ```
-Reads now walk the outbox from outbox_from.
+END: changes_to 3.
 
-`tablet_outbox/read_1` - TOURNAMENT read:
+`sync_pull/ack` - COMMAND write:
 ```
-01 01 01 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 00    (19 B)
+02 13 01 01 e0 b1 7a 03 00    (9 B)
 ```
-The board's tracked game; the tablet shows it as a pending card.
+ACK_CHANGES up to 3, seq 1 on this connection.
 
-`tablet_outbox/read_2` - TOURNAMENT read:
+`sync_pull/ack_ack` - STATE notify:
 ```
-01 01 02 00 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02    (19 B)
+02 61 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 61 12 33 22 11 00    (7 B)
 ```
-The watch's offline game (flags 0x02); the tablet accepts it as is.
+Ack 1 APPLIED.
 
-`tablet_outbox/read_end` - TOURNAMENT read:
-```
-01 02 03 00    (4 B)
-```
-Nothing un-ACKed at or after seq 3; the cursor stays.
+**Edits, a stale write and a tie**
 
-`tablet_outbox/ack` - COMMAND write:
-```
-01 13 03 01 e0 b1 7a 02 00    (9 B)
-```
-ACK_OUTBOX, seq 3, once both games are stored on the tablet.
+Board 2 after sync_begin. Tablet T1 corrected 0x5EED0001 to 11:8; tablet T2 independently corrected it to 11:9; both edits are rev 1. A late relay still carries rev 0. Every write is on a bound connection. The merge rule on board 2: a newer rev replaces, an older one is a no-op, two different edits with the same rev resolve to the larger byte image on every peer.
 
-`tablet_outbox/ack_ack` - STATE notify:
+`sync_merge/status` - TOURNAMENT read:
 ```
-01 63 02 11 01 03 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 63 12 33 22 11 00    (7 B)
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 01 00 01 73 c6 15 d0 c3    (20 B)
+  CRC-32(01 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00)
+    = 0xd015c673
 ```
-Ack 3 APPLIED. The games stay on the board; only the outbox is empty now.
+One live record, changes_to 1.
 
-`tablet_outbox/cursor_status` - TOURNAMENT write:
+`sync_merge/edit` - TOURNAMENT write:
 ```
-01 03 00 00 00    (5 B)
+02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 08 00    (20 B)
 ```
-Back to the status read.
+T1's edit: rev 0 -> 1, order kept. Newer, so it replaces the stored record and takes change seq 2.
 
-`tablet_outbox/status_acked` - TOURNAMENT read:
+`sync_merge/stale` - TOURNAMENT write:
 ```
-01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 00 00 00 00    (20 B)
+02 02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00    (20 B)
 ```
-outbox_from = outbox_to + 1, the outbox is empty.
+The rev 0 original again: older than the stored rev 1, a no-op (no change seq).
 
-ANNA beat KRYSTIAN 11:7 on the board (id 0x5EED0001, seq 1) and a watch added the offline game KRYSTIAN - OLA 11:4 (id 0x5EED0002, seq 2); the board is back on MATCH_START. The tablet's cursor is STATUS.
+`sync_merge/tie` - TOURNAMENT write:
+```
+02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00    (20 B)
+```
+T2's edit, also rev 1. Same rev, different bytes: the larger 18-byte image wins - the first differing byte is score_b, 0x09 > 0x08 - so 11:9 replaces 11:8 (change seq 3). T1 gets 11:9 on its next pull; had it arrived first, 11:8 would have lost the same way.
 
-**Mirror**
+`sync_merge/status_after` - TOURNAMENT read:
+```
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 01 8b 0a 99 d3 c3    (20 B)
+  CRC-32(01 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00)
+    = 0xd3990a8b
+```
+changes_to 3, still one live record; games_crc over the 11:9 form.
 
-The tablet replaces the board's games with its whole tournament, so the board's tally and its watches' RESULTS show it.
+`sync_merge/cursor_records` - TOURNAMENT write:
+```
+02 03 02 00 00    (5 B)
+```
+A full walk by sort index, the fallback when games_crc differs from the reader's.
 
-`tablet_mirror/mirror_0` - TOURNAMENT write:
+`sync_merge/read_0` - TOURNAMENT read:
 ```
-01 02 00 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01    (18 B)
+02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00    (20 B)
 ```
-This board's game, still a pending card on the tablet.
+Index 0: the stored record in its latest form.
 
-`tablet_mirror/mirror_1` - TOURNAMENT write:
+`sync_merge/read_end` - TOURNAMENT read:
 ```
-01 02 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02    (18 B)
+02 04 01 00 00 00    (6 B)
 ```
-The accepted offline game.
+END: seq = 1 stored record (live + tombstones).
 
-`tablet_mirror/mirror_2` - TOURNAMENT write:
-```
-01 02 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00    (18 B)
-```
-An accepted game from another court.
+**Delete**
 
-`tablet_mirror/commit` - COMMAND write:
-```
-01 12 04 01 e0 b1 7a 03 43 d6 50 80    (12 B)
-  CRC-32(03 01 00 ed 5e 0d 0c 0b 0a 44 33 22 11 0b 07 01 02 00 ed 5e 44 33 22 11 88 77 66 55 0b 04 02 03 00 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 00)
-    = 0x8050d643
-```
-COMMIT_MIRROR, seq 4, crc over the count byte and the three staged 15-byte games.
+Board 1 after sync_pull: three live records, RESULTS rev 0 (only appends so far). The watch's connection has command seq 1 next; the tablet's cursor is STATUS on its own connection. A watch deletes the offline game on board 1; the board keeps a tombstone, RESULTS shrinks, and the tablet pulls the tombstone like any change.
 
-`tablet_mirror/commit_ack` - STATE notify:
+`sync_tombstone/remove` - COMMAND write:
 ```
-01 64 02 11 01 04 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
-01 64 12 33 22 11 00    (7 B)
+02 10 01 01 e0 b1 7a 00 00 02 00    (11 B)
 ```
-Ack 4 APPLIED; the board swapped its games in one step.
+REMOVE_OFFLINE_GAME: RESULTS index 2 (0x5EED0003, the last by order) under RESULTS rev 0.
 
-`tablet_mirror/results_2` - RESULTS read:
+`sync_tombstone/remove_ack` - STATE notify:
 ```
-01 01 00 02 00 01 e0 b1 7a 0d 0c 0b 0a 88 77 66 55 0b 09 01    (20 B)
+02 62 02 11 01 01 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 44    (20 B)
+02 62 12 33 22 11 00    (7 B)
 ```
-A watch reads RESULTS: the tablet's id, the offline game at index 0 and the (+) game at index 1. The PENDING game is not listed, but the court's ANNA - KRYSTIAN tally counts it.
+Ack 1 APPLIED; no screen change.
 
-`tablet_mirror/results_end` - RESULTS read:
+`sync_tombstone/results_end` - RESULTS read:
 ```
-01 02 00 02 00 01 e0 b1 7a 01 00    (11 B)
+02 02 00 02 00 01 e0 b1 7a 01 5a    (11 B)
 ```
-The listed games changed, so rev went from 0 to 1, once for this commit.
+The watch's RESULTS from index 2: count 2 now and rev 0x5A01 (log_epoch 0x5A, one change), so it drops its cache.
 
-`tablet_mirror/status_mirrored` - TOURNAMENT read:
+`sync_tombstone/status` - TOURNAMENT read:
 ```
-01 00 01 e0 b1 7a 01 03 5b e7 0f 15 03 00 02 00 43 d6 50 80    (20 B)
+02 00 01 e0 b1 7a 01 03 5b e7 0f 15 04 00 02 44 60 80 a7 5a    (20 B)
+  CRC-32(02 01 00 ed 5e 00 01 00 0d 0c 0b 0a 44 33 22 11 0b 07 00 02 00 ed 5e 00 02 00 44 33 22 11 88 77 66 55 0b 05 00)
+    = 0xa7806044
 ```
-mirror_crc is the applied commit's crc; after a reconnect the tablet compares it with its own.
+The tablet: changes_to 4, two live records (a tombstone is not in games_crc).
 
-The organiser has not accepted the board's game yet, so the tablet sends it PENDING; ANNA - OLA 11:9 (id 0x7AB10003) came from another court through the tablet's (+). Before the commit RESULTS listed the offline game alone, rev 0.
+`sync_tombstone/cursor_changes` - TOURNAMENT write:
+```
+02 03 01 04 00    (5 B)
+```
+From its last END + 1.
 
-**SET_SIDE**
+`sync_tombstone/read_4` - TOURNAMENT read:
+```
+02 02 03 00 ed 5e 01 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 03    (20 B)
+```
+The tombstone: rev 0 -> 1, flags 0x03 DELETED + OFFLINE, everything else kept. The tablet merges it like an edit and forwards it to board 2 unchanged.
 
-The tablet puts OLA on the right instead of KRYSTIAN.
+`sync_tombstone/read_end` - TOURNAMENT read:
+```
+02 04 04 00 00 00    (6 B)
+```
+END: changes_to 4; no tombstone dropped yet.
 
-`tablet_set_side/set_side` - COMMAND write:
-```
-01 14 05 01 88 77 66 55    (8 B)
-```
-SET_SIDE, seq 5, right side, OLA (8 B).
+**End releases a board**
 
-`tablet_set_side/set_side_ack` - STATE notify:
-```
-01 65 02 11 01 05 00 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88    (20 B)
-01 65 12 77 66 55 00    (7 B)
-```
-Ack 5 APPLIED, the pair is ANNA - OLA. On PLAYING the running game would move to that pair with its score.
+Board 2 after sync_merge (changes_to 3), on the tablet's connection of sync_begin: after BEGIN (seq 1) it ACKed up to 1 (seq 2), which armed the unsynced guard. The tablet's End on board 2: BACK toward MENU is refused while the board holds un-ACKed changes, so the tablet pulls, ACKs, and the board leaves.
 
-**Refusals**
+`sync_leave/back_1` - COMMAND write:
+```
+02 02 03    (3 B)
+```
+BACK on MATCH_START.
 
-What the board refuses in tablet mode, and a tablet command outside it.
+`sync_leave/back_1_ack` - STATE notify:
+```
+02 71 01 10 01 03 00 5b e7 0f 15 07 00 00 00 00 00 00 00    (19 B)
+```
+Ack 3 APPLIED on CHOOSE_PLAYERS, cursor on START; the tournament still runs.
 
-`tablet_refusals/begin_other_tid` - COMMAND write:
+`sync_leave/back_2` - COMMAND write:
 ```
-01 11 06 02 e0 b1 7a 01 03 5b e7 0f 15    (13 B)
+02 02 04    (3 B)
 ```
-Another tournament's BEGIN while 0x7AB1E001 runs.
+BACK on CHOOSE_PLAYERS would leave the tournament.
 
-`tablet_refusals/begin_other_tid_ack` - STATE notify:
+`sync_leave/back_2_ack` - STATE notify:
 ```
-01 66 02 11 01 06 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88    (20 B)
-01 66 12 77 66 55 00    (7 B)
+02 72 01 10 01 04 02 5b e7 0f 15 07 00 00 00 00 00 00 00    (19 B)
 ```
-Ack 6 INVALID; a person must leave and re-enter TOURNAMENT on the board.
+Ack 4 INVALID: changes_to 3 > acked_to 1. Nothing changes.
 
-`tablet_refusals/commit_bad_crc` - COMMAND write:
+`sync_leave/cursor_changes` - TOURNAMENT write:
 ```
-01 12 07 01 e0 b1 7a 00 00 00 00 00    (12 B)
+02 03 01 02 00    (5 B)
 ```
-An empty mirror with a wrong crc (an empty mirror's is 0xd202ef8d, the CRC-32 of 00).
+Pull from the last END + 1.
 
-`tablet_refusals/commit_bad_crc_ack` - STATE notify:
+`sync_leave/read` - TOURNAMENT read:
 ```
-01 67 02 11 01 07 02 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88    (20 B)
-01 67 12 77 66 55 00    (7 B)
+02 02 01 00 ed 5e 01 01 00 0d 0c 0b 0a 44 33 22 11 0b 09 00    (20 B)
 ```
-Ack 7 INVALID; the games are unchanged and the mirror stage is cleared.
+Seqs 2 and 3 both changed 0x5EED0001; the walk returns it once, in its latest form (change seq 3, written by T2, so not skipped for T1).
 
-`tablet_refusals/remove` - COMMAND write:
+`sync_leave/read_end` - TOURNAMENT read:
 ```
-01 10 08 01 e0 b1 7a 01 00 00 00    (11 B)
+02 04 03 00 00 00    (6 B)
 ```
-A watch tries to remove the offline game.
+END: changes_to 3.
 
-`tablet_refusals/remove_ack` - STATE notify:
+`sync_leave/ack` - COMMAND write:
 ```
-01 68 02 11 01 08 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88    (20 B)
-01 68 12 77 66 55 00    (7 B)
+02 13 05 01 e0 b1 7a 03 00    (9 B)
 ```
-Ack 8 WRONG_SCREEN; the tablet is the only editor.
+ACK_CHANGES up to 3.
 
-`tablet_refusals/back` - COMMAND write:
+`sync_leave/ack_ack` - STATE notify:
 ```
-01 02 09    (3 B)
+02 73 01 10 01 05 00 5b e7 0f 15 07 00 00 00 00 00 00 00    (19 B)
 ```
-A watch's BACK on MATCH_START.
+Ack 5 APPLIED.
 
-`tablet_refusals/back_ack` - STATE notify:
+`sync_leave/back_3` - COMMAND write:
 ```
-01 69 02 11 01 09 01 5b e7 0f 15 07 00 00 00 0d 0c 0b 0a 88    (20 B)
-01 69 12 77 66 55 00    (7 B)
+02 02 06    (3 B)
 ```
-Ack 9 WRONG_SCREEN; only the board's long C leaves tablet mode.
+BACK again.
 
-`tablet_refusals/begin_on_menu` - COMMAND write:
+`sync_leave/back_3_ack` - STATE notify:
 ```
-01 11 01 01 e0 b1 7a 01 02 d4 f1 94 c6    (13 B)
+02 74 01 01 00 06 00 5b e7 0f 15 04 04 04 01 02 03    (17 B)
 ```
-The BEGIN of tablet_begin/begin, sent to a board on MENU.
+Ack 6 APPLIED on MENU: the board left and dropped the tournament; its stored roster is active again.
 
-`tablet_refusals/begin_on_menu_ack` - STATE notify:
+`sync_leave/status_none` - TOURNAMENT read:
 ```
-01 02 01 01 00 01 01 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
+02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00    (20 B)
 ```
-Ack 1 WRONG_SCREEN; BEGIN_TOURNAMENT never enters tablet mode, SELECT_SPORT TABLET_MODE does (16.16).
-
-The board of 16.15 at MATCH_START (ANNA - OLA), then a board on MENU that a tablet BEGINs by mistake (a new connection, seq starts at 1).
-
-### 16.16 Tablet mode entry and exit
-
-A client enters tablet mode with the standard MENU commands (TABLET_MODE is a menu entry like a sport) and leaves TOURNAMENT_WAIT with BACK, as a person's long C does.
-
-`tablet_mode_entry/menu` - STATE notify:
-```
-01 70 01 01 00 00 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
-```
-The TOURNAMENT row is listed as menu entry 0x80 after the sports; a watch skips an id it does not know.
-
-`tablet_mode_entry/focus_tablet` - COMMAND write:
-```
-01 0e 01 80 00 00 00    (7 B)
-```
-FOCUS on the TOURNAMENT row, as on a sport row.
-
-`tablet_mode_entry/focus_tablet_ack` - STATE notify:
-```
-01 71 01 01 00 01 00 5b e7 0f 15 80 05 04 01 02 03 80    (18 B)
-```
-Ack 1 APPLIED, the cursor is the menu-entry id 0x80.
-
-`tablet_mode_entry/select_tablet` - COMMAND write:
-```
-01 01 02 80    (4 B)
-```
-SELECT_SPORT on the TOURNAMENT row, the person's D on it.
-
-`tablet_mode_entry/select_tablet_ack` - STATE notify:
-```
-01 72 01 04 00 02 00 5b e7 0f 15    (11 B)
-```
-Ack 2 APPLIED on TOURNAMENT_WAIT; tablet mode runs and the tournament window is open (9.2).
-
-`tablet_mode_entry/back_on_wait` - COMMAND write:
-```
-01 02 03    (3 B)
-```
-BACK on TOURNAMENT_WAIT, the person's long C.
-
-`tablet_mode_entry/back_on_wait_ack` - STATE notify:
-```
-01 73 01 01 00 03 00 5b e7 0f 15 04 05 04 01 02 03 80    (18 B)
-```
-Ack 3 APPLIED on a new MENU (cursor on the first row); tablet mode and the window ended.
-
-A squash board on MENU, a new connection (seq starts at 1).
+No tournament. The tablet keeps the board's link for a later BEGIN.
 <!-- /generated: scenarios -->
 ## 17. Open questions and deviations
 
@@ -1705,10 +1694,14 @@ A squash board on MENU, a new connection (seq starts at 1).
     only beta watches 1.3.x do, which show turn 129+ on offline games until updated. Everything
     else of #563 is a plain compatible change.
 
-13. **Tablet mode reverses "the board is the source of truth" (#583, 2026-11-12).** There the
-    tablet owns sport, roster and accepted games, and a mirror commit may reorder or drop listed
-    games, so RESULTS is not append-only in tablet mode. Compatible: `rev` already tells a client
-    to drop its cache. Outside tablet mode nothing changes.
+13. **One tournament model, v2 (#623, 2026-11-16).** v1's tablet mode made the tablet the owner
+    and the board a terminal behind a separate mode, a RAM-only key and a mirror; a board reboot
+    lost the board's link and un-ACKed games. v2 drops it: every board plays its own tournament,
+    and peers merge per-game records (rev + tombstones, section 20.2), so a tablet can join any
+    time, extend the tournament to other boards and recover it after a power-off by re-joining.
+    The redesigned TOURNAMENT layout, the removed screen, menu entry, flag and slot are why
+    `PROTO` is bumped rather than extended. RESULTS stays a read-only view and is no longer
+    append-only (an edit or delete bumps `rev`).
 
 ## 18. Heart rate relay (HEART)
 
@@ -1737,7 +1730,7 @@ logs or stores a heart rate (`docs/privacy-garmin.md`).
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `bpm` | 1-255 = this watch's heart rate; 0 = clear mine. |
 
 Shared while PLAYING, at most once per second, at least every 5 s while a reading exists so it never expires; 0 clears mine.
@@ -1746,7 +1739,7 @@ Shared while PLAYING, at most once per second, at least every 5 s while a readin
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 3 | `values` | The other connections' non-zero values in connection-slot order, padded with 0. |
 
 Sent to every authenticated connection that enabled the HEART CCCD, at most once per second per connection with the newest content, always. The receiver's own value is never in its list; all zero = nobody else is sharing.
@@ -1791,30 +1784,34 @@ board is the source of truth: a watch never derives results from the states it o
   authentication required: before authentication writes are discarded and reads answer `[PROTO]`.
   **Optional for the watch**: a v1 board from before #527 lacks it (section 5), so a watch that
   does not find it hides the table and still connects.
-- **Tournament** = the games played since the board entered the current sport mode. It lives in
-  RAM only: leaving the sport mode or a reboot ends it, and the next one has a new
-  `tournamentId`. Nothing is persisted. In tablet mode `tournamentId` is the tablet's and the
-  mirror replaces the list (section 20.4).
-- **Appended in finish order; only an offline game may later be removed, which changes `rev` and
-  renumbers that pair's later turns.** A game the board tracked never changes or disappears (an
-  UNDO at 0:0 leaves an unfinished game, never a finished one). A game appears once its winning
-  point is committed; an offline game (ADD_OFFLINE_GAME, section 10.2) appears at once. Changes are not pushed: STATE is unchanged and a new game triggers no notify.
-- **Players A and B are the pair's own order** (fixed when the board first set that pair up), not
-  court sides: the exception to section 2, since a table needs the pair, not who stands where.
-  A later swap of sides does not change A and B for that pair's games.
+- **Tournament** = the board's running tournament (section 20): from START on CHOOSE_PLAYERS or
+  a BEGIN_TOURNAMENT until the board leaves it to MENU or reboots. RAM only on the board;
+  `tournamentId` is the tournament's, the same on every board in it.
+- **A read-only view of the live game records, sorted by `(order, id)`** (section 20.2). A game
+  finished on this board appends (it takes the highest order). An edit, a delete
+  (REMOVE_OFFLINE_GAME, or a tombstone merged from a peer) or a merged record that sorts before
+  the end changes `rev` and may renumber turns. A game appears once its winning point is
+  committed (an UNDO at 0:0 leaves an unfinished game, never a finished one); an offline game
+  (ADD_OFFLINE_GAME, section 10.2) appears at once. Changes are not pushed: STATE is unchanged and
+  a new game triggers no notify.
+- **Players A and B are the pair's own order** (the record's `uid_a` / `uid_b`: the match's own
+  A/B on the board that created it), not court sides: the exception to section 2, since a table
+  needs the pair, not who stands where. A later swap of sides does not change A and B.
 - **Winner = the higher score.** A game only finishes on a winning point, so the scores never tie
   (padel: the set's gems, including 7-6 after a tiebreak).
 - **Turn** = the pair's k-th listed game, 1-based (ANNA - KRYSTIAN's second game is turn 2,
   whatever other pairs played in between), in bits 0-6 of the `turn` byte; bit 7 = OFFLINE (the
-  game was added by a client, not tracked by the board).
-- **`rev`** (past-the-end frame only) is 0 for a new tournament and changes on every change to the
-  listed games other than an append (today: removing an offline game). A client caches it beside
+  record's OFFLINE flag: added by a client, not tracked by a board). Every peer sorts the same
+  way, so every peer numbers the same turns.
+- **`rev`** (past-the-end frame only) starts at `log_epoch` * 256 with every change log (so a
+  re-joined board never repeats an old rev) and changes on every change to the
+  listed games other than an append. A client caches it beside
   `tournamentId` and drops its cache on a different one; a remove followed by an add keeps `count`,
   so `count` alone cannot show it. An 11 B end frame also tells the client the board supports
   offline games; a 9 B one is older firmware: hide the feature.
 - uids belong to the active roster (section 12): players in squash, teams in padel and volleyball.
-- At most 128 games are listed per tournament (section 14); later games are not, and `count`
-  stays 128.
+- At most `RESULTS_MAX` (128) live records exist per tournament (section 14), so RESULTS lists
+  every one.
 
 ### 19.1 RESULTS frames
 
@@ -1824,7 +1821,7 @@ board is the source of truth: a watch never derives results from the states it o
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 2 | `index` | Game index to read next. |
 
 To catch up, the watch writes [PROTO, n] with n = its cached count and reads until an end frame (index >= count).
@@ -1833,7 +1830,7 @@ To catch up, the watch writes [PROTO, n] with n = its cached count and reads unt
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 2 | `index` | The cursor this read answers. |
 | 3 | 2 | `count` | Games listed now. |
 | 5 | 4 | `tournament_id` | Tournament id; 0 = no tournament (then count is 0). |
@@ -1844,7 +1841,7 @@ To catch up, the watch writes [PROTO, n] with n = its cached count and reads unt
 | 18 | 1 | `score_b` | B's score of the finished game. Present only when `index < count`. |
 | 19 | 1 | `turn` | Bit 7 OFFLINE (game added by a client, not tracked by the board); bits 0-6 the pair's k-th listed game, 1-based. Present only when `index < count`. |
 
-Each read returns the game at the cursor and advances it; past the end it stays. A different tournamentId, a different rev or a count below the cached one drops the client's cache. rev is 0 for a new tournament and changes on every change other than an append. An 11-byte end frame also tells the client the board supports offline games (a 9-byte one = older firmware: hide the feature).
+Each read returns the game at the cursor and advances it; past the end it stays. A different tournamentId, a different rev or a count below the cached one drops the client's cache. rev starts at log_epoch * 256 (section 20.1) with every change log and changes on every change other than an append. An 11-byte end frame also tells the client the board supports offline games (a 9-byte one = older firmware: hide the feature).
 <!-- /generated: frames:RESULTS -->
 
 An empty tournament reads its own id with `count` 0.
@@ -1861,42 +1858,37 @@ An empty tournament reads its own id with `count` 0.
   2), so a press waiting to be sent goes first.
 - Results stay in the watch's RAM, like the board's; nothing is persisted.
 
-## 20. Tablet tournament (TOURNAMENT)
+## 20. Tournament sync (TOURNAMENT)
 
-An organiser's tablet runs a multi-court tournament and every board in it is a scoring terminal
-(#583, epic #581). In **tablet mode** the tablet owns sport, roster and the accepted games;
-outside it the board ignores the tablet commands (WRONG_SCREEN) and stays the source of truth.
+Every sport session on a board is a tournament (#623): an id, a sport, a roster and game records.
+Every peer that holds it - the board, tablets, later other boards - keeps the same records and
+merges what the others write. No frame or rule names a tablet: what a peer does follows only from
+what it reads and writes, so board-to-board sync can use the same frames later.
 
 - **Characteristic** TOURNAMENT `0d78000a-2f44-4f31-93b7-b78dc9e29735`, write (with response) +
   read, authentication required: before authentication writes are discarded and reads answer
-  `[PROTO]`. Optional for a watch; a board from before #583 lacks it (the tablet then asks for a
-  firmware update).
-- **Tablet mode** lasts from entering TOURNAMENT_WAIT (a person picking TOURNAMENT, or SELECT_SPORT
-  TABLET_MODE on MENU) until the board leaves to the main menu (a person's long C, or BACK on
-  TOURNAMENT_WAIT, 20.6) or powers off. A client tells it apart by STATUS: `tournament_id` non-zero, or TOURNAMENT_WAIT
-  on STATE; there is no STATE flag for it. A dropped link does not end it: the board keeps scoring, and the
-  tournament, its roster and its games stay until tablet mode ends; then they are gone (RAM only,
-  never NVS) and the stored roster returns.
-- **Any authenticated client** may send what follows; the board does not tell a tablet from a
-  watch. A tablet pairs in the tournament window on TOURNAMENT_WAIT, with no one at the board
-  (section 9.2).
-- **CRC** = CRC-32/ISO-HDLC (zlib `crc32`, as `rosterVersion`, section 12) over the count (1 B)
-  followed by every entry's wire form in index order: 16 B roster entries (uid, r, g, b, name),
-  or 15 B games (id, uidA, uidB, scoreA, scoreB, flags). On the wire a little-endian `uint32`
-  like every integer. The roster CRC therefore equals the `rosterVersion` the board publishes
-  for that roster; an empty mirror's CRC is `0xD202EF8D`.
-- **Staging.** One roster stage (16 entries) and one mirror stage (128 games) per board, shared
-  by all connections. Writes are byte copies: not acked, not checked until the commit; a
-  rewritten index overwrites; a short frame, a foreign `PROTO`, an unknown type or an index past
-  the stage is discarded. A never-written entry is all zero (uid / id 0) and fails the commit's
-  checks. BEGIN_TOURNAMENT clears the roster stage and COMMIT_MIRROR the mirror stage when they
-  answer APPLIED or INVALID (BUSY and WRONG_SCREEN leave it); tablet mode ending clears both. So
-  the tablet writes the whole roster or mirror before every commit, each write after the
-  previous one's response.
-- **Reconnect.** Read STATUS first. Same `tournament_id` as the tablet's: pull the outbox, ACK,
-  mirror. 0 on TOURNAMENT_WAIT: push the roster and BEGIN. A different id on a sport screen: the
-  board runs another tournament; a person must leave it (long C) before tablet mode is entered
-  again.
+  `[PROTO]`. Optional for a watch.
+- **On the board** a tournament starts at START on CHOOSE_PLAYERS (a fresh random non-zero
+  `tournament_id`; roster = the selected stored profiles, uids kept, at most
+  `TOURNAMENT_ROSTER_MAX`) or by BEGIN_TOURNAMENT on MENU (join, 20.3). It ends when the board
+  leaves to MENU (20.6) or reboots. RAM only: never NVS; the stored roster is untouched and active
+  again afterwards. A dropped link changes nothing. One tournament per board: a board in one never
+  joins another, and two tournaments are never merged.
+- **Peers.** Any authenticated client may read and write; a tablet pairs like a watch (9.2).
+- **CRC** = CRC-32/ISO-HDLC (zlib `crc32`, as `rosterVersion`, section 12), a little-endian
+  `uint32` on the wire. `roster_crc` is over the count (1 B) and every entry's 16 B wire form
+  (uid, r, g, b, name) in index order, so it equals the `rosterVersion` the board publishes for
+  that roster. `games_crc` is over `games_count` (1 B) and every live record's 18 B form in
+  `(order, id)` order; no live record gives `0xD202EF8D` (16.15 `sync_begin`).
+- **Binding.** A STATUS read binds the connection to the tournament it reports (0 = none).
+  RECORD writes on a connection not bound to the running tournament are discarded, so a write
+  meant for a tournament the board has left never lands in the next one. Read STATUS first after
+  every connect.
+- **Roster stage.** One per board, shared by all connections. ROSTER_ENTRY writes are byte copies,
+  not acked, not checked until BEGIN_TOURNAMENT; a rewritten index overwrites. BEGIN clears it
+  when it answers APPLIED or INVALID (BUSY and WRONG_SCREEN leave it), and leaving the tournament
+  clears it. So a peer writes the whole roster before every BEGIN, each write after the previous
+  one's response.
 
 ### 20.1 TOURNAMENT frames
 
@@ -1906,165 +1898,245 @@ outside it the board ignores the tablet commands (WRONG_SCREEN) and stays the so
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x01` ROSTER_ENTRY - Frame type. |
-| 2 | 1 | `index` | Roster index, 0 to TABLET_ROSTER_MAX - 1. |
+| 2 | 1 | `index` | Roster index, 0 to TOURNAMENT_ROSTER_MAX - 1. |
 | 3 | 4 | `uid` | The entry's uid, non-zero, unique in the roster. |
 | 7 | 1 | `r` | Red component. |
 | 8 | 1 | `g` | Green component. |
 | 9 | 1 | `b` | Blue component. |
 | 10 | 9 | `name` | Printable ASCII, NUL-padded (a 9-character name has no NUL). |
 
-The tablet writes entries 0 to count - 1, then sends BEGIN_TOURNAMENT. A rewritten index overwrites; index >= TABLET_ROSTER_MAX is discarded.
+The peer writes entries 0 to count - 1, then sends BEGIN_TOURNAMENT. A rewritten index overwrites; index >= TOURNAMENT_ROSTER_MAX is discarded.
 
-**Write MIRROR_ENTRY** (write, watch -> board, 18 B): Stages one game of the tablet's tournament for the next COMMIT_MIRROR.
+**Write RECORD** (write, watch -> board, 20 B): Merges one game record into the bound tournament.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
-| 1 | 1 | `type` | `0x02` MIRROR_ENTRY - Frame type. |
-| 2 | 1 | `index` | Position in the mirror, 0 to RESULTS_MAX - 1. |
-| 3 | 4 | `id` | The game's id, non-zero, unique in the mirror. |
-| 7 | 4 | `uid_a` | One side's roster uid. |
-| 11 | 4 | `uid_b` | The other side's roster uid. |
-| 15 | 1 | `score_a` | uid_a's score. |
-| 16 | 1 | `score_b` | uid_b's score. |
-| 17 | 1 | `flags` | Game flags. bit 0 PENDING; bit 1 OFFLINE |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
+| 1 | 1 | `type` | `0x02` RECORD - Frame type. |
+| 2 | 4 | `id` | The game's id, random, non-zero, unique in the tournament; never reused. |
+| 6 | 1 | `rev` | Edit count mod 256; 0 at creation, + 1 on every edit or delete. |
+| 7 | 2 | `order` | Lamport stamp, 1 + the highest order the creator holds; kept by edits. Sort by (order, id). |
+| 9 | 4 | `uid_a` | Side A's roster uid (the match's own A). |
+| 13 | 4 | `uid_b` | Side B's roster uid. |
+| 17 | 1 | `score_a` | A's score. |
+| 18 | 1 | `score_b` | B's score. |
+| 19 | 1 | `flags` | Record flags. bit 0 DELETED; bit 1 OFFLINE |
 
-The tablet writes games 0 to count - 1 in its list order, then sends COMMIT_MIRROR. A rewritten index overwrites; index >= RESULTS_MAX is discarded.
+Applied at once by the merge rule (section 20.2): a winning record replaces the stored one and takes the next change seq; a losing or identical one is a no-op. Dropped without a trace when the connection is not bound to the running tournament, id or order is 0, a reserved flag is set, a replace carries another order than the stored record, or (live records) the uids are equal or not both in the roster, the score is not a legal finished game of the sport, or a new id would exceed the live cap (RESULTS_MAX, one less while a match runs). The writer learns of a drop by comparing games_crc (section 20.5).
 
 **Write CURSOR** (write, watch -> board, 5 B): Selects what this connection's next reads return.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x03` CURSOR - Frame type. |
-| 2 | 1 | `which` | STATUS or OUTBOX; any other value is discarded. `0` STATUS, `1` OUTBOX, `2` OUTBOX_END |
-| 3 | 2 | `seq` | First outbox seq to read (OUTBOX only). |
+| 2 | 1 | `which` | STATUS, CHANGES or RECORDS; any other value is discarded. `0` STATUS, `1` CHANGES, `2` RECORDS |
+| 3 | 2 | `seq` | First change seq (CHANGES) or sort index (RECORDS) to read. |
 
-STATUS: every read answers the status frame (seq ignored, send 0). OUTBOX: reads walk the un-ACKed board games from seq on. At connect the cursor is STATUS.
+STATUS: every read answers STATUS (seq ignored, send 0). CHANGES: reads walk the records whose last change seq is >= seq, skipping those whose last change this peer wrote (section 20.4). RECORDS: reads walk the stored records from sort index seq on. At connect the cursor is STATUS.
 
-**Read STATUS** (read, board -> watch, 20 B): The board's tablet tournament, read first after every (re)connect.
+**Read STATUS** (read, board -> watch, 20 B): The board's tournament, read first after every (re)connect; binds the connection to it.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
 | 1 | 1 | `type` | `0x00` STATUS - Frame type. |
-| 2 | 4 | `tournament_id` | The tablet's tournament id; 0 = none. |
+| 2 | 4 | `tournament_id` | The running tournament's id; 0 = none. |
 | 6 | 1 | `sport` | The tournament's sport. `0` none, `1` squash, `2` volleyball, `3` short_volleyball, `4` padel |
-| 7 | 1 | `roster_count` | Entries in the pushed roster. |
-| 8 | 4 | `roster_crc` | CRC-32 of the pushed roster, as BEGIN_TOURNAMENT's roster_crc and the state's rosterVersion. |
-| 12 | 2 | `outbox_from` | Seq of the oldest un-ACKed board game; outbox_to + 1 when the outbox is empty. |
-| 14 | 2 | `outbox_to` | Seq of the newest board game; 0 = none yet. |
-| 16 | 4 | `mirror_crc` | CRC of the last applied COMMIT_MIRROR; 0 = none since BEGIN_TOURNAMENT. |
+| 7 | 1 | `roster_count` | Entries in the tournament roster (read them through ROSTER). |
+| 8 | 4 | `roster_crc` | CRC-32 of the roster, as BEGIN_TOURNAMENT's roster_crc and the state's rosterVersion. |
+| 12 | 2 | `changes_to` | The last change seq given out; 0 = no change yet. Restarts with every tournament on this board. |
+| 14 | 1 | `games_count` | Live (not deleted) records stored. |
+| 15 | 4 | `games_crc` | CRC-32 over games_count (1 B) and the live records' 18-byte forms in (order, id) order. |
+| 19 | 1 | `log_epoch` | Random non-zero, drawn when this board's change log starts (START, or BEGIN_TOURNAMENT on MENU); 0 = no tournament. Tells a restarted log from the old one. |
 
-tournament_id 0 = no tablet tournament (TOURNAMENT_WAIT or any other mode), then every field is 0. Same id as the tablet's: pull the outbox, ACK, then mirror. 0 on TOURNAMENT_WAIT: push the roster and BEGIN. A different id: the board runs another tournament; only a person leaving and re-entering TOURNAMENT clears it.
+tournament_id 0 = no tournament (MENU, CHOOSE_PLAYERS before the first START, CONFIG, PROFILE), then every field is 0. A peer with no tournament may adopt this one (join); a peer with the same id pulls changes and pushes its records; a peer with another id leaves the board alone. A log_epoch other than the one of the peer's last pull from this board means a new change log: pull from 1.
 
-**Read OUTBOX** (read, board -> watch, 19 B): The first un-ACKed board game at or after the cursor; the cursor moves past it.
-
-| Off | Size | Field | Meaning |
-|---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
-| 1 | 1 | `type` | `0x01` OUTBOX - Frame type. |
-| 2 | 2 | `seq` | The game's outbox seq. |
-| 4 | 4 | `id` | The game's id. |
-| 8 | 4 | `uid_a` | The pair's own A uid. |
-| 12 | 4 | `uid_b` | The pair's own B uid. |
-| 16 | 1 | `score_a` | A's score. |
-| 17 | 1 | `score_b` | B's score. |
-| 18 | 1 | `flags` | OFFLINE for a watch-added game; PENDING is 0 here. bit 0 PENDING; bit 1 OFFLINE |
-
-Uids are the match's own A/B order, as in RESULTS. The tablet reads until OUTBOX_END, then sends ACK_OUTBOX with the last seq once the games are stored.
-
-**Read OUTBOX_END** (read, board -> watch, 4 B): No un-ACKed board game at or after the cursor; the cursor stays.
+**Read RECORD** (read, board -> watch, 20 B): The next record of a CHANGES or RECORDS walk; the cursor moves past it.
 
 | Off | Size | Field | Meaning |
 |---|---|---|---|
-| 0 | 1 | `proto` | `PROTO` (`0x01`) - Protocol version. |
-| 1 | 1 | `type` | `0x02` OUTBOX_END - Frame type. |
-| 2 | 2 | `seq` | The cursor. |
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
+| 1 | 1 | `type` | `0x02` RECORD - Frame type. |
+| 2 | 4 | `id` | The game's id, random, non-zero, unique in the tournament; never reused. |
+| 6 | 1 | `rev` | Edit count mod 256; 0 at creation, + 1 on every edit or delete. |
+| 7 | 2 | `order` | Lamport stamp, 1 + the highest order the creator holds; kept by edits. Sort by (order, id). |
+| 9 | 4 | `uid_a` | Side A's roster uid (the match's own A). |
+| 13 | 4 | `uid_b` | Side B's roster uid. |
+| 17 | 1 | `score_a` | A's score. |
+| 18 | 1 | `score_b` | B's score. |
+| 19 | 1 | `flags` | Record flags. bit 0 DELETED; bit 1 OFFLINE |
 
-The tablet has the whole outbox. Also answered when no tablet tournament runs.
+CHANGES returns the record with the smallest last change seq >= the cursor, then moves the cursor past that seq; each record is returned once per walk, in its latest form. A record whose last change came from the reading connection's pairing slot is skipped. RECORDS returns the record at the sort index (live and tombstones, by (order, id)), then index + 1. Byte-identical to the write, so it can be forwarded to another peer as is.
+
+**Read END** (read, board -> watch, 6 B): A CHANGES or RECORDS walk has nothing more at the cursor; the cursor stays.
+
+| Off | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | `proto` | `PROTO` (`0x02`) - Protocol version. |
+| 1 | 1 | `type` | `0x04` END - Frame type. |
+| 2 | 2 | `seq` | CHANGES - changes_to; RECORDS - stored records (live + tombstones). |
+| 4 | 2 | `lost_to` | Highest change seq of a tombstone dropped past TOMBSTONE_MAX; 0 = none. A puller whose last END is below it may have missed a delete. |
+
+CHANGES: seq = changes_to, the value to ACK and to resume from (seq + 1). RECORDS: seq = the stored record count. Also answered when no tournament runs (seq 0, lost_to 0).
 <!-- /generated: frames:TOURNAMENT -->
 
 The read cursor is per connection: STATUS at connect, then whatever the last CURSOR write chose.
 
-### 20.2 BEGIN and roster updates
+### 20.2 Records and merge
 
-- **Checks** (else INVALID, nothing changes): `tournament_id` non-zero; `sport` one the MENU
-  lists; `count` 2 to 16; staged entries 0 to `count - 1` with non-zero, unique uids and
-  printable-ASCII, NUL-padded names; `roster_crc` = their CRC.
-- **On TOURNAMENT_WAIT** the roster becomes the active roster of the sport's kind (section 12), in place of
-  the stored one, which stays untouched. The board enters the sport with every entry selected and
-  lands on MATCH_START (no CHOOSE_PLAYERS: the tablet picks players); `rosterVersion` =
-  `roster_crc`, RESULTS' `tournamentId` = the tablet's id, the outbox starts empty at seq 1.
-- **On a tablet sport screen** (MATCH_START to GAME_OVER) the same id and sport update the
-  roster (a late joiner, a name fix): every current entry keeps its uid at its index, its name
-  and colour may change, new entries are appended and selected. Games reference players by
-  index, so a dropped or moved uid is INVALID. The screen, the pair and the games stay;
-  `rosterVersion` changes with the roster, so watches re-read it. An unchanged roster is APPLIED
-  and changes nothing.
-- A different `tournament_id` while a tournament runs is INVALID.
-- The fob's pair cycling works on the pushed roster.
+- **Record** (`RECORD_SIZE` 18 B, bytes 2-19 of the RECORD frame): `id`, `rev`, `order`,
+  `uid_a`, `uid_b`, `score_a`, `score_b`, `flags`. The same bytes are read and written, so a peer
+  forwards a record from one board to another unchanged.
+- **Create.** A game finished on the board (its winning point committed) or a watch's
+  ADD_OFFLINE_GAME (flag OFFLINE) creates a record: random non-zero `id` never used in the
+  tournament, `rev` 0, `order` = 1 + the highest order stored (live or tombstone), scores in the
+  match's own A/B order. A peer creating a record does the same over the records it holds. Board
+  games are final when played: there is no pending state.
+- **Edit** = same `id` and `order`, `rev` + 1, players or scores changed. **Delete** = `rev` + 1
+  and DELETED set, everything else kept: a **tombstone**, which stays so that a stale peer cannot
+  bring the game back.
+- **Merge** (every peer, every record, either direction). No stored record with that id: store it
+  (tombstones too). **Delete is sticky:** if exactly one of the two is a tombstone, the tombstone
+  wins at any rev, so a same-rev edit or a stale peer's edit never revives a deleted game.
+  Otherwise `d = (new.rev - stored.rev) mod 256`: 1-127 the new one replaces the stored one;
+  129-255 it is older, a no-op; 0 or 128 the larger 18 B image wins (the wire bytes compared
+  first byte first), an identical one is a no-op. The result depends only on the two records,
+  never on arrival order, so peers that saw the same records converge (16.15 `sync_merge`).
+- **Change seq.** Every store or replace takes the board's next change seq (`uint16` from 1, per
+  change log); a no-op takes none. `changes_to` = the last one given. With it the board notes the
+  change's **writer** (RAM): the pairing slot (9.2) of the authenticated connection whose RECORD
+  write or command made it, or "board" for a game played on the board and the fob. Pairing a
+  slot again resets that slot's notes to "board", so a new device in the slot never inherits
+  another one's writes. At 65535 the log is full:
+  the board answers START_MATCH and ADD_OFFLINE_GAME INVALID and drops RECORD writes.
+- **Change log:** starts empty with a fresh random `log_epoch` (STATUS) at START on
+  CHOOSE_PLAYERS and at BEGIN_TOURNAMENT on MENU, so a board that rebooted or left and re-joined
+  never looks like its old log.
+- **Order** is a Lamport stamp: a new record's `order` is above everything its creator holds
+  (capped at 65535), so a game played after another one was seen sorts after it. Two peers
+  creating at once may pick the same order; `id` breaks the tie. Every peer sorts by
+  `(order, id)`, both compared as unsigned numbers, so turns (section 19) agree everywhere. A
+  record's `order` never changes: a write with the id of a stored record and another order is
+  dropped.
+- **Dropped writes** (no trace, no change seq): id or order 0, a reserved flag bit, a changed
+  order; and for a live record: equal uids, a uid not in the roster, a score that is not a legal
+  finished game of the sport (as ADD_OFFLINE_GAME), or a new id while `RESULTS_MAX` live records
+  exist (`RESULTS_MAX` - 1 from START_MATCH until the match's record exists, so a game played on
+  the board always finds a slot). A replace of an existing id is never dropped by the cap. The
+  writer sees the drop as a `games_crc` mismatch (20.5).
+- **Tombstones** are kept up to `TOMBSTONE_MAX`; one more drops the tombstone with the oldest
+  change seq and raises END's `lost_to` to that seq. A puller whose last END is below `lost_to`
+  may have missed a delete (20.4). Only boards evict: a peer keeps every tombstone for the
+  tournament's life.
+- **Limits accepted:** a record edited 128 or more times between two peers' syncs may resolve to
+  the older side and peers may not converge on it (serial arithmetic is not transitive); a
+  tombstone a board dropped can let a peer that missed it, and holds no tombstone of its own,
+  push the game back.
 
-### 20.3 Outbox
+### 20.3 Starting and joining
 
-- Every game the board adds in tablet mode - a game tracked on the board, when it finishes, or a
-  watch's ADD_OFFLINE_GAME - gets a fresh random non-zero id and the next outbox seq (1, 2, ...;
-  never reused in a tournament).
-- It stays in the outbox until ACKed: ACK_OUTBOX acks every seq `<= up_to`, and a mirror that
-  carries its id acks it too. ACK_OUTBOX with another `tournament_id` or `up_to > outbox_to` is
-  INVALID; an `up_to` already acked is APPLIED and changes nothing. `outbox_from` is the oldest un-ACKed seq, `outbox_to` the newest
-  seq; `outbox_from = outbox_to + 1` when nothing is un-ACKed.
-- With the cursor at OUTBOX `s`, a read returns the first un-ACKed game with seq `>= s` and moves
-  the cursor past it; with none, OUTBOX_END carries the cursor, which stays (also with no tablet
-  tournament).
-- An ACK only empties the outbox: the board's games, its tally and RESULTS stay as they were.
-- A tracked game is **pending** until the tablet accepts it: counted in the court's tally, not
-  listed in RESULTS. A watch's offline game counts as accepted at once (listed and counted).
-- Recommended: STATUS, CURSOR (OUTBOX, `outbox_from`), read until OUTBOX_END, store, ACK_OUTBOX
-  (last seq), mirror. A lost ACK costs one re-read; the tablet dedupes by id.
+- **On the board:** START on CHOOSE_PLAYERS starts the tournament (fresh id and `log_epoch`, the
+  selection as the roster). The picker stops at 16 selected. BACK from MATCH_START to
+  CHOOSE_PLAYERS keeps the tournament; a roster entry cannot be un-selected (TOGGLE_PLAYER
+  INVALID); START again appends the newly selected players to the roster.
+- **A peer joins** (16.15 `sync_join`): STATUS shows a non-zero id and the peer holds no
+  tournament, so it adopts it - id, sport, the roster through ROSTER (section 12, checked against
+  `roster_crc`) - and pulls CHANGES from 1 (20.4). No question to the user.
+- **A peer extends its tournament to a board on MENU** (16.15 `sync_begin`; also a second board
+  joining): STATUS shows 0. Stage the roster (ROSTER_ENTRY 0 to count - 1), BEGIN_TOURNAMENT with
+  the id, sport and `roster_crc`: the board takes the tournament with no records, every entry
+  selected, on MATCH_START. Read STATUS (binds), push every record the peer holds, tombstones
+  included (20.5). Two peers racing: the second BEGIN finds MATCH_START and acts as roster
+  growth (same id) or answers INVALID (another id); either way it re-reads STATUS.
+- **STATUS 0 off MENU** (CHOOSE_PLAYERS before START, CONFIG, PROFILE): BEGIN answers
+  WRONG_SCREEN. A peer may send BACK on CHOOSE_PLAYERS (no tournament, no guard) to reach MENU, or
+  wait.
+- **Another id:** the board runs another tournament; leave it alone. A person ends it (long C,
+  20.6) before the board can join.
+- **Roster growth** (a late player, a name fix): BEGIN_TOURNAMENT on a sport screen with the same
+  id and sport and every current uid staged; the staged list becomes the roster (order, names,
+  colours as staged; new entries selected). A current uid missing is INVALID. The roster only
+  grows. `rosterVersion` changes, so watches re-read it.
+- **Re-join after a reboot:** the board boots on MENU with no tournament; the peer's key is
+  persisted (9.2), so it reconnects unasked, sees STATUS 0, and extends its tournament to the
+  board again as above, with a new `log_epoch` (20.4). A peer re-extends only a board whose link
+  dropped while it was in the tournament; a board the peer saw go to MENU over a live link was
+  left by a person (20.6) and stays out until the user adds it again. A game that finished on the
+  board and was not pulled before the reboot is lost: pull right after every finished game.
 
-### 20.4 Mirror
+### 20.4 Pulling changes
 
-- After every change (accept, (+), edit, delete) the tablet stages its whole tournament - the
-  accepted games of every court plus this board's pending cards flagged PENDING, at most 128 -
-  and sends COMMIT_MIRROR.
-- **Checks** (else INVALID, nothing changes): `tournament_id` = the running one; `count` <= 128;
-  staged games 0 to `count - 1` with non-zero, unique ids, both uids in the roster and different,
-  and a legal finished score of the sport (as ADD_OFFLINE_GAME); `crc` = their CRC.
-- **Applied atomically** in `loop()`: the board's games become the mirror's games in index order,
-  then this board's un-ACKed games whose id the mirror lacks, in seq order. A mirror id equal to
-  a board game's acks it. An ACKed board game the mirror lacks is gone (the tablet deleted it); an
-  un-ACKed one is never dropped.
-- `uid_a` / `uid_b` may come in either order: the game joins that pair's match with the scores
-  in the match's own A/B order, as ADD_OFFLINE_GAME; a pair the mirror creates takes `uid_a` as A.
-  The board does not check that a PENDING id is its own.
-- The running game, the pair and the screen stay.
-- **RESULTS** lists every game not pending (mirror order, then un-ACKed offline games); a client
-  reads the old or the new list, never a mix, and `rev` changes once per commit that changes the
-  listed games. The court's tally (the state's `*Games`) also counts the pending ones, so players
-  see the game they just played.
-- STATUS `mirror_crc` = the last applied commit's `crc`.
+- **Walk:** CURSOR (CHANGES, `s`), read RECORD frames until END. Each record comes once, in its
+  latest form, however often it changed since `s` (16.15 `sync_leave`). END's `seq` =
+  `changes_to`.
+- **No echo:** a record whose last change was written by the reading connection's pairing slot
+  is skipped - the peer holds it already (16.15 `sync_begin`). Skipped entries still count: END's
+  `seq` and the ACK cover them, so the unsynced guard clears on the writer's own ACK. A peer that
+  re-paired into another slot reads its old writes back once; merging them is a no-op. A board
+  pulling from another board (later, board-to-board) authenticates into a slot like any peer.
+- **Store, then ACK.** Merge every record durably, then ACK_CHANGES with END's `seq`; the next
+  pull starts at that `seq` + 1. A lost link mid-pull resumes from the last END + 1: re-read
+  records merge as no-ops (16.15 `sync_pull`). A lost ACK costs one re-read.
+- **acked_to** is board-wide: the highest `up_to` any peer ACKed. The first ACK of a tournament
+  arms the unsynced guard (20.6); a board nobody ever ACKed plays and leaves as a lone board. So
+  one peer's ACK clears the guard for all: ACK only what is durable, and only with an END read on
+  this connection after its STATUS (a cursor from an older `log_epoch` never reaches an ACK).
+- **Log restarted:** a `log_epoch` other than the one of the peer's last pull from this board
+  means a new log (it rebooted, or left and re-joined): pull from 1. Every sync ends with the
+  STATUS check of 20.5, which catches anything a cursor rule missed.
+- **Missed deletes:** END's `lost_to` above the peer's last END means a tombstone it never read
+  was dropped. Walk RECORDS (16.15 `sync_merge`); a live record the peer pulled from this board,
+  or pushed to it and saw confirmed by a matching `games_crc`, in this `log_epoch`, that the walk
+  does not list was deleted there: the peer stores it as a
+  tombstone with `rev` + 1. Records it got elsewhere are pushed as usual.
+- **When:** after every connect, and when STATE shows a finished game (CELEBRATION) or acks a
+  command that changes records (ADD_OFFLINE_GAME, REMOVE_OFFLINE_GAME). Each read costs one request.
 
-### 20.5 SET_SIDE
+### 20.5 Pushing records
 
-The tablet's hot-swap of one side. A `side` other than 0/1, a uid not in the roster or the other
-side's uid is INVALID; the side's current uid is APPLIED and changes nothing. On MATCH_START, INTRO and PLAYING the current game
-moves to the new pair: its score is kept, the other side's player stays, the side's colour
-follows the entry. On CELEBRATION and GAME_OVER it sets the next game's pair only; the finished
-game stays as recorded and the tablet fixes its pending card.
+- After STATUS binds the connection and the pull (20.4, including `lost_to`), the peer writes the
+  records the board may lack or hold in an older form: those it changed or received since its last push to that board (forwarded unchanged
+  from other boards), one write after the previous one's response.
+- Then STATUS again: `games_count` and `games_crc` equal to the peer's own live set = in sync.
+  Otherwise walk RECORDS (CURSOR RECORDS 0, read until END; no writes during the walk, as each
+  write may shift the sort index): then write every record the board lacks or holds older, merge
+  every one the board holds newer. Tombstones are not in `games_crc`, so a tombstone the board
+  evicts during a push is no mismatch. A mismatch that survives a full walk means the board
+  dropped a write (20.2) or another peer wrote meanwhile: check once more, then show it, do not
+  loop.
+- Two peers writing the same board (two tablets) need nothing extra: their records merge by the
+  rule and each pulls the other's from the board.
 
-### 20.6 Watches and the fob in tablet mode
+### 20.6 Leaving and End
 
-- TOURNAMENT_WAIT is a busy screen for a watch: only BEGIN_TOURNAMENT, BACK and SYNC act,
-  everything else answers WRONG_SCREEN. BACK leaves to MENU, as long C does.
-- On the sport screens watches work as usual on the pushed roster. ADD_OFFLINE_GAME goes into the
-  outbox (20.3); REMOVE_OFFLINE_GAME answers WRONG_SCREEN (the tablet is the only editor); BACK
-  on MATCH_START answers WRONG_SCREEN.
-- Only a person leaves from MATCH_START: long C. With an un-ACKed outbox the board first shows a
-  warning (games not synced, hold C again) and leaves on a second long C while it shows; with an
-  empty outbox it leaves at once. While the warning shows every command answers BUSY. A client
-  cannot end a running tournament: the tablet could not pair again on MENU.
-- Leaving tablet mode, the board lands on MENU; the bench board (no MENU) on TOURNAMENT_WAIT
-  again.
+- **Leaving** drops the board's tournament: records, roster, change log, `acked_to`, the guard and
+  the roster stage. The board lands on MENU with its stored roster active; keys stay.
+- **Unsynced guard:** armed by the first ACK_CHANGES, it holds while `changes_to > acked_to`. Then
+  BACK on CHOOSE_PLAYERS answers INVALID, and the fob's long C first shows a warning (games not
+  synced, hold C again) and leaves on a second long C while it shows; while the warning shows
+  every command answers BUSY. Unarmed or clear, both leave at once.
+- **Fob long C** on a board that joined leaves only that board; the other peers keep the
+  tournament.
+- **A peer's End** releases every board (16.15 `sync_leave`): pull, ACK, then BACK until MENU
+  (MATCH_START -> CHOOSE_PLAYERS -> MENU; BACK never acts on PLAYING, so End waits for the game).
+  Removing one board from a tournament is End for that board only. A board out of reach keeps
+  the tournament until a person leaves it.
+
+### 20.7 SET_SIDE
+
+A peer's hot-swap of one side, in every session. A `side` other than 0/1, a uid not in the roster
+or the other side's uid is INVALID; the side's current uid is APPLIED and changes nothing. On
+MATCH_START, INTRO and PLAYING the current game moves to the new pair: its score is kept, the
+other side's player stays, the side's colour follows the entry. On CELEBRATION and GAME_OVER it
+sets the next game's pair only; the finished game's record stays as created and a peer edits it to
+fix a wrong pick.
+
+### 20.8 Watches and the fob
+
+- Watches work as always on the tournament roster and never need TOURNAMENT. ADD_OFFLINE_GAME
+  creates an OFFLINE record, REMOVE_OFFLINE_GAME tombstones an OFFLINE one; RESULTS shows every
+  peer's live records, so a game edited on a tablet shows up on the watch after its next read.
+- The fob's pair cycling uses the tournament roster.

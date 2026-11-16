@@ -73,7 +73,7 @@ structures:
           PLAYING: playing_body
           CELEBRATION: result_body
           GAME_OVER: result_body
-        description: The per-screen data (11.3); absent on BOOTING, CONFIG, PROFILE, TOURNAMENT_WAIT.
+        description: The per-screen data (11.3); absent on BOOTING, CONFIG, PROFILE.
 
   - name: menu_body
     offset: 8
@@ -81,14 +81,14 @@ structures:
     structure:
       - field: cursor
         type: uint8
-        description: Menu-entry id of the highlighted row (a sport id or a menu_entry), 0 on a row not listed (PROFILE, CONFIG).
+        description: Menu-entry id of the highlighted row (today a sport id), 0 on a row not listed (PROFILE, CONFIG).
       - field: n
         type: uint8
         description: Number of menu entries listed.
       - field: entry_ids
         type: uint8[]
         size: n
-        description: Menu-entry ids in menu order (sport ids and menu_entry values).
+        description: Menu-entry ids in menu order (today sport ids; a watch skips ids it does not know).
 
   - name: choose_players_body
     offset: 8
