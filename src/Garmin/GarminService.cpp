@@ -361,8 +361,8 @@ void GarminService::publishTournament(const Tournament *tournament, const bool f
                          }, force);
 }
 
-bool GarminService::takeRecord(uint32_t &tid, uint8_t &writer, uint8_t *image) {
-    return gLink.takeRecord(tid, writer, image);
+bool GarminService::takeRecord(uint32_t &tid, uint8_t &epoch, uint8_t &writer, uint8_t *image) {
+    return gLink.takeRecord(tid, epoch, writer, image);
 }
 
 void GarminService::recordApplied() {

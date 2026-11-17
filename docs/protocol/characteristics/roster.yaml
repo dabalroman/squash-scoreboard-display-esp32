@@ -71,4 +71,4 @@ characteristic:
           size: ROSTER_NAME_SIZE
           padding: nul
           present_if: index < count
-          description: Printable ASCII, NUL-padded (a 9-character name has no NUL).
+          description: 1 to 9 printable ASCII characters (0x20-0x7E), NUL-padded (a 9-character name has no NUL); never any other byte (section 12).

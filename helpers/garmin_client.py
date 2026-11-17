@@ -828,6 +828,7 @@ async def run_tablet(session, action, args, seq):
     elif action == "ack":
         if len(args) != 2:
             sys.exit("ack <tid> <upTo>")
+        await read_status(session)  # binds the connection to the log the ACK is for (spec 20)
         frame = build_command("ack_changes", args, seq)
     else:  # set-side
         if len(args) != 2:

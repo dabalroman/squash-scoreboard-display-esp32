@@ -101,6 +101,8 @@ struct Rig {
     }
 
     AckStatus send(const WatchCommand &c) { return mode->handleWatchCommand(c); }
+    // ACK_CHANGES from a connection whose STATUS read saw the running tournament's log.
+    AckStatus ack(uint32_t tid, uint16_t upTo);
 
     void tick(const uint32_t ms = 50) {
         g_fakeMillis += ms;
@@ -1159,11 +1161,20 @@ static WatchCommand begin(const uint32_t tid, const uint8_t sportId, const uint8
     return c;
 }
 
-static WatchCommand ackChanges(const uint32_t tid, const uint16_t upTo) {
+static WatchCommand ackChanges(const uint32_t tid, const uint16_t upTo, const uint32_t boundTid,
+                               const uint8_t boundEpoch) {
     WatchCommand c = cmd(CommandId::AckChanges);
     c.tournamentId = tid;
     c.upTo = upTo;
+    c.boundTid = boundTid;
+    c.boundEpoch = boundEpoch;
     return c;
+}
+
+AckStatus Rig::ack(const uint32_t tid, const uint16_t upTo) {
+    const Tournament *t = mode->getTournament();
+    const auto st = t != nullptr ? t->status() : decltype(t->status()){};
+    return send(ackChanges(tid, upTo, st.tid, st.logEpoch));
 }
 
 static WatchCommand setSide(const uint8_t side, const uint32_t uid) {
@@ -1271,14 +1282,14 @@ static void test_tournament_commands_on_a_local_tournament() {
     rig.tick();
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(begin(TID, 0x01, 2, 0)));
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_ANNA)));
-    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(TID, 0)));   // no tournament yet
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.ack(TID, 0));   // no tournament yet
 
     rig.toMatchStart();
     const Tournament *tournament = rig.mode->getTournament();
     TEST_ASSERT_TRUE(tournament->running());
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(begin(tournament->getId(), 0x01, 2, 0)));
-    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(tournament->getId() ^ 1, 0)));
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(tournament->getId(), 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.ack(tournament->getId() ^ 1, 0));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(tournament->getId(), 0));
     TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(setSide(0, UID_CEZ)));   // not in the roster
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(0, UID_ANNA)));  // already there
 }
@@ -1358,9 +1369,13 @@ static void test_tournament_join_game_ack() {
     TEST_ASSERT_EQUAL(1, status.gamesCount);
 
     // ACK: another tid or past changes_to is INVALID; then nothing is unsynced, games stay.
-    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(TID ^ 1, 1)));
-    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(TID, 2)));
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(TID, 1)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.ack(TID ^ 1, 1));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.ack(TID, 2));
+    // Bound to another log: a STATUS read before a leave and re-join, or none at all.
+    const uint8_t epoch = rig.mode->getTournament()->status().logEpoch;
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(TID, 1, TID, epoch ^ 1)));
+    TEST_ASSERT_EQUAL(AckStatus::Invalid, rig.send(ackChanges(TID, 1, 0, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(TID, 1));
     TEST_ASSERT_FALSE(tournament->unsynced());
     TEST_ASSERT_EQUAL(1, tally(*tournament, 0));
 
@@ -1405,7 +1420,7 @@ static void test_tournament_join_game_ack() {
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(begin(TID, 0x01, 4, crc4)));
     TEST_ASSERT_TRUE(stageEmpty(rig.link));
     TEST_ASSERT_EQUAL(AckStatus::WrongScreen, rig.send(setSide(0, UID_T[0])));
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(TID, 2)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(TID, 2));
 }
 
 // PLAYING's score bytes (body 11 / 12: squash and volleyball points, padel gems).
@@ -1578,7 +1593,7 @@ static void test_tournament_leave_with_unsynced_changes() {
     rig.joinSport(0x01, DeviceModeState::SquashMode);
 
     // The guard arms on the first ACK.
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(TID, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(TID, 0));
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(addGame(UID_T[0], UID_T[2], 11, 4)));
     TEST_ASSERT_EQUAL(1, rig.mode->getTournament()->unsyncedCount());
 
@@ -1593,7 +1608,7 @@ static void test_tournament_leave_with_unsynced_changes() {
     TEST_ASSERT_EQUAL(0, rig.requested.size());
 
     // ACKed: the watch's BACK leaves at once.
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(TID, rig.mode->getTournament()->status().changesTo)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(TID, rig.mode->getTournament()->status().changesTo));
     warnedUnsynced = 0;
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(cmd(CommandId::Back)));
     TEST_ASSERT_EQUAL(0, warnedUnsynced);
@@ -1639,7 +1654,7 @@ static void test_tournament_growth_mid_game() {
     TEST_ASSERT_EQUAL_PTR(active, tournament->getActiveMatch());
     TEST_ASSERT_TRUE(active->hasGame());
     expectPlaying(rig, UID_T[0], UID_T[1], 3, 0);
-    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(ackChanges(TID, 0)));
+    TEST_ASSERT_EQUAL(AckStatus::Applied, rig.ack(TID, 0));
     TEST_ASSERT_EQUAL(AckStatus::Applied, rig.send(setSide(1, UID_T[1])));
     rig.tick();
 

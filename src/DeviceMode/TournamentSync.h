@@ -80,7 +80,8 @@ namespace TournamentSync {
                                              entries);
             }
             case Garmin::CommandId::AckChanges:
-                return tournament.ackChanges(command.tournamentId, command.upTo);
+                if (command.boundTid != command.tournamentId) return Garmin::AckStatus::Invalid;
+                return tournament.ackChanges(command.tournamentId, command.boundEpoch, command.upTo);
             case Garmin::CommandId::SetSide:
                 if (!onMatchScreen) return Garmin::AckStatus::WrongScreen;
                 return tournament.reassignSide(command.side, command.uid);

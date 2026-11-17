@@ -26,6 +26,8 @@ class Tournament {
     uint32_t id = 0;
     uint8_t sport = 0;
     bool joined = false;
+    // A connection still bound to the previous log must not match the next one (spec 20 Binding).
+    uint8_t lastEpoch = 0;
 
     Match *activeMatch = nullptr;
 
@@ -35,9 +37,10 @@ class Tournament {
         return v;
     }
 
-    static uint8_t newEpoch() {
+    uint8_t newEpoch() {
         uint8_t v = 0;
-        while (v == 0) v = static_cast<uint8_t>(esp_random());
+        while (v == 0 || v == lastEpoch) v = static_cast<uint8_t>(esp_random());
+        lastEpoch = v;
         return v;
     }
 
@@ -304,8 +307,10 @@ public:
     }
 
     // ACK_CHANGES' model part; the screen check is the caller's.
-    Garmin::AckStatus ackChanges(const uint32_t tournamentId, const uint16_t upTo) {
-        if (!running() || tournamentId != id || !log.ack(upTo)) return Garmin::AckStatus::Invalid;
+    // `epoch`: the log_epoch the sender's STATUS read reported (spec 20 Binding).
+    Garmin::AckStatus ackChanges(const uint32_t tournamentId, const uint8_t epoch, const uint16_t upTo) {
+        if (!running() || tournamentId != id || epoch != log.epoch() || !log.ack(upTo))
+            return Garmin::AckStatus::Invalid;
         return Garmin::AckStatus::Applied;
     }
 

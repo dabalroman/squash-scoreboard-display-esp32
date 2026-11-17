@@ -679,6 +679,11 @@ CELEBRATION and GAME_OVER (body 23, 2 chunks):
 - `rosterVersion` = CRC-32 (ISO-HDLC, as zlib `crc32`; check value `0xCBF43926` for ASCII
   `123456789`) over `count` (1 B) followed by every entry's 16-byte wire form (uid, r, g, b,
   name) in index order. Only the board computes it; the watch compares it.
+- **Names** on the wire are 1 to 9 printable ASCII characters (`0x20`-`0x7E`), NUL-padded, in
+  every roster a board publishes: the board shows a stored profile name with any other byte as
+  `?` and an empty one as `P<index>` (the web editor stores printable names only), and
+  BEGIN_TOURNAMENT answers INVALID for a staged entry whose name breaks the rule. A reader keeps
+  the name byte-exact, so the `rosterVersion` it computes equals the board's.
 - The watch caches entries per (board id, roster kind) and re-reads them only when
   `rosterVersion` differs from the cached version of the kind the state's sport names.
 - Read: write ROSTER `[PROTO, index]` (2 B) to set the per-connection cursor (0 at connect),
@@ -736,7 +741,7 @@ One write + `count` reads re-reads the whole roster.
 | 7 | 1 | `r` | Red component, raw stored colour. Present only when `index < count`. |
 | 8 | 1 | `g` | Green component. Present only when `index < count`. |
 | 9 | 1 | `b` | Blue component. Present only when `index < count`. |
-| 10 | 9 | `name` | Printable ASCII, NUL-padded (a 9-character name has no NUL). Present only when `index < count`. |
+| 10 | 9 | `name` | 1 to 9 printable ASCII characters (0x20-0x7E), NUL-padded (a 9-character name has no NUL); never any other byte (section 12). Present only when `index < count`. |
 
 Each read returns the entry at the cursor and advances it; past the end the cursor stays and the read returns the 3-byte header alone.
 <!-- /generated: frames:ROSTER -->
@@ -1880,10 +1885,12 @@ what it reads and writes, so board-to-board sync can use the same frames later.
   (uid, r, g, b, name) in index order, so it equals the `rosterVersion` the board publishes for
   that roster. `games_crc` is over `games_count` (1 B) and every live record's 18 B form in
   `(order, id)` order; no live record gives `0xD202EF8D` (16.15 `sync_begin`).
-- **Binding.** A STATUS read binds the connection to the tournament it reports (0 = none).
-  RECORD writes on a connection not bound to the running tournament are discarded, so a write
-  meant for a tournament the board has left never lands in the next one. Read STATUS first after
-  every connect.
+- **Binding.** A STATUS read binds the connection to the tournament and change log it reports
+  (`tournament_id`, `log_epoch`; 0 = none). RECORD writes on a connection not bound to the
+  running change log are discarded and its ACK_CHANGES answers INVALID, so a write or an ACK meant
+  for a tournament the board has left never lands in the next one - not even when the board
+  re-joined the same id (a new `log_epoch`). Read STATUS first after every connect; after
+  INVALID read it again, pull and ACK the new log.
 - **Roster stage.** One per board, shared by all connections. ROSTER_ENTRY writes are byte copies,
   not acked, not checked until BEGIN_TOURNAMENT; a rewritten index overwrites. BEGIN clears it
   when it answers APPLIED or INVALID (BUSY and WRONG_SCREEN leave it), and leaving the tournament
@@ -2060,6 +2067,18 @@ The read cursor is per connection: STATUS at connect, then whatever the last CUR
   id and sport and every current uid staged; the staged list becomes the roster (order, names,
   colours as staged; new entries selected). A current uid missing is INVALID. The roster only
   grows. `rosterVersion` changes, so watches re-read it.
+- **Roster conflicts.** Entries carry no revision; on a board the last BEGIN wins. A peer
+  remembers per board the `roster_crc` it last agreed on with it (equal STATUS after a join, a
+  BEGIN or an adoption). When STATUS shows another `roster_crc`:
+  - the peer's roster still equals that agreed one (only the board changed): it takes the
+    board's roster as read (order, names, colours) and appends the uids only it holds;
+  - the peer changed its roster since (a rename, a new entry): it keeps its own entries and
+    appends the uids only the board holds.
+  If the result differs from the board's roster, the peer grows the board with it (BEGIN, same
+  id). A rename so spreads from the peer that made it, and two peers renaming at once converge on
+  the last BEGIN instead of renaming each other's entries back and forth. Limit accepted: two
+  peers changing different entries of the same board at once keep only the last BEGIN's version
+  of the other's entry.
 - **Re-join after a reboot:** the board boots on MENU with no tournament; the peer's key is
   persisted (9.2), so it reconnects unasked, sees STATUS 0, and extends its tournament to the
   board again as above, with a new `log_epoch` (20.4). A peer re-extends only a board whose link
@@ -2083,7 +2102,9 @@ The read cursor is per connection: STATUS at connect, then whatever the last CUR
 - **acked_to** is board-wide: the highest `up_to` any peer ACKed. The first ACK of a tournament
   arms the unsynced guard (20.6); a board nobody ever ACKed plays and leaves as a lone board. So
   one peer's ACK clears the guard for all: ACK only what is durable, and only with an END read on
-  this connection after its STATUS (a cursor from an older `log_epoch` never reaches an ACK).
+  this connection after its STATUS. An ACK on a connection bound to an older `log_epoch` answers
+  INVALID (Binding, section 20); a STATUS read rebinds, so the peer compares the re-read
+  `log_epoch` (20.5) with its pull's before it ACKs.
 - **Log restarted:** a `log_epoch` other than the one of the peer's last pull from this board
   means a new log (it rebooted, or left and re-joined): pull from 1. Every sync ends with the
   STATUS check of 20.5, which catches anything a cursor rule missed.

@@ -29,6 +29,10 @@ struct WatchCommand {
     uint8_t count;         // BEGIN_TOURNAMENT: staged entries to take
     uint32_t crc;          // BEGIN_TOURNAMENT: roster_crc
     uint16_t upTo;         // ACK_CHANGES
+    // Not on the wire: the tournament and change log the sender's connection is bound to (its last
+    // TOURNAMENT STATUS read, spec 20); ACK_CHANGES counts only against that log.
+    uint32_t boundTid;
+    uint8_t boundEpoch;
     // Not on the wire: the sender's pairing slot, the writer of a change the command makes
     // (spec 20.2). Set by GarminService::takeCommand().
     uint8_t writer;

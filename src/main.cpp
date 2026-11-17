@@ -596,10 +596,11 @@ void applyTournamentSync() {
     }
 
     uint32_t tid;
+    uint8_t epoch;
     uint8_t writer;
     uint8_t image[GameRecord::SIZE];
-    if (!garminService.takeRecord(tid, writer, image)) return;
-    if (running && tournament->getId() == tid) {
+    if (!garminService.takeRecord(tid, epoch, writer, image)) return;
+    if (running && tournament->getId() == tid && tournament->status().logEpoch == epoch) {
         const TournamentLog::Merge merged = tournament->mergeRecord(image, writer);
         if (merged == TournamentLog::Merge::Stored || merged == TournamentLog::Merge::Replaced) {
             deviceMode->tournamentEdited();

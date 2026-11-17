@@ -10,8 +10,9 @@ characteristic:
   usage: >-
     Writes are never acked: a ROSTER_ENTRY is staged for BEGIN_TOURNAMENT, a RECORD is merged at
     once (or dropped), a CURSOR selects the reads. Reads answer per the connection's cursor: STATUS
-    (at connect), CHANGES or RECORDS. A STATUS read binds the connection to the tournament it
-    reports; RECORD writes on a connection not bound to the running tournament are discarded.
+    (at connect), CHANGES or RECORDS. A STATUS read binds the connection to the tournament and
+    change log it reports (tournament_id, log_epoch); RECORD writes on a connection not bound to
+    the running change log are discarded, and its ACK_CHANGES answers INVALID.
     Before authentication a read answers the 1-byte [PROTO] and writes are discarded. Optional for
     a watch.
   see: "#20-tournament-sync-tournament"

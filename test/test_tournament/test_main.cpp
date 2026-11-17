@@ -492,6 +492,19 @@ void test_game_ids() {
 // --- 16.15 sync vectors ---
 
 // sync_join / sync_begin: STATUS, the empty games_crc, a forwarded record, no echo.
+// A re-join of the same id never reuses the log_epoch, even when the draw repeats (spec 20 Binding).
+void test_rejoin_draws_a_new_epoch() {
+    Tournament t(std::unique_ptr<Rules>(new SquashRules()));
+    hostRandomState() = 0x0badf00du;
+    TEST_ASSERT_TRUE(join(t, {S_ANNA, S_KRYS}));
+    const uint8_t first = t.status().logEpoch;
+    t.leave();
+    hostRandomState() = 0x0badf00du;
+    TEST_ASSERT_TRUE(join(t, {S_ANNA, S_KRYS}));
+    TEST_ASSERT_NOT_EQUAL(0, t.status().logEpoch);
+    TEST_ASSERT_NOT_EQUAL(first, t.status().logEpoch);
+}
+
 void test_sync_join_and_begin() {
     Tournament idle(std::unique_ptr<Rules>(new SquashRules()));
     const TournamentStatus none = idle.status();
@@ -788,28 +801,30 @@ void test_ack_guard() {
     TEST_ASSERT_FALSE(b.tournament.unsynced());
     TEST_ASSERT_EQUAL(0, b.tournament.unsyncedCount());
 
-    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, 2), "past changes_to");
-    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID + 1, 1), "other tournament");
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 2), "past changes_to");
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID + 1, b.tournament.status().logEpoch, 1), "other tournament");
     TEST_ASSERT_FALSE(b.tournament.unsynced());
 
-    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 0), "ack 0 arms");
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, b.tournament.status().logEpoch ^ 1, 0),
+              "another log");
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 0), "ack 0 arms");
     TEST_ASSERT_TRUE(b.tournament.unsynced());
     TEST_ASSERT_EQUAL(1, b.tournament.unsyncedCount());
-    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 1), "ack 1");
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 1), "ack 1");
     TEST_ASSERT_FALSE(b.tournament.unsynced());
 
     b.put(READ_2, BOARD);
     b.put(READ_3, BOARD);
     TEST_ASSERT_EQUAL(2, b.tournament.unsyncedCount());
     // Board-wide and monotonic: a lower ACK from another tablet changes nothing.
-    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 0), "lower ack");
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 0), "lower ack");
     TEST_ASSERT_EQUAL(2, b.tournament.unsyncedCount());
-    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, 3), "ack 3");
+    expectAck(AckStatus::Applied, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 3), "ack 3");
     TEST_ASSERT_FALSE(b.tournament.unsynced());
 
     b.tournament.leave();
     TEST_ASSERT_FALSE(b.tournament.unsynced());
-    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, 0), "after leave");
+    expectAck(AckStatus::Invalid, b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 0), "after leave");
 }
 
 // Re-pairing a slot: its earlier writes are the board's, so the new holder of the slot reads them.
@@ -863,7 +878,7 @@ void test_roster_growth() {
 void test_leave() {
     Board b;
     b.put(READ_1, BOARD);
-    b.tournament.ackChanges(TID, 0);
+    b.tournament.ackChanges(TID, b.tournament.status().logEpoch, 0);
     b.tournament.chooseMatchBetween(*b.tournament.getRoster().committedByUid(ANNA),
                                     *b.tournament.getRoster().committedByUid(KRYS));
     expectAck(AckStatus::Applied, b.tournament.reserveMatchSlot(), "reserve");
@@ -995,6 +1010,7 @@ int main() {
     RUN_TEST(test_offline_only_sides_not_swapped);
     RUN_TEST(test_listed_cap);
     RUN_TEST(test_game_ids);
+    RUN_TEST(test_rejoin_draws_a_new_epoch);
     RUN_TEST(test_sync_join_and_begin);
     RUN_TEST(test_sync_pull);
     RUN_TEST(test_sync_merge);

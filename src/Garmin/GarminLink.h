@@ -231,11 +231,12 @@ public:
      * the 18 B image. Stays pending until recordApplied(), so the write's response follows the
      * merge.
      */
-    bool takeRecord(uint32_t &tid, uint8_t &writer, uint8_t image[Garmin::RECORD_SIZE]) {
+    bool takeRecord(uint32_t &tid, uint8_t &epoch, uint8_t &writer, uint8_t image[Garmin::RECORD_SIZE]) {
         Guard g;
         if (!recordQueued || recordTaken) return false;
         recordTaken = true;
         tid = recordTid;
+        epoch = recordEpoch;
         writer = recordWriter;
         memcpy(image, recordImage, Garmin::RECORD_SIZE);
         return true;
@@ -519,6 +520,8 @@ public:
             return;
         }
         c->lastSeq = cmd.seq;
+        cmd.boundTid = c->boundTid;
+        cmd.boundEpoch = c->boundEpoch;
 
         if (parse != Garmin::CommandParse::Ok) {
             ack(*c, cmd.seq, Garmin::ackFor(parse));
@@ -593,10 +596,13 @@ public:
                 return false;
             case Garmin::TournamentFrame::Record:
                 // A write meant for a tournament the board has left never lands in the next one.
-                if (c->boundTid == 0 || c->boundTid != snapStatus.tid || recordQueued) return false;
+                if (c->boundTid == 0 || c->boundTid != snapStatus.tid || c->boundEpoch != snapStatus.logEpoch
+                    || recordQueued)
+                    return false;
                 recordQueued = true;
                 recordTaken = false;
                 recordTid = c->boundTid;
+                recordEpoch = c->boundEpoch;
                 recordWriter = static_cast<uint8_t>(c->authSlot);
                 memcpy(recordImage, w.body, Garmin::RECORD_SIZE);
                 return true;
@@ -632,6 +638,7 @@ public:
             }
             default:
                 c->boundTid = snapStatus.tid;
+                c->boundEpoch = snapStatus.logEpoch;
                 return Garmin::buildTournamentStatus(snapStatus);
         }
     }
@@ -862,8 +869,10 @@ private:
         Garmin::TournamentCursor tournamentRead = Garmin::TournamentCursor::Status;
         // 32-bit: past seq 0xFFFF (a full log) it must not wrap back to the start.
         uint32_t tournamentCursor = 0;
-        // The tournament its last STATUS read reported; RECORD writes need it still running.
+        // The tournament and change log its last STATUS read reported; RECORD writes and
+        // ACK_CHANGES need both still running (a re-join of the same id starts a new log).
         uint32_t boundTid = 0;
+        uint8_t boundEpoch = 0;
         uint8_t ackSeq = 0;
         Garmin::AckStatus ackStatus = Garmin::AckStatus::Applied;
         uint8_t stateSeq = 0;
@@ -939,6 +948,7 @@ private:
     bool recordQueued = false;
     bool recordTaken = false;
     uint32_t recordTid = 0;
+    uint8_t recordEpoch = 0;
     uint8_t recordWriter = 0;
     uint8_t recordImage[Garmin::RECORD_SIZE] = {};
     uint8_t repairedSlots = 0;

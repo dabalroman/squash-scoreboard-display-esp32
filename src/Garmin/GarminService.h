@@ -47,7 +47,7 @@ public:
     // cheap when nothing changed. `force` after a writer reset.
     void publishTournament(const Tournament *tournament, bool force = false);
     // A RECORD write waiting for loop(); recordApplied() releases its write response.
-    bool takeRecord(uint32_t &tid, uint8_t &writer, uint8_t *image);
+    bool takeRecord(uint32_t &tid, uint8_t &epoch, uint8_t &writer, uint8_t *image);
     void recordApplied();
     // Pairing slots written since the last call, as a bitmask.
     uint8_t takeRepairedSlots();

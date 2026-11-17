@@ -1074,9 +1074,9 @@ namespace {
         {"03 00 ed 5e 00 03 00 0d 0c 0b 0a 88 77 66 55 0b 06 02", 3, BOARD},
     };
 
-    Garmin::TournamentStatus pullStatus(const uint32_t tid = TID) {
+    Garmin::TournamentStatus pullStatus(const uint32_t tid = TID, const uint8_t epoch = 0x5A) {
         return Garmin::TournamentStatus{tid, static_cast<uint8_t>(Garmin::SportId::Squash), 3, 0x150fe75b, 3, 3,
-                                        0xEF752D79, 0x5A};
+                                        0xEF752D79, epoch};
     }
 
     // Returns how many records the link copied.
@@ -1222,14 +1222,16 @@ void test_tournament_record_write() {
     TEST_ASSERT_TRUE(link.recordPending());
     TEST_ASSERT_FALSE_MESSAGE(putRecord(link, 1, EDIT), "one at a time");
     uint32_t tid;
+    uint8_t epoch;
     uint8_t writer;
     uint8_t image[Garmin::RECORD_SIZE];
-    TEST_ASSERT_TRUE(link.takeRecord(tid, writer, image));
+    TEST_ASSERT_TRUE(link.takeRecord(tid, epoch, writer, image));
     TEST_ASSERT_EQUAL_HEX32(TID, tid);
+    TEST_ASSERT_EQUAL_HEX8(0x5A, epoch);
     TEST_ASSERT_EQUAL_UINT8(SPEC_SLOT, writer);
     const std::vector<uint8_t> edit = hex(EDIT);
     TEST_ASSERT_EQUAL_MEMORY(&edit[2], image, Garmin::RECORD_SIZE);
-    TEST_ASSERT_FALSE_MESSAGE(link.takeRecord(tid, writer, image), "taken once");
+    TEST_ASSERT_FALSE_MESSAGE(link.takeRecord(tid, epoch, writer, image), "taken once");
     TEST_ASSERT_TRUE_MESSAGE(link.recordPending(), "pending until applied");
     link.recordApplied();
     TEST_ASSERT_FALSE(link.recordPending());
@@ -1241,11 +1243,18 @@ void test_tournament_record_write() {
     TEST_ASSERT_TRUE(putRecord(link, 1, EDIT));
     link.recordApplied();
 
+    // The same id re-joined (a new log_epoch): the old binding writes nothing into the new log.
+    sync(link, pullStatus(0x7AB1E002, 0x5B), PULL_LOG, 3);
+    TEST_ASSERT_FALSE_MESSAGE(putRecord(link, 1, EDIT), "stale epoch");
+    link.readTournament(1);
+    TEST_ASSERT_TRUE(putRecord(link, 1, EDIT));
+    link.recordApplied();
+
     // A stack restart drops a record nobody took, so the host task's wait never outlives it.
     TEST_ASSERT_TRUE(putRecord(link, 1, EDIT));
     link.resetConnections();
     TEST_ASSERT_FALSE(link.recordPending());
-    TEST_ASSERT_FALSE(link.takeRecord(tid, writer, image));
+    TEST_ASSERT_FALSE(link.takeRecord(tid, epoch, writer, image));
     authenticate(link, 1, 0);
     link.readTournament(1);
 
@@ -1255,6 +1264,9 @@ void test_tournament_record_write() {
     TEST_ASSERT_TRUE(link.takeCommand(q));
     TEST_ASSERT_TRUE(q.cmd.id == Garmin::CommandId::AckChanges && q.cmd.upTo == 3);
     TEST_ASSERT_EQUAL_UINT8(SPEC_SLOT, q.slot);
+    // ...and the log its connection is bound to.
+    TEST_ASSERT_EQUAL_HEX32(0x7AB1E002, q.cmd.boundTid);
+    TEST_ASSERT_EQUAL_HEX8(0x5B, q.cmd.boundEpoch);
 }
 
 // The tournament's roster sits in a third slot: activated with the next published state, ROSTER

@@ -254,7 +254,9 @@ commands:
     description: The sender has stored every change up to that change seq durably.
     usage: >-
       Raises the board's acked_to to up_to (board-wide, from any peer); up_to at or below it is a
-      no-op (APPLIED). A different tournament_id or up_to > changes_to -> INVALID. The first ACK of
+      no-op (APPLIED). A different tournament_id, up_to > changes_to, or a connection whose last
+      STATUS read reported another tournament or log_epoch than the running one -> INVALID (an ACK
+      never reaches a change log the sender did not pull from). The first ACK of
       a tournament arms the unsynced guard: from then on changes_to > acked_to blocks BACK to MENU
       and makes the fob's long C warn (section 20.6).
     see: "#204-pulling-changes"
