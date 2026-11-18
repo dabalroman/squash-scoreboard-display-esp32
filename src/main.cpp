@@ -76,10 +76,26 @@ RemoteDevelopmentService *gRemoteDevelopmentService = nullptr;
 PreferencesManager preferencesManager;
 
 volatile uint8_t interruptTriggeredGpio = 0;
-void IRAM_ATTR onRemoteReceiverInterrupt_d0() { interruptTriggeredGpio = Board::RF_D0; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d1() { interruptTriggeredGpio = Board::RF_D1; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d2() { interruptTriggeredGpio = Board::RF_D2; }
-void IRAM_ATTR onRemoteReceiverInterrupt_d3() { interruptTriggeredGpio = Board::RF_D3; }
+#ifdef INPUT_DIAG
+volatile uint32_t diagEdges[4] = {};
+volatile uint32_t diagOverwrittenEdges = 0;
+
+// An edge that finds another button's pin still in the slot drops that press before loop()
+// reads it (the receiver's repeated edges on the same pin are harmless).
+#define RF_EDGE(index, pin)                                         \
+    do {                                                            \
+        if (interruptTriggeredGpio != 0 && interruptTriggeredGpio != (pin)) \
+            diagOverwrittenEdges = diagOverwrittenEdges + 1;        \
+        diagEdges[index] = diagEdges[index] + 1;                    \
+        interruptTriggeredGpio = (pin);                             \
+    } while (0)
+#else
+#define RF_EDGE(index, pin) (interruptTriggeredGpio = (pin))
+#endif
+void IRAM_ATTR onRemoteReceiverInterrupt_d0() { RF_EDGE(0, Board::RF_D0); }
+void IRAM_ATTR onRemoteReceiverInterrupt_d1() { RF_EDGE(1, Board::RF_D1); }
+void IRAM_ATTR onRemoteReceiverInterrupt_d2() { RF_EDGE(2, Board::RF_D2); }
+void IRAM_ATTR onRemoteReceiverInterrupt_d3() { RF_EDGE(3, Board::RF_D3); }
 
 unsigned long lastUpdate = 0;
 
@@ -610,7 +626,31 @@ void applyTournamentSync() {
     garminService.recordApplied();
 }
 
+#ifdef INPUT_DIAG
+// The level poll and the one-slot ISR flag are both read once per pass, so a long pass is
+// what delays or drops a press.
+void logInputDiag() {
+    static ulong lastPassMs = 0;
+    static ulong maxPassMs = 0;
+    static ulong windowStartMs = 0;
+    const ulong now = millis();
+    if (lastPassMs != 0 && now - lastPassMs > maxPassMs) maxPassMs = now - lastPassMs;
+    lastPassMs = now;
+    if (now - windowStartMs < 10000) return;
+    windowStartMs = now;
+    printLn("Input diag: loop max %lu ms, edges A%lu B%lu C%lu D%lu, overwritten %lu, BLE %s authed %u",
+            maxPassMs, static_cast<ulong>(diagEdges[0]), static_cast<ulong>(diagEdges[1]),
+            static_cast<ulong>(diagEdges[2]), static_cast<ulong>(diagEdges[3]),
+            static_cast<ulong>(diagOverwrittenEdges), garminService.running() ? "on" : "off",
+            garminService.authedCount());
+    maxPassMs = 0;
+}
+#endif
+
 void loop() {
+#ifdef INPUT_DIAG
+    logInputDiag();
+#endif
     einkDisplay.update();
     garminService.loop(millis());
     if (garminService.running()) {

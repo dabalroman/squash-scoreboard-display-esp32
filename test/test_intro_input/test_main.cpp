@@ -160,7 +160,7 @@ static void pressScoresOnce(void (*build)(Rig &), const uint8_t pin, const uint8
     for (int i = 0; i < 4; i++) rig.tick();
     TEST_ASSERT_EQUAL(1, g_ticks);
 
-    // No 1 s block any more: the next tap counts once GamePlaying's 750 ms debounce is over.
+    // No 1 s block any more: the next tap counts once the 400 ms repeat block is over.
     for (int i = 0; i < 6; i++) rig.tick();
     rig.tap(pin);
     rig.score(offset, l, r);

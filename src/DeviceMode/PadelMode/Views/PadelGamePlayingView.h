@@ -155,21 +155,21 @@ public:
         const uint32_t now = millis();
         bool checkExit = false;
 
-        if (remoteInputManager.buttonA.takeActionIfPossible(750)) {
+        if (remoteInputManager.buttonA.takeActionIfPossible()) {
             score(GameSide::a, now);
         }
 
-        if (remoteInputManager.buttonB.takeActionIfPossible(750)) {
+        if (remoteInputManager.buttonB.takeActionIfPossible()) {
             score(GameSide::b, now);
         }
 
-        if (remoteInputManager.buttonC.takeActionIfPossible(750)) {
+        if (remoteInputManager.buttonC.takeActionIfPossible()) {
             if (undo(GameSide::a, now)) {
                 checkExit = true;
             }
         }
 
-        if (remoteInputManager.buttonD.takeActionIfPossible(750)) {
+        if (remoteInputManager.buttonD.takeActionIfPossible()) {
             if (undo(GameSide::b, now)) {
                 checkExit = true;
             }

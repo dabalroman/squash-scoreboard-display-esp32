@@ -28,6 +28,12 @@ public:
         : buttonA(gpioA), buttonB(gpioB), buttonC(gpioC), buttonD(gpioD) {
         // Only C carries the long press, so only C pays the release latency.
         buttonC.setDeferToRelease(true);
+#ifdef INPUT_DIAG
+        buttonA.setDiagName('A');
+        buttonB.setDiagName('B');
+        buttonC.setDiagName('C');
+        buttonD.setDiagName('D');
+#endif
     }
 
     void handleInput(volatile uint8_t &triggeredGpio) {

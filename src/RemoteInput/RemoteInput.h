@@ -3,13 +3,23 @@
 
 #include <Arduino.h>
 
+#ifdef INPUT_DIAG
+#include "RemoteDevelopmentService/LoggerHelper.h"
+#endif
+
 class RemoteInput {
     uint8_t gpio;
+#ifdef INPUT_DIAG
+    char diagName = '?';
+#endif
 
     bool canTakeAction = false;
     ulong canBeTriggerAtMs = 0;
 
     static constexpr ulong LONG_PRESS_MS = 2000;
+    // A fob press from ~6 m can reach the receiver twice, up to ~380 ms apart (#630): one
+    // window for menus and scoring alike, just above that.
+    static constexpr ulong REPEAT_BLOCK_MS = 400;
     static constexpr ulong RELEASE_CONFIRM_MS = 40;
 
     bool deferToRelease = false;
@@ -24,13 +34,22 @@ class RemoteInput {
 
     void latch() {
         if (static_cast<long>(canBeTriggerAtMs - millis()) > 0) {
+#ifdef INPUT_DIAG
+            printLn("Input diag: %c latch refused (debounce)", diagName);
+#endif
             return;
         }
 
+#ifdef INPUT_DIAG
+        printLn("Input diag: %c latched%s", diagName, canTakeAction ? " (already pending)" : "");
+#endif
         canTakeAction = true;
     }
 
-    void takeAction(const ulong preventTriggerForMs = 500) {
+    void takeAction(const ulong preventTriggerForMs = REPEAT_BLOCK_MS) {
+#ifdef INPUT_DIAG
+        printLn("Input diag: %c taken", diagName);
+#endif
         canTakeAction = false;
         canBeTriggerAtMs = millis() + preventTriggerForMs;
 
@@ -46,6 +65,12 @@ public:
     uint8_t getGPIO() const {
         return gpio;
     }
+
+#ifdef INPUT_DIAG
+    void setDiagName(const char name) {
+        diagName = name;
+    }
+#endif
 
     /**
      * Fire this button's short action on release instead of on the first edge. Only the
@@ -81,6 +106,9 @@ public:
                 // One shot: however long the button is held after this, it fires once.
                 longPressLatched = true;
                 pressConsumed = true;
+#ifdef INPUT_DIAG
+                printLn("Input diag: %c long press", diagName);
+#endif
             }
 
             return;
@@ -100,6 +128,12 @@ public:
             return;
         }
 
+#ifdef INPUT_DIAG
+        // Real taps measured 236-360 ms: a far shorter HIGH is noise, not a person.
+        printLn("Input diag: %c high %lu ms%s", diagName, lowSinceMs - pressStartedAtMs,
+                lowSinceMs - pressStartedAtMs < 100 ? " SHORT" : "");
+#endif
+
         // Released. A press that already fired its long action does not also fire the short one.
         if (deferToRelease && !pressConsumed) {
             latch();
@@ -109,7 +143,7 @@ public:
         lowSeen = false;
     }
 
-    bool takeActionIfPossible(const ulong preventTriggerForMs = 500) {
+    bool takeActionIfPossible(const ulong preventTriggerForMs = REPEAT_BLOCK_MS) {
         if (canTakeAction) {
             takeAction(preventTriggerForMs);
             return true;
