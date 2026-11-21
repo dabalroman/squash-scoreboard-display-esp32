@@ -5,7 +5,7 @@ var KIND = location.pathname == '/teams' ? {
         prev: '/teams/preview',
         title: 'Drużyny',
         add: '+ Dodaj drużynę',
-        base: 'Druzyna',
+        base: 'Team',
         last: 'Musi zostać co najmniej jedna drużyna.',
         noName: ': brak nazwy.',
         reset: 'Przywróć drużyny fabryczne',
