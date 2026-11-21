@@ -779,8 +779,8 @@ def selftest():
 
     cases = [
         ("unmutated copy", None, True),
-        ("wrong constant (PROTO 0x02)", mutate_yaml("constants.yaml", lambda d: next(
-            c for c in d["constants"] if c["name"] == "PROTO").update(value=0x02)), False),
+        ("wrong constant (PROTO 0x03)", mutate_yaml("constants.yaml", lambda d: next(
+            c for c in d["constants"] if c["name"] == "PROTO").update(value=0x03)), False),
         ("wrong vector byte", mutate_yaml("scenarios.yaml", flip_vector), False),
         ("missing usage", mutate_yaml("constants.yaml", lambda d: d["constants"][0].pop("usage")), False),
         ("unknown key", mutate_yaml("constants.yaml", lambda d: d["constants"][0].update(useage="x")), False),
@@ -829,7 +829,7 @@ def selftest():
         (watch / "source" / "protocol").mkdir(parents=True)
         (watch / "test").mkdir()
         (watch / "source" / "protocol" / "Proto.mc").write_text(
-            "module Proto {\n    const PROTO = 0x01;\n    const CMD_SCORE = 0x09;\n    const MAX_FRAME = 20 as Number;\n"
+            "module Proto {\n    const PROTO = 0x02;\n    const CMD_SCORE = 0x09;\n    const MAX_FRAME = 20 as Number;\n"
             "    const MAC_SIZE = 8;\n    const MAC_SIZE = 8;\n}\n", encoding="utf-8")
         errs = scan_watch(spec, watch)
         ok = (any("`CMD_SCORE` = 9" in e for e in errs) and any("`KEY_SIZE` not found" in e for e in errs)
@@ -838,6 +838,30 @@ def selftest():
         failed += not ok
         print(f"  {'ok  ' if ok else 'FAIL'} watch scan wrong / missing / typed / duplicate constant: {'red' if errs else 'green'}"
               + ("" if ok else "".join(f"\n         {e}" for e in errs[:5])))
+        android = d / "android"
+        (android / ANDROID_PKG).mkdir(parents=True)
+        (android / ANDROID_TESTS).mkdir(parents=True)
+        (android / ANDROID_PKG / "Proto.kt").write_text(
+            "object Proto {\n    const val PROTO: Int = 0x01\n    const val MAX_FRAME = 20 * 1\n"
+            "    const val MAC_SIZE = 8\n    const val MAC_SIZE = 8\n    const val MAX_CONNECTIONS = 4\n"
+            '    val SERVICE: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")\n}\n',
+            encoding="utf-8")
+        (android / ANDROID_TESTS / "HeartTest.kt").write_text(
+            '// spec: heart/write_a\nval v = "02 00"\n', encoding="utf-8")
+        errs = scan_android(spec, android)
+        want = ["`Proto.PROTO` = 1", "`Proto.MAX_FRAME` in", "`Proto.MAC_SIZE` declared twice",
+                "`Proto.MAX_CONNECTIONS` is defined but", "`Proto.SERVICE` =", "Commands.kt not found",
+                "`spec: heart/write_a` is tagged but"]
+        ok = all(any(w in e for e in errs) for w in want) and not any("does not define" in e for e in errs)
+        failed += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} android scan wrong / typed / duplicate / excluded / missing file / untracked tag: "
+              f"{'red' if errs else 'green'}"
+              + ("" if ok else "".join(f"\n         missing: {w}" for w in want if not any(w in e for e in errs))))
+        (android / ANDROID_TESTS / "HeartTest.kt").unlink()
+        errs = scan_android(spec, android)
+        ok = any("no Kotlin tests" in e for e in errs)
+        failed += not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} android scan with no tests: {'red' if errs else 'green'}")
 
     return failed == 0
 
@@ -960,6 +984,57 @@ WATCH_EXCLUDE = frozenset({
 })
 
 
+# The tablet (squash-scoreboard-display-android-app) is a full tournament-sync peer, so its lists run
+# the other way from the watch's: every YAML step, constant, uuid, enum value and command is required
+# unless named below with the reason. A new YAML item turns :protocol:test red until the tablet carries
+# it or it is excluded here.
+ANDROID_STEPS_EXCLUDE = frozenset({
+    # SCORE / FOCUS / ADD_OFFLINE_GAME: watch commands the tablet never sends (offline games are spec 20 records).
+    "score_confirm/score", "last_known/score_right",
+    "focus/focus_squash", "focus/focus_krystian", "focus/focus_start", "focus/focus_unknown_uid",
+    "offline_games/add", "offline_games/add_illegal",
+    # The board dropping malformed writes the tablet never builds.
+    "focus/focus_malformed",
+    # HEART: the tablet does not take part in heart lists.
+    "heart/write_a", "heart/write_c", "heart/write_c_clear", "heart/notify_a", "heart/notify_b",
+    "heart/notify_c", "heart/notify_a_empty", "heart/discard_v0", "heart/discard_short",
+    # RESULTS: the tablet syncs games over TOURNAMENT (spec 20) and never reads RESULTS.
+    "results/write", "results/read_1", "results/read_2", "results/read_3", "results/read_past_end",
+    "results/read_no_tournament", "results/unauth_read", "results/discard_short", "results/discard_v0",
+    "offline_games/read_offline", "offline_games/read_end_rev", "sync_tombstone/results_end",
+})
+ANDROID_CONSTANTS_EXCLUDE = frozenset({
+    "MAX_ADV",  # the tablet parses whatever advertising the stack hands it
+    "MAX_STATE_BODY",  # = MAX_CHUNKS * CHUNK_BODY, which the assembler bounds
+    "MAX_CONNECTIONS",  # the board's capacity; the tablet takes one link
+    "VERSION_TEXT_MAX",  # = MAX_FRAME - 1, which VERSION's frame bound gives
+    # Board-side timers.
+    "PAIRING_WINDOW_MS", "UNAUTH_TIMEOUT_MS", "FAILED_PROOF_DISCONNECT_MS",
+    "HEART_LIST", "HEART_EXPIRY_MS", "HEART_MIN_INTERVAL_MS",  # no heart lists
+    "RESULT_ENTRY_SIZE",  # no RESULTS reads
+})
+ANDROID_UUIDS_EXCLUDE = frozenset()
+# YAML enum -> (file, Kotlin object, prefix of its values): `screen` PLAYING = Proto.SCREEN_PLAYING.
+ANDROID_ENUMS = {
+    "screen": ("Proto.kt", "Proto", "SCREEN_"), "sport": ("Proto.kt", "Proto", "SPORT_"),
+    "side": ("Proto.kt", "Proto", "SIDE_"), "ack_status": ("Proto.kt", "Proto", "ACK_"),
+    "auth_type": ("Auth.kt", "Auth", "TYPE_"), "auth_status": ("Auth.kt", "Auth", "STATUS_"),
+    "pairing_type": ("Pairing.kt", "Pairing", "TYPE_"), "pairing_status": ("Pairing.kt", "Pairing", "STATUS_"),
+    "tournament_frame": ("Sync.kt", "Sync", "FRAME_"), "tournament_cursor": ("Sync.kt", "Sync", "CURSOR_"),
+    "record_flags": ("Record.kt", "Records", "FLAG_"),
+}
+ANDROID_ENUMS_EXCLUDE = frozenset()  # whole enums the tablet has no use for
+ANDROID_ENUM_VALUES_EXCLUDE = frozenset()  # `enum.NAME`
+ANDROID_COMMANDS_EXCLUDE = frozenset({
+    # Watch commands that drive the board's own screens; the tablet only BEGINs, picks sides and leaves.
+    "SELECT_SPORT", "TOGGLE_PLAYER", "START_TOURNAMENT", "SET_PAIR", "SWAP_SIDES", "START_MATCH", "SCORE",
+    "UNDO", "SKIP", "NEXT_GAME", "SYNC", "FOCUS",
+    "ADD_OFFLINE_GAME",  # offline games are spec 20 records
+})
+ANDROID_PKG = Path("protocol") / "src" / "main" / "kotlin" / "com" / "squashscoreboard" / "protocol"
+ANDROID_TESTS = Path("protocol") / "src" / "test"
+
+
 def pascal(name):
     return "".join(w.capitalize() for w in str(name).lower().split("_"))
 
@@ -972,7 +1047,9 @@ def repo_errors(repo, spec, checkout):
         return scan_client(spec, checkout)
     if repo == "watch":
         return scan_watch(spec, checkout)
-    return []
+    if repo == "android":
+        return scan_android(spec, checkout)
+    return [f"--repo {repo}: no scan defined"]
 
 
 # --- constants by naming convention ---
@@ -1176,6 +1253,145 @@ def scan_watch(spec, root):
     return errors
 
 
+KT_OBJECT_RE = re.compile(r"\bobject\s+(\w+)[^{\n]*\{")
+KT_CONST_RE = re.compile(r"^[ \t]*(?:(?:private|internal|public)\s+)?const\s+val\s+(\w+)\s*(?::\s*[\w.]+)?\s*=\s*(.+?)\s*(?://.*)?$",
+                         re.M)
+KT_UUID_FUN_RE = re.compile(r"fun\s+uuid\(\s*(\w+)\s*:\s*Int\s*\)\s*:\s*UUID\s*=\s*UUID\.fromString\(\"([^\"]+)\"\)")
+KT_UUID_VAL_RE = re.compile(r"^[ \t]*val\s+(\w+)\s*:\s*UUID\s*=\s*(?:uuid\((\d+)\)|UUID\.fromString\(\"([^\"]+)\"\))", re.M)
+
+
+def kt_int(text):
+    """A plain Kotlin integer literal (0x1F, 10_000, 0xFFL) -> int; anything computed -> None."""
+    m = re.fullmatch(r"(0[xX][0-9a-fA-F_]+|[0-9_]+)[lLuU]*", text.strip())
+    return int(m.group(1).replace("_", ""), 0) if m else None
+
+
+def kt_objects(text):
+    """`object Name { const val ... }` -> {Name: {const: int or None}}, each const in its innermost object,
+    plus the names declared twice in one object."""
+    spans = []
+    for m in KT_OBJECT_RE.finditer(text):
+        depth, end = 0, len(text)
+        for k in range(m.end() - 1, len(text)):
+            if text[k] == "{":
+                depth += 1
+            elif text[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = k
+                    break
+        spans.append((m.end(), end, m.group(1)))
+    objs, dupes = {}, []
+    for m in KT_CONST_RE.finditer(text):
+        inner = [s for s in spans if s[0] <= m.start() < s[1]]
+        if not inner:
+            continue
+        name = max(inner, key=lambda s: s[0])[2]
+        consts = objs.setdefault(name, {})
+        if m.group(1) in consts:
+            dupes.append(f"{name}.{m.group(1)}")
+        consts[m.group(1)] = kt_int(m.group(2))
+    return objs, dupes
+
+
+def scan_android(spec, root):
+    errors = []
+    pkg = root / ANDROID_PKG
+    objs = {}
+    for fname in sorted({"Proto.kt", "Commands.kt"} | {f for f, _, _ in ANDROID_ENUMS.values()}):
+        path = pkg / fname
+        if not path.exists():
+            errors.append(f"android: {(ANDROID_PKG / fname).as_posix()} not found")
+            continue
+        found, dupes = kt_objects(path.read_text(encoding="utf-8"))
+        errors += [f"android: `{d}` declared twice in {fname}" for d in dupes]
+        for name, consts in found.items():
+            objs[(fname, name)] = consts
+
+    def compare(fname, obj, name, want, excluded, what):
+        consts = objs.get((fname, obj))
+        if consts is None:
+            return  # the missing file or object is reported once
+        if name not in consts:
+            if not excluded:
+                errors.append(f"android: `{obj}.{name}` ({what}) not found in {fname}")
+        elif excluded:
+            errors.append(f"android: `{obj}.{name}` is defined but check_protocol excludes {what}; drop the exclusion")
+        elif consts[name] is None:
+            errors.append(f"android: `{obj}.{name}` in {fname} is not a plain number")
+        elif consts[name] != want:
+            errors.append(f"android: `{obj}.{name}` = {consts[name]} but the YAML says {want}")
+
+    for fname, obj in {("Proto.kt", "Proto"), ("Commands.kt", "Commands")} | \
+            {(f, o) for f, o, _ in ANDROID_ENUMS.values()}:
+        if (pkg / fname).exists() and (fname, obj) not in objs:
+            errors.append(f"android: `object {obj}` with const vals not found in {fname}")
+
+    for c in spec.constants:
+        compare("Proto.kt", "Proto", c["name"], c["value"], c["name"] in ANDROID_CONSTANTS_EXCLUDE,
+                f"constant `{c['name']}`")
+    for ename, e in spec.enums.items():
+        if ename in ANDROID_ENUMS_EXCLUDE:
+            continue
+        if ename not in ANDROID_ENUMS:
+            errors.append(f"android: enum `{ename}` has no Kotlin home in ANDROID_ENUMS (map or exclude it)")
+            continue
+        fname, obj, prefix = ANDROID_ENUMS[ename]
+        for v in e.get("values", []):
+            compare(fname, obj, prefix + str(v["name"]).upper(), (1 << v["bit"]) if "bit" in v else v.get("value"),
+                    f"{ename}.{v['name']}" in ANDROID_ENUM_VALUES_EXCLUDE, f"`{ename}.{v['name']}`")
+    for cmd in spec.commands:
+        if not cmd.get("unused"):
+            compare("Commands.kt", "Commands", cmd["name"], cmd["id"], cmd["name"] in ANDROID_COMMANDS_EXCLUDE,
+                    f"command `{cmd['name']}`")
+
+    proto = pkg / "Proto.kt"
+    if proto.exists():
+        text = proto.read_text(encoding="utf-8")
+        tmpl = KT_UUID_FUN_RE.search(text)
+        uuids = {}
+        for m in KT_UUID_VAL_RE.finditer(text):
+            if m.group(2) is not None:
+                uuids[m.group(1)] = tmpl.group(2).replace("${" + tmpl.group(1) + "}", m.group(2)) \
+                    .replace("$" + tmpl.group(1), m.group(2)) if tmpl else None
+            else:
+                uuids[m.group(1)] = m.group(3)
+        for u in spec.uuids:
+            name = u["name"].removesuffix("_UUID")
+            excluded = u["name"] in ANDROID_UUIDS_EXCLUDE
+            if name not in uuids:
+                if not excluded:
+                    errors.append(f"android: uuid `Proto.{name}` (`{u['name']}`) not found in Proto.kt")
+            elif excluded:
+                errors.append(f"android: `Proto.{name}` is defined but check_protocol excludes `{u['name']}`")
+            elif uuids[name] is None:
+                errors.append(f"android: `Proto.{name}` uses uuid() but its template was not found in Proto.kt")
+            elif uuids[name].lower() != u["value"]:
+                errors.append(f"android: `Proto.{name}` = {uuids[name]} but the YAML says {u['value']}")
+
+    # A name the YAML dropped or renamed must not linger in the exclude lists.
+    defined = {
+        "ANDROID_STEPS_EXCLUDE": (ANDROID_STEPS_EXCLUDE, spec_scenario_tags(spec)),
+        "ANDROID_CONSTANTS_EXCLUDE": (ANDROID_CONSTANTS_EXCLUDE, {c["name"] for c in spec.constants}),
+        "ANDROID_UUIDS_EXCLUDE": (ANDROID_UUIDS_EXCLUDE, {u["name"] for u in spec.uuids}),
+        "ANDROID_ENUMS": (set(ANDROID_ENUMS) | ANDROID_ENUMS_EXCLUDE, set(spec.enums)),
+        "ANDROID_ENUM_VALUES_EXCLUDE": (ANDROID_ENUM_VALUES_EXCLUDE,
+                                        {f"{n}.{v['name']}" for n, e in spec.enums.items() for v in e.get("values", [])}),
+        "ANDROID_COMMANDS_EXCLUDE": (ANDROID_COMMANDS_EXCLUDE,
+                                     {c["name"] for c in spec.commands if not c.get("unused")}),
+    }
+    for list_name, (names, known) in defined.items():
+        for name in sorted(set(names) - known):
+            errors.append(f"android: check_protocol's {list_name} names `{name}`, which the YAML does not define")
+
+    tests = root / ANDROID_TESTS
+    if not any(tests.rglob("*.kt")):
+        errors.append(f"android: no Kotlin tests under {ANDROID_TESTS.as_posix()}")
+    else:
+        errors += scan_vectors(spec, "android", spec_scenario_tags(spec) - ANDROID_STEPS_EXCLUDE, tests, "*.kt")
+    return errors
+
+
 def py_dict(text, name):
     i = text.find(name + " = {")
     if i < 0:
@@ -1237,9 +1453,11 @@ def scan_vectors(spec, repo, wanted_tags, base, pattern):
             errors.append(f"{repo}: no `spec: {tag}` tag in its tests")
         elif found[tag] != vecs:
             errors.append(f"{repo}: `spec: {tag}` bytes differ from the YAML")
+    all_tags = spec_scenario_tags(spec)
     for tag in found:
         if tag not in want:
-            errors.append(f"{repo}: `spec: {tag}` does not name a scenario step")
+            errors.append(f"{repo}: `spec: {tag}` is tagged but check_protocol's {repo} list leaves it out"
+                          if tag in all_tags else f"{repo}: `spec: {tag}` does not name a scenario step")
     return errors
 
 
@@ -1255,9 +1473,6 @@ def scan_repos(spec, names):
             if not checkout.exists():
                 errors.append(f"--repo {name}: sibling checkout not found at {checkout}")
                 continue
-            if name == "android":
-                errors.append(f"--repo {name}: scan not implemented yet (#568), so it is not checked")
-                continue  # #568 adds this scan
             errors += repo_errors(name, spec, checkout)
     return errors
 
